@@ -62939,6 +62939,195 @@ index 0000000..ef1530f
 +  hintRow: { flexDirection: "row", alignItems: "center", gap: 2 },
 +  hint: { fontSize: 11 },
 +});
+diff --git a/apps/mobile/components/computer-details-sheet.tsx b/apps/mobile/components/computer-details-sheet.tsx
+new file mode 100644
+index 0000000..b376040
+--- /dev/null
++++ b/apps/mobile/components/computer-details-sheet.tsx
+@@ -0,0 +1,183 @@
++import { useLingui } from "@lingui/react/macro";
++import { typeScale } from "@rakazo/ui-tokens";
++import { Modal, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
++import { useSafeAreaInsets } from "react-native-safe-area-context";
++import type { ComputerStatus } from "../lib/computer";
++import { useMobileTokens } from "../lib/native";
++import { NativeActionButton } from "./native-action-button";
++
++/**
++ * The computer's own page: what it is, whose it is, who is holding it, what it is showing, and
++ * how full its disk is. The state a person would otherwise have to infer from an error line.
++ */
++export function ComputerDetailsSheet({
++  open,
++  computer,
++  updating,
++  cleaningUp,
++  onClose,
++  onCleanUp,
++  onUpdate,
++}: {
++  open: boolean;
++  computer: ComputerStatus | null;
++  /** An update or recovery is queued for this computer. */
++  updating: boolean;
++  cleaningUp: boolean;
++  onClose: () => void;
++  onCleanUp?: () => void;
++  onUpdate?: () => void;
++}) {
++  const { t } = useLingui();
++  const tokens = useMobileTokens();
++  const insets = useSafeAreaInsets();
++  const state = computer
++    ? computer.state === "running"
++      ? t`Running`
++      : computer.state === "booting"
++        ? t`Starting`
++        : computer.state === "suspended"
++          ? t`Asleep`
++          : computer.state === "error"
++            ? t`Needs attention`
++            : t`Stopped`
++    : t`Not set up`;
++  const holder = computer
++    ? computer.controlledByOther
++      ? t`Someone else in this space`
++      : computer.controlHolder === "user"
++        ? t`You`
++        : computer.controlHolder === "bot"
++          ? (computer.busyBotName ?? t`A Bot`)
++          : t`No one`
++    : t`No one`;
++  const rows: Array<{ label: string; value: string }> = computer
++    ? [
++        { label: t`State`, value: state },
++        { label: t`Shared with`, value: computer.shared ? t`Everyone in this space` : t`Only this Bot` },
++        { label: t`In control`, value: holder },
++        { label: t`Screen`, value: `${computer.screenWidth} × ${computer.screenHeight}` },
++        ...(computer.diskFullPercent !== undefined
++          ? [{ label: t`Disk`, value: t`${computer.diskFullPercent}% used` }]
++          : []),
++      ]
++    : [];
++  return (
++    <Modal
++      visible={open}
++      animationType="slide"
++      presentationStyle="pageSheet"
++      onRequestClose={onClose}
++    >
++      <View
++        accessibilityViewIsModal
++        style={[
++          styles.sheet,
++          {
++            backgroundColor: tokens.background,
++            paddingTop: Platform.OS === "ios" ? 12 : insets.top + 12,
++            paddingBottom: insets.bottom,
++          },
++        ]}
++      >
++        <View style={styles.header}>
++          <Text style={[styles.title, { color: tokens.foreground }]}>云电脑</Text>
++          <NativeActionButton fill={false} label={t`Done`} onPress={onClose} prominence="primary" />
++        </View>
++        <ScrollView contentContainerStyle={styles.content}>
++          <Text style={[styles.summary, { color: tokens.mutedForeground }]}>
++            你的 Bot 们共用的那一台电脑。
++          </Text>
++          <View style={[styles.card, { backgroundColor: tokens.card, borderColor: tokens.border }]}>
++            {rows.map((row) => (
++              <View key={row.label} style={[styles.row, { borderTopColor: tokens.border }]}>
++                <Text style={[styles.rowLabel, { color: tokens.mutedForeground }]}>{row.label}</Text>
++                <Text numberOfLines={1} style={[styles.rowValue, { color: tokens.foreground }]}>
++                  {row.value}
++                </Text>
++              </View>
++            ))}
++            {!computer ? (
++              <Text style={[styles.empty, { color: tokens.mutedForeground }]}>
++                这台电脑还没有开过。
++              </Text>
++            ) : null}
++          </View>
++          {computer?.diskFullPercent !== undefined ? (
++            <View style={styles.disk}>
++              <View style={[styles.diskTrack, { backgroundColor: tokens.muted }]}>
++                <View
++                  style={[
++                    styles.diskFill,
++                    {
++                      backgroundColor:
++                        computer.diskFullPercent >= 95 ? tokens.destructive : tokens.warning,
++                      width: `${Math.min(100, Math.max(0, computer.diskFullPercent))}%`,
++                    },
++                  ]}
++                />
++              </View>
++              <Text style={[styles.diskNote, { color: tokens.mutedForeground }]}>
++                磁盘已用 {computer.diskFullPercent}%，清理构建产物和缓存能腾出空间。
++              </Text>
++            </View>
++          ) : null}
++          <View style={styles.actions}>
++            {onCleanUp && computer ? (
++              <NativeActionButton
++                label={t`Clean up`}
++                prominence="secondary"
++                busy={cleaningUp}
++                onPress={onCleanUp}
++              />
++            ) : null}
++            {onUpdate && computer ? (
++              <NativeActionButton
++                label={computer.canUpdate ? t`Update computer` : t`Repair computer`}
++                prominence="secondary"
++                busy={updating}
++                onPress={onUpdate}
++              />
++            ) : null}
++          </View>
++        </ScrollView>
++      </View>
++    </Modal>
++  );
++}
++
++const styles = StyleSheet.create({
++  sheet: { flex: 1 },
++  header: {
++    flexDirection: "row",
++    alignItems: "center",
++    justifyContent: "space-between",
++    paddingHorizontal: 20,
++    paddingVertical: 8,
++  },
++  title: { fontSize: 18, fontWeight: "600" },
++  content: { paddingHorizontal: 20, paddingBottom: 32, gap: 12 },
++  summary: { fontSize: 13, lineHeight: 18 },
++  card: {
++    borderRadius: 16,
++    borderCurve: "continuous",
++    borderWidth: StyleSheet.hairlineWidth,
++    paddingHorizontal: 14,
++  },
++  row: {
++    flexDirection: "row",
++    alignItems: "center",
++    justifyContent: "space-between",
++    gap: 12,
++    paddingVertical: 12,
++    borderTopWidth: StyleSheet.hairlineWidth,
++  },
++  rowLabel: { ...typeScale.secondary },
++  rowValue: { flexShrink: 1, ...typeScale.secondary, fontWeight: "500", textAlign: "right" },
++  empty: { paddingVertical: 14, ...typeScale.secondary },
++  disk: { gap: 8 },
++  diskTrack: { height: 8, borderRadius: 4, overflow: "hidden" },
++  diskFill: { height: 8, borderRadius: 4 },
++  diskNote: { fontSize: 12, lineHeight: 16 },
++  actions: { flexDirection: "row", flexWrap: "wrap", gap: 10, paddingTop: 4 },
++});
 diff --git a/apps/mobile/components/computer-maintenance-actions.tsx b/apps/mobile/components/computer-maintenance-actions.tsx
 index c2757a4..6381b11 100644
 --- a/apps/mobile/components/computer-maintenance-actions.tsx
@@ -68709,6 +68898,221 @@ index 0000000..d74f518
 +  text: { flex: 1, flexShrink: 1, minWidth: 0, gap: 2 },
 +  name: { fontSize: 17, fontWeight: "600", lineHeight: 22 },
 +  detail: { fontSize: 15, lineHeight: 20 },
++});
+diff --git a/apps/mobile/components/thread/ledger-panel.tsx b/apps/mobile/components/thread/ledger-panel.tsx
+new file mode 100644
+index 0000000..c94aba3
+--- /dev/null
++++ b/apps/mobile/components/thread/ledger-panel.tsx
+@@ -0,0 +1,209 @@
++import { useNow } from "@rakazo/chat-ui/hooks";
++import { useEffect, useState } from "react";
++import { Pressable, StyleSheet, Text, View } from "react-native";
++import Animated, {
++  useAnimatedStyle,
++  useReducedMotion,
++  useSharedValue,
++  withRepeat,
++  withTiming,
++} from "react-native-reanimated";
++import { mobileTokens } from "../../lib/appearance";
++import { hapticImpact } from "../../lib/haptics";
++import type { LedgerTask } from "../../lib/ledger-tasks";
++import { ledgerElapsed } from "../../lib/ledger-tasks";
++import { NativeSymbol } from "../native-symbol";
++
++const OPEN_MS = 220;
++
++/**
++ * The chat's background ledger, opened from the Bot pill in the title: one line per piece of work
++ * running behind the conversation — what it is, the step it is on, the model doing it, how long
++ * it has been going, and a way to stop it. It floats under the header, so the chat keeps its
++ * place; tapping anywhere else closes it.
++ */
++export function LedgerPanel({
++  open,
++  tasks,
++  topInset,
++  onClose,
++  onStop,
++  stopping,
++}: {
++  open: boolean;
++  tasks: LedgerTask[];
++  /** Where the panel starts: just under the header's own paper. */
++  topInset: number;
++  onClose: () => void;
++  onStop: (task: LedgerTask) => void;
++  /** Cards whose Stop was pressed, until their own update settles them. */
++  stopping: ReadonlySet<string>;
++}) {
++  const tokens = mobileTokens();
++  const reducedMotion = useReducedMotion();
++  const shown = useSharedValue(open ? 1 : 0);
++  // The times only tick while the ledger is open: a closed panel costs nothing.
++  const now = useNow(open ? 1_000 : null);
++  useEffect(() => {
++    shown.value = reducedMotion
++      ? open
++        ? 1
++        : 0
++      : withTiming(open ? 1 : 0, { duration: OPEN_MS });
++  }, [open, reducedMotion, shown]);
++  const panelStyle = useAnimatedStyle(() => ({
++    opacity: shown.value,
++    transform: [{ translateY: (1 - shown.value) * -12 }],
++  }));
++  return (
++    <Animated.View
++      // A closed ledger keeps its place in the tree but takes no touch: the chat stays live.
++      pointerEvents={open ? "auto" : "none"}
++      style={[styles.layer, { top: topInset }, panelStyle]}
++    >
++      <Pressable
++        accessibilityElementsHidden
++        importantForAccessibility="no-hide-descendants"
++        onPress={onClose}
++        style={StyleSheet.absoluteFill}
++      />
++      <View
++        accessibilityLabel="后台账本"
++        style={[
++          styles.panel,
++          { backgroundColor: tokens.card, borderColor: tokens.border },
++        ]}
++      >
++        <View style={styles.head}>
++          <Text style={[styles.headTitle, { color: tokens.foreground }]}>后台账本</Text>
++          <Text style={[styles.headCount, { color: tokens.mutedForeground }]}>
++            {tasks.length > 0 ? `${tasks.length} 路在做` : "都做完了"}
++          </Text>
++        </View>
++        {tasks.length === 0 ? (
++          <Text style={[styles.empty, { color: tokens.mutedForeground }]}>
++            现在没有在跑的后台任务。派了活，这里会显示每一路做到哪一步。
++          </Text>
++        ) : (
++          tasks.map((task) => (
++            <LedgerRow
++              key={task.id}
++              task={task}
++              now={now}
++              stopping={stopping.has(task.id)}
++              onStop={() => onStop(task)}
++            />
++          ))
++        )}
++      </View>
++    </Animated.View>
++  );
++}
++
++function LedgerRow({
++  task,
++  now,
++  stopping,
++  onStop,
++}: {
++  task: LedgerTask;
++  now: number;
++  stopping: boolean;
++  onStop: () => void;
++}) {
++  const tokens = mobileTokens();
++  const elapsed = ledgerElapsed(task.startedAt, now);
++  return (
++    <View style={[styles.row, { borderTopColor: tokens.border }]}>
++      <BreathingDot />
++      <View style={styles.rowText}>
++        <Text numberOfLines={1} style={[styles.title, { color: tokens.foreground }]}>
++          {task.title}
++        </Text>
++        <Text numberOfLines={1} style={[styles.step, { color: tokens.mutedForeground }]}>
++          {task.step ?? "正在开始"}
++        </Text>
++      </View>
++      <View style={styles.trailing}>
++        {elapsed ? (
++          <Text style={[styles.elapsed, { color: tokens.mutedForeground }]}>{elapsed}</Text>
++        ) : null}
++        {task.model ? (
++          <Text numberOfLines={1} style={[styles.model, { color: tokens.mutedForeground }]}>
++            {task.model}
++          </Text>
++        ) : null}
++        {task.stop ? (
++          <Pressable
++            accessibilityRole="button"
++            accessibilityLabel={`停止 ${task.title}`}
++            hitSlop={8}
++            disabled={stopping}
++            onPress={() => {
++              hapticImpact();
++              onStop();
++            }}
++          >
++            <Text
++              style={[styles.stop, { color: stopping ? tokens.mutedForeground : tokens.destructive }]}
++            >
++              {stopping ? "停止中…" : "停止"}
++            </Text>
++          </Pressable>
++        ) : null}
++      </View>
++    </View>
++  );
++}
++
++/** A dot that breathes while work runs, so a still panel still reads as alive. */
++function BreathingDot() {
++  const tokens = mobileTokens();
++  const reducedMotion = useReducedMotion();
++  const pulse = useSharedValue(1);
++  useEffect(() => {
++    if (reducedMotion) return;
++    pulse.value = withRepeat(withTiming(0.35, { duration: 900 }), -1, true);
++    return () => {
++      pulse.value = 1;
++    };
++  }, [pulse, reducedMotion]);
++  const style = useAnimatedStyle(() => ({ opacity: pulse.value }));
++  return <Animated.View style={[styles.dot, { backgroundColor: tokens.warning }, style]} />;
++}
++
++const styles = StyleSheet.create({
++  layer: { position: "absolute", left: 0, right: 0, bottom: 0, paddingHorizontal: 12 },
++  panel: {
++    borderRadius: 20,
++    borderCurve: "continuous",
++    borderWidth: StyleSheet.hairlineWidth,
++    paddingHorizontal: 14,
++    paddingVertical: 12,
++    gap: 2,
++    shadowColor: "#000000",
++    shadowOpacity: 0.24,
++    shadowRadius: 18,
++    shadowOffset: { width: 0, height: 8 },
++  },
++  head: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
++  headTitle: { fontSize: 15, fontWeight: "600" },
++  headCount: { fontSize: 12, fontVariant: ["tabular-nums"] },
++  empty: { fontSize: 13, lineHeight: 18, paddingTop: 6, paddingBottom: 2 },
++  row: {
++    flexDirection: "row",
++    alignItems: "center",
++    gap: 10,
++    paddingTop: 10,
++    marginTop: 8,
++    borderTopWidth: StyleSheet.hairlineWidth,
++  },
++  dot: { width: 7, height: 7, borderRadius: 3.5 },
++  rowText: { flex: 1, minWidth: 0, gap: 2 },
++  title: { fontSize: 15, fontWeight: "600" },
++  step: { fontSize: 13 },
++  trailing: { alignItems: "flex-end", gap: 2, maxWidth: 132 },
++  elapsed: { fontSize: 11, fontVariant: ["tabular-nums"] },
++  model: { fontSize: 11 },
++  stop: { fontSize: 12, fontWeight: "600" },
 +});
 diff --git a/apps/mobile/components/thread/link-preview-card.tsx b/apps/mobile/components/thread/link-preview-card.tsx
 new file mode 100644
@@ -74968,6 +75372,191 @@ index 13fb083..69f3eab 100644
 -  return { status, toggle, cancel };
 +  return { status, toggle, cancel, level, transcript };
  }
+diff --git a/apps/mobile/lib/computer-trackpad.test.ts b/apps/mobile/lib/computer-trackpad.test.ts
+new file mode 100644
+index 0000000..c285fcb
+--- /dev/null
++++ b/apps/mobile/lib/computer-trackpad.test.ts
+@@ -0,0 +1,51 @@
++import { describe, expect, it } from "vitest";
++import {
++  COMPUTER_POINTER_STATE_MESSAGE,
++  computerPointerStateMessage,
++  computerRecenterScript,
++  computerTrackpadScript,
++  isComputerPointerStateMessage,
++} from "./computer-trackpad";
++
++/** The page runs these as plain scripts, so they have to parse as one. */
++function parses(script: string) {
++  expect(() => new Function(script)).not.toThrow();
++}
++
++describe("computer trackpad scripts", () => {
++  it("switches the trackpad on and off in the desktop page", () => {
++    for (const script of [computerTrackpadScript(true), computerTrackpadScript(false)]) {
++      parses(script);
++      expect(script).toContain("window.__rakazoPointer");
++      expect(script.trimEnd().endsWith("true;")).toBe(true);
++    }
++    expect(computerTrackpadScript(true)).toContain("set(true)");
++    expect(computerTrackpadScript(false)).toContain("set(false)");
++  });
++
++  it("puts the pointer back in the middle", () => {
++    const script = computerRecenterScript();
++    parses(script);
++    expect(script).toContain("recenter()");
++  });
++
++  it("drives the page's own trackpad switch when the page has one", () => {
++    // The sandbox page may already carry a trackpad of its own; the script asks for it first so
++    // the two switches can never disagree about which pointer mode is on.
++    expect(computerTrackpadScript(true)).toContain('aria-label="Use trackpad"');
++  });
++
++  it("installs once, so switching repeatedly does not stack handlers", () => {
++    const script = computerTrackpadScript(true);
++    expect(script).toContain("if (window.__rakazoPointer) return true;");
++    expect(script.match(/addEventListener/g)?.length).toBe(1);
++  });
++
++  it("says what the page reports about its pointer mode", () => {
++    expect(computerPointerStateMessage(true)).toBe(`${COMPUTER_POINTER_STATE_MESSAGE}:1`);
++    expect(computerPointerStateMessage(false)).toBe(`${COMPUTER_POINTER_STATE_MESSAGE}:0`);
++    expect(isComputerPointerStateMessage(computerPointerStateMessage(true))).toBe(true);
++    expect(isComputerPointerStateMessage("something else")).toBe(false);
++    expect(isComputerPointerStateMessage(undefined)).toBe(false);
++  });
++});
+diff --git a/apps/mobile/lib/computer-trackpad.ts b/apps/mobile/lib/computer-trackpad.ts
+new file mode 100644
+index 0000000..656f98b
+--- /dev/null
++++ b/apps/mobile/lib/computer-trackpad.ts
+@@ -0,0 +1,122 @@
++/**
++ * The full-window computer's pointer controls, run inside the desktop page.
++ *
++ * noVNC already answers a mouse moved over its canvas, so a trackpad is a relative drag that
++ * nudges a virtual mouse position and sends it, and "recenter" is the same thing aimed at the
++ * middle. The sandbox page may also carry its own trackpad switch; when it does, this drives that
++ * switch instead of standing beside it, so the two can never disagree.
++ */
++const TRACKPAD_INSTALL = `(function(){
++  if (window.__rakazoPointer) return true;
++  var state = { on: false, local: false, x: null, y: null, touch: null, lastX: 0, lastY: 0, moved: false };
++  function canvas(){ return document.querySelector("canvas"); }
++  function box(){ var c = canvas(); return c ? c.getBoundingClientRect() : null; }
++  function pageSwitch(){ return document.querySelector('[aria-label="Use trackpad"],[aria-label="Use direct touch"]'); }
++  function fire(type, x, y, target){
++    var t = target || canvas();
++    if (!t) return false;
++    t.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y, button: 0, buttons: type === "mouseup" ? 0 : 1 }));
++    return true;
++  }
++  function center(){ var r = box(); return r ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : null; }
++  function clamp(p){ var r = box(); if (!r) return p; return { x: Math.max(r.left, Math.min(r.right - 1, p.x)), y: Math.max(r.top, Math.min(r.bottom - 1, p.y)) }; }
++  function isOn(){
++    var s = pageSwitch();
++    return s ? s.getAttribute("aria-pressed") === "true" : state.on;
++  }
++  function set(on){
++    var s = pageSwitch();
++    if (s) {
++      state.local = false;
++      if ((s.getAttribute("aria-pressed") === "true") !== on) s.click();
++      return isOn();
++    }
++    state.local = true;
++    state.on = on;
++    state.touch = null;
++    if (!on) { state.x = null; state.y = null; return false; }
++    var c = center();
++    if (c) { state.x = c.x; state.y = c.y; fire("mousemove", c.x, c.y); }
++    return true;
++  }
++  function recenter(){
++    var s = pageSwitch();
++    if (s) {
++      // The page puts its cursor back in the middle whenever the trackpad is switched on.
++      if (s.getAttribute("aria-pressed") === "true") { s.click(); s.click(); } else s.click();
++      return true;
++    }
++    var c = center();
++    if (!c) return false;
++    state.x = c.x; state.y = c.y;
++    fire("mousemove", c.x, c.y);
++    return true;
++  }
++  function overlay(){ var o = document.getElementById("noVNC_mouse_capture_elem"); return o && o.style && o.style.display !== "none" ? o : null; }
++  function consume(e){ e.preventDefault(); e.stopPropagation(); }
++  function onStart(e){
++    if (!state.local || !state.on || state.x === null) return;
++    var t = e.changedTouches && e.changedTouches[0];
++    if (!t || state.touch !== null) return;
++    state.touch = t.identifier;
++    state.lastX = t.clientX; state.lastY = t.clientY; state.moved = false;
++    consume(e);
++  }
++  function onMove(e){
++    if (!state.local || !state.on || state.touch === null || !e.changedTouches) return;
++    for (var i = 0; i < e.changedTouches.length; i++) {
++      var t = e.changedTouches[i];
++      if (t.identifier !== state.touch) continue;
++      var dx = (t.clientX - state.lastX) * 1.5;
++      var dy = (t.clientY - state.lastY) * 1.5;
++      state.lastX = t.clientX; state.lastY = t.clientY;
++      if (Math.abs(dx) + Math.abs(dy) < 0.5) return;
++      state.moved = true;
++      var next = clamp({ x: state.x + dx, y: state.y + dy });
++      state.x = next.x; state.y = next.y;
++      fire("mousemove", next.x, next.y);
++      consume(e);
++      return;
++    }
++  }
++  function onEnd(e){
++    if (!state.local || state.touch === null || !e.changedTouches) return;
++    for (var i = 0; i < e.changedTouches.length; i++) {
++      if (e.changedTouches[i].identifier !== state.touch) continue;
++      state.touch = null;
++      // A tap with no drag clicks where the pointer already is.
++      if (!state.moved && state.x !== null) {
++        fire("mousemove", state.x, state.y);
++        fire("mousedown", state.x, state.y);
++        fire("mouseup", state.x, state.y, overlay());
++      }
++      consume(e);
++      return;
++    }
++  }
++  var events = [["touchstart", onStart], ["touchmove", onMove], ["touchend", onEnd], ["touchcancel", onEnd]];
++  for (var i = 0; i < events.length; i++) document.addEventListener(events[i][0], events[i][1], { capture: true, passive: false });
++  window.__rakazoPointer = { set: set, recenter: recenter, isOn: isOn, local: function(){ return state.local; } };
++  return true;
++})();`;
++
++/** Installs the pointer helper once, then switches the trackpad on or off. */
++export function computerTrackpadScript(on: boolean): string {
++  return `${TRACKPAD_INSTALL}window.__rakazoPointer&&window.__rakazoPointer.set(${on ? "true" : "false"});true;`;
++}
++
++/** Puts the pointer back in the middle of the desktop. */
++export function computerRecenterScript(): string {
++  return `${TRACKPAD_INSTALL}window.__rakazoPointer&&window.__rakazoPointer.recenter();true;`;
++}
++
++/** What the page says back about the trackpad after a switch. */
++export const COMPUTER_POINTER_STATE_MESSAGE = "rakazo-computer-pointer";
++
++export function computerPointerStateMessage(on: boolean): string {
++  return `${COMPUTER_POINTER_STATE_MESSAGE}:${on ? "1" : "0"}`;
++}
++
++export function isComputerPointerStateMessage(data: unknown): boolean {
++  return typeof data === "string" && data.startsWith(`${COMPUTER_POINTER_STATE_MESSAGE}:`);
++}
 diff --git a/apps/mobile/lib/count-label.ts b/apps/mobile/lib/count-label.ts
 new file mode 100644
 index 0000000..8cae3d8
@@ -75456,6 +76045,44 @@ index 0000000..ba9ef39
 +  }
 +  return { attachments, skipped };
 +}
+diff --git a/apps/mobile/lib/double-tap-intent.test.ts b/apps/mobile/lib/double-tap-intent.test.ts
+new file mode 100644
+index 0000000..742a05f
+--- /dev/null
++++ b/apps/mobile/lib/double-tap-intent.test.ts
+@@ -0,0 +1,32 @@
++import { describe, expect, it } from "vitest";
++import { doubleTapIntent } from "./double-tap";
++
++describe("doubleTapIntent", () => {
++  it("opens a message's words for selection", () => {
++    expect(doubleTapIntent({ hasSelectableText: true, inlineControls: false, canLike: true })).toBe(
++      "select",
++    );
++    // Selection wins even where a like was offered before.
++    expect(doubleTapIntent({ hasSelectableText: true, inlineControls: false, canLike: false })).toBe(
++      "select",
++    );
++  });
++
++  it("keeps the quiet like on a bubble with nothing to select", () => {
++    expect(doubleTapIntent({ hasSelectableText: false, inlineControls: false, canLike: true })).toBe(
++      "like",
++    );
++  });
++
++  it("does nothing on a card that holds controls of its own", () => {
++    expect(doubleTapIntent({ hasSelectableText: false, inlineControls: true, canLike: true })).toBe(
++      undefined,
++    );
++  });
++
++  it("does nothing where neither is offered", () => {
++    expect(
++      doubleTapIntent({ hasSelectableText: false, inlineControls: false, canLike: false }),
++    ).toBeUndefined();
++  });
++});
 diff --git a/apps/mobile/lib/double-tap.ts b/apps/mobile/lib/double-tap.ts
 index 9085f80..086159b 100644
 --- a/apps/mobile/lib/double-tap.ts
@@ -75971,6 +76598,358 @@ index 0000000..c6a942e
 +    hold: () => undefined,
 +    release: () => undefined,
 +  };
++}
+diff --git a/apps/mobile/lib/ledger-store.ts b/apps/mobile/lib/ledger-store.ts
+new file mode 100644
+index 0000000..9a733ec
+--- /dev/null
++++ b/apps/mobile/lib/ledger-store.ts
+@@ -0,0 +1,103 @@
++import { useSyncExternalStore } from "react";
++import type { LedgerTask } from "./ledger-tasks";
++
++/**
++ * A chat's ledger, shared by the screen that fills it and the title capsule that opens it: the
++ * capsule lives in the native header, which the screen cannot pass props to.
++ */
++type LedgerState = { tasks: LedgerTask[]; open: boolean; signature: string };
++
++const NO_TASKS: LedgerTask[] = [];
++const states = new Map<string, LedgerState>();
++const listeners = new Set<() => void>();
++
++function notify() {
++  for (const listener of listeners) listener();
++}
++
++function subscribe(listener: () => void): () => void {
++  listeners.add(listener);
++  return () => {
++    listeners.delete(listener);
++  };
++}
++
++function read(routeKey: string): LedgerState | undefined {
++  return states.get(routeKey);
++}
++
++function write(routeKey: string, next: Omit<LedgerState, "signature">, signature: string) {
++  states.set(routeKey, { ...next, signature });
++  notify();
++}
++
++/** What makes two ledgers the same ledger: which work, at which step, on which model. */
++function ledgerSignature(tasks: LedgerTask[]): string {
++  return tasks
++    .map((task) => [task.id, task.title, task.step ?? "", task.model ?? "", task.startedAt ?? ""].join("\u0000"))
++    .join("\u0001");
++}
++
++/**
++ * Publishes the chat's running work; a ledger whose work and steps are unchanged is left alone,
++ * so a re-render of the screen does not re-render the native header.
++ */
++export function publishLedgerTasks(routeKey: string, tasks: LedgerTask[]): void {
++  const signature = ledgerSignature(tasks);
++  const current = read(routeKey);
++  if (current?.signature === signature) return;
++  write(routeKey, { tasks, open: current?.open ?? false }, signature);
++}
++
++/** A chat's ledger in full, for the panel that draws it. */
++export function useLedger(routeKey: string): { tasks: LedgerTask[]; open: boolean } {
++  const tasks = useSyncExternalStore(
++    subscribe,
++    () => read(routeKey)?.tasks ?? NO_TASKS,
++    () => read(routeKey)?.tasks ?? NO_TASKS,
++  );
++  const open = useSyncExternalStore(
++    subscribe,
++    () => read(routeKey)?.open ?? false,
++    () => read(routeKey)?.open ?? false,
++  );
++  return { tasks, open };
++}
++
++export function useLedgerTasks(routeKey: string): LedgerTask[] {
++  return useSyncExternalStore(
++    subscribe,
++    () => read(routeKey)?.tasks ?? NO_TASKS,
++    () => read(routeKey)?.tasks ?? NO_TASKS,
++  );
++}
++
++export function useLedgerOpen(routeKey: string): boolean {
++  return useSyncExternalStore(
++    subscribe,
++    () => read(routeKey)?.open ?? false,
++    () => read(routeKey)?.open ?? false,
++  );
++}
++
++export function setLedgerOpen(routeKey: string, open: boolean): void {
++  const current = read(routeKey);
++  if (current?.open === open) return;
++  // A chat that has not published its work yet still owns the switch: the panel opens onto an
++  // empty ledger rather than the tap going nowhere.
++  states.set(
++    routeKey,
++    current ? { ...current, open } : { tasks: NO_TASKS, open, signature: "" },
++  );
++  notify();
++}
++
++export function toggleLedgerOpen(routeKey: string): void {
++  setLedgerOpen(routeKey, !(read(routeKey)?.open ?? false));
++}
++
++/** A chat that goes away takes its ledger with it: the next visit starts closed. */
++export function clearLedger(routeKey: string): void {
++  if (!states.delete(routeKey)) return;
++  notify();
++}
+diff --git a/apps/mobile/lib/ledger-tasks.test.ts b/apps/mobile/lib/ledger-tasks.test.ts
+new file mode 100644
+index 0000000..2a606d1
+--- /dev/null
++++ b/apps/mobile/lib/ledger-tasks.test.ts
+@@ -0,0 +1,123 @@
++import { describe, expect, it } from "vitest";
++import {
++  ledgerElapsed,
++  ledgerModelLabel,
++  ledgerSummary,
++  ledgerTasks,
++} from "./ledger-tasks";
++import type { MobileMessage } from "./mobile-types";
++
++function card(overrides: {
++  id?: string;
++  botId?: string;
++  createdAt?: string;
++  agentId?: string;
++  name?: string;
++  task?: string;
++  progress?: string;
++  status?: "running" | "completed" | "failed";
++}): MobileMessage {
++  return {
++    id: overrides.id ?? "m1",
++    role: "bot",
++    botId: overrides.botId ?? "bot-1",
++    createdAt: overrides.createdAt ?? "2026-11-16T12:00:00.000Z",
++    blocks: [
++      {
++        kind: "subagent",
++        agentId: overrides.agentId ?? "agent-1",
++        name: overrides.name ?? "读一下仓库",
++        task: overrides.task ?? "把仓库读完",
++        status: overrides.status ?? "running",
++        ...(overrides.progress ? { progress: overrides.progress } : {}),
++      },
++    ],
++  } as unknown as MobileMessage;
++}
++
++describe("ledgerTasks", () => {
++  it("lists only work still running, oldest card first", () => {
++    const tasks = ledgerTasks(
++      [
++        card({ id: "m1", agentId: "a1", name: "第一路" }),
++        card({ id: "m2", agentId: "a2", name: "第二路" }),
++        card({ id: "m3", agentId: "a3", name: "已经做完", status: "completed" }),
++      ],
++      undefined,
++    );
++    expect(tasks.map((task) => task.title)).toEqual(["第一路", "第二路"]);
++  });
++
++  it("names the step the card reports, and falls back to what it was asked to do", () => {
++    const withProgress = ledgerTasks([card({ progress: "using Shell" })], undefined);
++    expect(withProgress[0]?.step).toBe("using Shell");
++    const without = ledgerTasks([card({ agentId: "a9", task: "  整理排班表  " })], undefined);
++    expect(without[0]?.step).toBe("整理排班表");
++  });
++
++  it("carries the model of the run behind the card when this chat can see that run", () => {
++    const tasks = ledgerTasks([card({ agentId: "run-1" })], [
++      { id: "run-1", status: "running", modelProvider: "magic", modelId: "google/gemini-3-flash" },
++    ] as never);
++    expect(tasks[0]?.model).toBe("magic · gemini-3-flash");
++  });
++
++  it("leaves the model out rather than guessing when no run matches the card", () => {
++    const tasks = ledgerTasks([card({ agentId: "front-desk-task" })], [
++      { id: "run-1", status: "running", modelProvider: "magic", modelId: "x" },
++    ] as never);
++    expect(tasks[0]?.model).toBeUndefined();
++  });
++
++  it("offers Stop only where stopping the card is what the server expects", () => {
++    const saved = ledgerTasks([card({ id: "m1", botId: "bot-1" })], undefined);
++    expect(saved[0]?.stop).toEqual({ botId: "bot-1", messageId: "m1" });
++    // A live card belongs to the turn writing it; there is nothing to stop by message id.
++    const live = ledgerTasks([card({ id: "subagent:xyz" })], undefined);
++    expect(live[0]?.stop).toBeUndefined();
++  });
++
++  it("keeps one row per agent even when the live and saved cards briefly coexist", () => {
++    const tasks = ledgerTasks(
++      [card({ id: "subagent:xyz", agentId: "agent-1" }), card({ id: "m2", agentId: "agent-1" })],
++      undefined,
++    );
++    expect(tasks).toHaveLength(1);
++  });
++
++  it("has nothing to say for a chat with no messages", () => {
++    expect(ledgerTasks(undefined, undefined)).toEqual([]);
++    expect(ledgerTasks([], undefined)).toEqual([]);
++  });
++});
++
++describe("ledgerElapsed", () => {
++  const now = Date.parse("2026-11-16T12:10:00.000Z");
++
++  it("counts seconds, minutes and hours in the shortest form that reads as time", () => {
++    expect(ledgerElapsed("2026-11-16T12:09:30.000Z", now)).toBe("30 秒");
++    expect(ledgerElapsed("2026-11-16T12:07:20.000Z", now)).toBe("2 分 40 秒");
++    expect(ledgerElapsed("2026-11-16T10:35:00.000Z", now)).toBe("1 小时 35 分");
++  });
++
++  it("says nothing without a start, and never counts backwards", () => {
++    expect(ledgerElapsed(undefined, now)).toBeUndefined();
++    expect(ledgerElapsed("not a date", now)).toBeUndefined();
++    expect(ledgerElapsed("2026-11-16T12:11:00.000Z", now)).toBe("0 秒");
++  });
++});
++
++describe("ledgerModelLabel", () => {
++  it("names the vendor once", () => {
++    expect(ledgerModelLabel("openai", "openai/gpt-5.1")).toBe("openai · gpt-5.1");
++    expect(ledgerModelLabel(null, "gemini-3-flash")).toBe("gemini-3-flash");
++    expect(ledgerModelLabel("magic", "  ")).toBeUndefined();
++  });
++});
++
++describe("ledgerSummary", () => {
++  it("counts the work in Chinese, and says nothing at zero", () => {
++    expect(ledgerSummary(0)).toBeUndefined();
++    expect(ledgerSummary(3)).toBe("3 路在做");
++  });
++});
+diff --git a/apps/mobile/lib/ledger-tasks.ts b/apps/mobile/lib/ledger-tasks.ts
+new file mode 100644
+index 0000000..1e9d365
+--- /dev/null
++++ b/apps/mobile/lib/ledger-tasks.ts
+@@ -0,0 +1,108 @@
++import type { LiveThreadRun } from "@rakazo/core";
++import type { MobileMessage } from "./mobile-types";
++
++/**
++ * One line of the chat's background ledger: a piece of work running behind the conversation,
++ * as the chat's own cards report it. The front desk names the work and updates its step; the run
++ * behind it, when the chat can see that run, says which model it is on.
++ */
++export type LedgerTask = {
++  /** Stable across updates: the card's agent id, or the run's id when there is no card. */
++  id: string;
++  title: string;
++  /** The step the work is on right now, in the work's own words. */
++  step?: string;
++  /** The model doing it, when the run behind the card is known. */
++  model?: string;
++  /** When the card appeared: what the ledger counts the elapsed time from. */
++  startedAt?: string;
++  /** The bot chat and card message Stop names, for work that can be stopped from here. */
++  stop?: { botId: string; messageId: string };
++};
++
++/** A card row built from a message; the message id is what Stop names. */
++type CardBlock = Extract<MobileMessage["blocks"][number], { kind: "subagent" | "cloud_agent" }>;
++
++function isRunningCard(block: MobileMessage["blocks"][number]): block is CardBlock {
++  return (
++    (block.kind === "subagent" && block.status === "running") ||
++    (block.kind === "cloud_agent" && block.status === "running")
++  );
++}
++
++/** A saved running card is a background helper's; its message id is what Stop names. */
++function stoppable(message: MobileMessage): { botId: string; messageId: string } | undefined {
++  // A live card belongs to the turn writing it, and stopping it means something else entirely.
++  if (!message.botId || message.id.startsWith("subagent:")) return undefined;
++  return { botId: message.botId, messageId: message.id };
++}
++
++/** The provider-qualified model name, shortened the way a chip can hold it. */
++export function ledgerModelLabel(
++  provider: string | null | undefined,
++  modelId: string | null | undefined,
++): string | undefined {
++  const model = modelId?.trim();
++  if (!model) return undefined;
++  // Gateways repeat the vendor in the id; the chip says it once.
++  const short = model.includes("/") ? (model.split("/").pop() ?? model) : model;
++  return provider?.trim() ? `${provider.trim()} · ${short}` : short;
++}
++
++/**
++ * The chat's running work, oldest first: every card still running in the message list, with the
++ * model of the run behind it when this chat can see that run. Work that has already settled is
++ * not the ledger's business — its card says so in place.
++ */
++export function ledgerTasks(
++  messages: readonly MobileMessage[] | undefined,
++  runs: readonly LiveThreadRun[] | undefined,
++): LedgerTask[] {
++  if (!messages?.length) return [];
++  const modelOf = new Map<string, string | undefined>();
++  for (const run of runs ?? []) {
++    modelOf.set(run.id, ledgerModelLabel(run.modelProvider, run.modelId));
++  }
++  const tasks: LedgerTask[] = [];
++  const seen = new Set<string>();
++  for (const message of messages) {
++    for (const block of message.blocks) {
++      if (!isRunningCard(block)) continue;
++      const id = block.agentId;
++      // A live card and the saved one that replaces it can both be in the list for a moment.
++      if (seen.has(id)) continue;
++      seen.add(id);
++      const step =
++        block.kind === "subagent"
++          ? (block.progress?.trim() || block.task.trim() || undefined)
++          : (block.branch?.trim() || undefined);
++      tasks.push({
++        id,
++        title: block.kind === "subagent" ? block.name : block.title,
++        ...(step ? { step } : {}),
++        ...(modelOf.get(id) ? { model: modelOf.get(id) } : {}),
++        ...(message.createdAt ? { startedAt: message.createdAt } : {}),
++        ...(stoppable(message) ? { stop: stoppable(message) } : {}),
++      });
++    }
++  }
++  return tasks;
++}
++
++/** How long the work has been going, in the shortest form that still reads as time. */
++export function ledgerElapsed(startedAt: string | undefined, now: number): string | undefined {
++  if (!startedAt) return undefined;
++  const started = new Date(startedAt).getTime();
++  if (!Number.isFinite(started)) return undefined;
++  const seconds = Math.max(0, Math.round((now - started) / 1000));
++  if (seconds < 60) return `${seconds} 秒`;
++  const minutes = Math.floor(seconds / 60);
++  if (minutes < 60) return `${minutes} 分 ${seconds % 60} 秒`;
++  const hours = Math.floor(minutes / 60);
++  return `${hours} 小时 ${minutes % 60} 分`;
++}
++
++/** What the pill's own line says about the ledger, so the count never reads as a number alone. */
++export function ledgerSummary(count: number): string | undefined {
++  return count > 0 ? `${count} 路在做` : undefined;
 +}
 diff --git a/apps/mobile/lib/link-preview.ts b/apps/mobile/lib/link-preview.ts
 new file mode 100644

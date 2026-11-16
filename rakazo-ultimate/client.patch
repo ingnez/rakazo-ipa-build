@@ -74288,6 +74288,118 @@ index 2b6105a..56eee8b 100644
 +  for (const player of waitPlayers?.values() ?? []) player.remove();
 +  waitPlayers = null;
  }
+diff --git a/apps/mobile/lib/chat-header-title.test.tsx b/apps/mobile/lib/chat-header-title.test.tsx
+index f6ebc2c..d3fd692 100644
+--- a/apps/mobile/lib/chat-header-title.test.tsx
++++ b/apps/mobile/lib/chat-header-title.test.tsx
+@@ -11,21 +11,54 @@ import type { MobileBot } from "./mobile-types";
+ import { setSearchInbox } from "./search-inbox";
+ 
+ const push = vi.hoisted(() => vi.fn());
++const haptic = vi.hoisted(() => vi.fn());
++vi.mock("../lib/haptics", () => ({
++  hapticImpact: haptic,
++  hapticSelection: () => undefined,
++  hapticSuccess: () => undefined,
++  hapticError: () => undefined,
++  hapticArrival: () => undefined,
++  hapticLongPress: () => undefined,
++}));
++// The pill breathes while work runs; animations are not what this test is about.
++vi.mock("react-native-reanimated", () => ({
++  __esModule: true,
++  default: { View: ({ children }: { children?: ReactNode }) => createElement("i", null, children) },
++  useAnimatedStyle: () => ({}),
++  useReducedMotion: () => true,
++  useSharedValue: (value: unknown) => ({ value }),
++  withRepeat: (value: unknown) => value,
++  withTiming: (value: unknown) => value,
++}));
+ vi.mock("react-native", () => ({
+   Pressable: ({
+     children,
+     disabled,
+     accessibilityLabel,
++    accessibilityState,
+     onPress,
++    onLongPress,
+   }: {
+     children?: ReactNode;
+     disabled?: boolean;
+     accessibilityLabel?: string;
++    accessibilityState?: { expanded?: boolean };
+     onPress?: () => void;
++    onLongPress?: () => void;
+   }) =>
+     createElement(
+       "button",
+-      { type: "button", disabled, "aria-label": accessibilityLabel, onClick: onPress },
++      {
++        type: "button",
++        disabled,
++        "aria-label": accessibilityLabel,
++        "aria-expanded": accessibilityState?.expanded,
++        onClick: onPress,
++        onContextMenu: (event: { preventDefault: () => void }) => {
++          event.preventDefault();
++          onLongPress?.();
++        },
++      },
+       children,
+     ),
+ }));
+@@ -50,7 +83,10 @@ vi.mock("../components/chat-title-label", () => ({
+     createElement("b", { "data-placeholder": String(placeholder) }, label),
+ }));
+ vi.mock("../components/thread-header-styles", () => ({ createThreadHeaderStyles: () => ({}) }));
+-vi.mock("./native", () => ({ useThemedStyles: () => ({}) }));
++vi.mock("./native", () => ({
++  useThemedStyles: () => ({}),
++  useMobileTokens: () => ({ warning: "#DB941E" }),
++}));
+ vi.mock("./api-server", () => ({}));
+ vi.mock("./api-auth", () => ({}));
+ vi.mock("./api-live", () => ({}));
+@@ -107,7 +143,8 @@ it("draws the inbox's bot from the route alone, before the chat publishes anythi
+   expect(avatar()?.getAttribute("data-status")).toBe("running");
+   expect(name()?.textContent).toBe("Helper");
+   expect(name()?.getAttribute("data-placeholder")).toBe("false");
+-  expect(button().getAttribute("aria-label")).toBe("Profile");
++  // A bot chat's pill opens the ledger, whatever the roster has said so far.
++  expect(button().getAttribute("aria-label")).toBe("后台账本");
+ });
+ 
+ it("reserves the avatar for an unknown bot and marks a missing name as a placeholder", () => {
+@@ -124,18 +161,24 @@ it("shows what the open chat publishes, in the same title", () => {
+     clear = publishChatTitle("thread-1", published("#FF781C"));
+   });
+   expect(avatar()?.getAttribute("data-color")).toBe("#FF781C");
++  // The pill in a bot chat is the ledger's switch; the published name still titles it.
+   act(() => button().click());
+-  expect(push).toHaveBeenCalledWith({
+-    pathname: "/bot-profile",
+-    params: { botId: "bot-1", name: "Helper" },
+-  });
++  expect(button().getAttribute("aria-expanded")).toBe("true");
++  act(() => button().click());
++  expect(button().getAttribute("aria-expanded")).toBe("false");
+   act(() => clear());
+   expect(avatar()?.getAttribute("data-color")).toBe("slot");
+ });
+ 
+-it("opens a one-to-one chat's bot profile from its title, not the chat's settings", () => {
++it("opens the ledger from the title, and keeps the bot's profile on a hold", () => {
+   render({ botId: "bot-1", name: "Helper" });
++  // A tap is the ledger's, so the profile moves to the hold that used to open the ledger's place.
+   act(() => button().click());
++  expect(push).not.toHaveBeenCalled();
++  expect(button().getAttribute("aria-label")).toBe("后台账本");
++  act(() => {
++    button().dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
++  });
+   expect(push).toHaveBeenCalledWith({
+     pathname: "/bot-profile",
+     params: { botId: "bot-1", name: "Helper" },
 diff --git a/apps/mobile/lib/chat-model-picker.test.tsx b/apps/mobile/lib/chat-model-picker.test.tsx
 index 6b65ae9..648d1f0 100644
 --- a/apps/mobile/lib/chat-model-picker.test.tsx

@@ -292,6 +292,24 @@ index d0e8069..7e385f7 100644
      }
    }
  }
+diff --git a/apps/mobile/app/(settings)/_layout.tsx b/apps/mobile/app/(settings)/_layout.tsx
+index 59a5262..7d866c3 100644
+--- a/apps/mobile/app/(settings)/_layout.tsx
++++ b/apps/mobile/app/(settings)/_layout.tsx
+@@ -159,6 +159,13 @@ export default function SettingsLayout() {
+       />
+       {/* Titled by the screen once the note loads. */}
+       <Stack.Screen name="memory-note" options={glassHeaderOptions("")} />
++      <Stack.Screen
++        name="import-memory"
++        options={{
++          ...glassHeaderOptions("从其他 AI 导入记忆"),
++          contentStyle: { backgroundColor: native.groupedPage },
++        }}
++      />
+       <Stack.Screen
+         name="plugin"
+         // Named after the plugin it opened.
 diff --git a/apps/mobile/app/(settings)/account.tsx b/apps/mobile/app/(settings)/account.tsx
 index a6a012f..4321ac8 100644
 --- a/apps/mobile/app/(settings)/account.tsx
@@ -708,6 +726,651 @@ index 513abcf..b00060f 100644
          </SettingsGroup>
        </ScrollView>
      </SafeAreaView>
+diff --git a/apps/mobile/app/(settings)/import-memory.tsx b/apps/mobile/app/(settings)/import-memory.tsx
+new file mode 100644
+index 0000000..aac39bf
+--- /dev/null
++++ b/apps/mobile/app/(settings)/import-memory.tsx
+@@ -0,0 +1,334 @@
++import { useLingui } from "@lingui/react/macro";
++import type { MemoryDocument } from "@rakazo/contracts";
++import { MEMORY_INDEX_PATH } from "@rakazo/contracts";
++import { useTimeout } from "@rakazo/chat-ui/hooks";
++import * as Clipboard from "expo-clipboard";
++import type { NativeStackNavigationOptions } from "expo-router";
++import { useLocalSearchParams, useNavigation } from "expo-router";
++import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
++import {
++  ActivityIndicator,
++  Alert,
++  ScrollView,
++  StyleSheet,
++  Text,
++  TextInput,
++  View,
++} from "react-native";
++import { SafeAreaView } from "react-native-safe-area-context";
++import { NativeActionButton } from "../../components/native-action-button";
++import { rpc } from "../../lib/api";
++import { mobileTokens } from "../../lib/appearance";
++import { hapticError, hapticSuccess } from "../../lib/haptics";
++import { native, useThemedStyles } from "../../lib/native";
++import { useSideInsets } from "../../lib/side-insets";
++import { errorText } from "../../lib/user-error";
++
++/**
++ * The prompt to paste into another assistant. It asks for what is known about the person, as
++ * plain lines, so the answer can be pasted back here unchanged.
++ */
++const EXPORT_PROMPT = [
++  "请把你知道的关于我的一切，整理成一份纯文本记忆清单：",
++  "1. 我的偏好与习惯（口味、作息、说话方式、讨厌什么）；",
++  "2. 我的工作与背景（职业、科室/岗位、常做的事、正在推进的项目）；",
++  "3. 重要的人和关系（家人、同事、合作伙伴，怎么称呼）；",
++  "4. 常用工具与账号环境；",
++  "5. 我明确说过「记住」或反复提到的事实。",
++  "",
++  "要求：只写你确实从我们的对话里知道的内容，不要推测、不要编造、不要给建议、不要客套。",
++  "每行一条，以「- 」开头，用中文书写。只输出这份清单，不加任何解释。",
++].join("\n");
++
++const BOT_MEMORY_MAX_BYTES = 4 * 1024;
++const SHARED_MEMORY_MAX_BYTES = 14 * 1024;
++
++function errorCode(error: unknown): unknown {
++  return (error as { code?: unknown } | null)?.code;
++}
++
++function byteLength(text: string): number {
++  // UTF-8 bytes without a TextEncoder: Hermes does not guarantee one.
++  let bytes = 0;
++  for (const character of text) {
++    const code = character.codePointAt(0) ?? 0;
++    bytes += code < 0x80 ? 1 : code < 0x800 ? 2 : code < 0x10000 ? 3 : 4;
++  }
++  return bytes;
++}
++
++function todayKey(): string {
++  const now = new Date();
++  const month = `${now.getMonth() + 1}`.padStart(2, "0");
++  const day = `${now.getDate()}`.padStart(2, "0");
++  return `${now.getFullYear()}-${month}-${day}`;
++}
++
++/** Brings memory that another assistant already knows into this Space's or a bot's memory. */
++export default function ImportMemoryScreen() {
++  const params = useLocalSearchParams<{ botId?: string; name?: string }>();
++  const navigation = useNavigation();
++  const sideInsets = useSideInsets();
++  const styles = useThemedStyles(createStyles);
++  const { t } = useLingui();
++  const botId = params.botId || undefined;
++  const targetName = botId ? (params.name ?? t`This Bot`) : t`Shared memory`;
++  const maxBytes = botId ? BOT_MEMORY_MAX_BYTES : SHARED_MEMORY_MAX_BYTES;
++
++  const [document, setDocument] = useState<MemoryDocument | null>(null);
++  const [state, setState] = useState<"loading" | "ready" | "missing" | "failed">("loading");
++  const [draft, setDraft] = useState("");
++  const [busy, setBusy] = useState(false);
++  const [error, setError] = useState<string | null>(null);
++  const [saved, setSaved] = useState<string | null>(null);
++  const [copied, setCopied] = useState(false);
++  const [attempt, setAttempt] = useState(0);
++  // The check mark on the copy button says so for a moment, then goes back.
++  useTimeout(() => setCopied(false), copied ? 1600 : null);
++
++  const read = useCallback(
++    async () =>
++      (await rpc("memory/list", botId ? { botId, scope: "bot" } : { scope: "user" })).find(
++        (entry) => entry.path === MEMORY_INDEX_PATH,
++      ),
++    [botId],
++  );
++  const readRef = useRef(read);
++  readRef.current = read;
++
++  useEffect(() => {
++    let live = true;
++    setState("loading");
++    setError(null);
++    readRef
++      .current()
++      .then((found) => {
++        if (!live) return;
++        setDocument(found ?? null);
++        setState(found ? "ready" : "missing");
++      })
++      .catch((reason) => {
++        if (!live) return;
++        setError(errorText(reason, t`Could not load memory`));
++        setState("failed");
++      });
++    return () => {
++      live = false;
++    };
++  }, [t, attempt]);
++
++  async function copyPrompt() {
++    await Clipboard.setStringAsync(EXPORT_PROMPT).catch(() => undefined);
++    hapticSuccess();
++    setCopied(true);
++  }
++
++  /**
++   * Appends the pasted lines to the index document. The existing text is kept whole and the new
++   * lines go under their own heading, so nothing already remembered is overwritten.
++   */
++  async function importMemory() {
++    const addition = draft.trim();
++    if (!addition || busy) return;
++    setBusy(true);
++    setError(null);
++    setSaved(null);
++    try {
++      for (let round = 0; round < 2; round += 1) {
++        // Read again for the second round: a save that raced this one changed the revision.
++        const current = round === 0 && document ? document : await read();
++        if (!current) {
++          setState("missing");
++          throw new Error(t`Could not load memory`);
++        }
++        const existing = current.content.trimEnd();
++        const section = `## 从其他 AI 导入（${todayKey()}）`;
++        const next = `${existing ? `${existing}\n\n` : ""}${section}\n${addition}`;
++        if (byteLength(next) > maxBytes) {
++          const limit = botId
++            ? t`This Bot's memory is full (4 KB). Open the memory note and merge or delete a few lines first.`
++            : t`Shared memory is full (14 KB). Open the memory note and merge or delete a few lines first.`;
++          throw new Error(limit);
++        }
++        try {
++          const updated = await rpc("memory/update", {
++            documentId: current.id,
++            content: next,
++            expectedRevision: current.revision,
++          });
++          setDocument(updated);
++          setDraft("");
++          setSaved(
++            botId
++              ? t`Saved into ${targetName}'s memory; what was already there is kept.`
++              : t`Saved into shared memory; what was already there is kept.`,
++          );
++          hapticSuccess();
++          return;
++        } catch (reason) {
++          // Someone else saved in between: read the live text once more and append to that.
++          if (errorCode(reason) === "CONFLICT" && round === 0) continue;
++          throw reason;
++        }
++      }
++    } catch (reason) {
++      hapticError();
++      setError(errorText(reason, t`Could not save`));
++    } finally {
++      setBusy(false);
++    }
++  }
++
++  const canImport = state === "ready" && draft.trim().length > 0 && !busy;
++  useLayoutEffect(() => {
++    navigation.setOptions({
++      title: "从其他 AI 导入记忆",
++      ...(state === "ready"
++        ? {
++            headerRight: () => (
++              <NativeActionButton
++                disabled={!canImport}
++                fill={false}
++                label={busy ? "导入中…" : "导入"}
++                onPress={() => void importMemory()}
++              />
++            ),
++          }
++        : { headerRight: undefined }),
++    } satisfies NativeStackNavigationOptions);
++    // The handler needs the latest draft, so the options follow it.
++    // biome-ignore lint/correctness/useExhaustiveDependencies: importMemory closes over the draft
++  }, [navigation, state, canImport, busy, draft, t]);
++
++  return (
++    <SafeAreaView edges={["bottom"]} style={styles.screen}>
++      <ScrollView
++        style={sideInsets}
++        contentContainerStyle={styles.content}
++        contentInsetAdjustmentBehavior="automatic"
++        keyboardShouldPersistTaps="handled"
++      >
++        <Text style={styles.lead}>
++          先把下面这段提示词发给 ChatGPT、Claude、豆包、Grok 或任何了解你的 AI，让它把你的偏好、习惯、工作背景和重要事实整理成纯文本；再把它的回答整段粘贴到下面，就能存进{botId ? `「${targetName}」的记忆` : "整个 Space 的共享记忆"}。
++        </Text>
++
++        <View style={styles.card}>
++          <Text accessibilityRole="header" style={styles.cardTitle}>
++            第一步 · 复制提示词
++          </Text>
++          <Text selectable style={styles.prompt}>
++            {EXPORT_PROMPT}
++          </Text>
++          <NativeActionButton
++            fill={false}
++            label={copied ? "已复制" : "复制提示词"}
++            onPress={() => void copyPrompt()}
++            prominence={copied ? "plain" : "secondary"}
++          />
++        </View>
++
++        <View style={styles.card}>
++          <Text accessibilityRole="header" style={styles.cardTitle}>
++            第二步 · 粘贴对方的回答
++          </Text>
++          {state === "loading" ? (
++            <ActivityIndicator color={native.secondaryLabel} accessibilityLabel={t`Loading…`} />
++          ) : null}
++          {state === "missing" ? (
++            <Text style={styles.secondary}>
++              这块记忆还没有记忆档案（MEMORY.md）。先让{botId ? "这个 Bot" : "任意一个 Bot"}记住一句话，生成了档案再回来导入。
++            </Text>
++          ) : null}
++          {state === "failed" ? (
++            <NativeActionButton
++              fill={false}
++              label={t`Retry`}
++              onPress={() => setAttempt((count) => count + 1)}
++              prominence="secondary"
++            />
++          ) : null}
++          {state === "ready" ? (
++            <>
++              <TextInput
++                value={draft}
++                onChangeText={(next) => {
++                  setDraft(next);
++                  setSaved(null);
++                  setError(null);
++                }}
++                accessibilityLabel="粘贴其他 AI 导出的记忆"
++                editable={!busy}
++                multiline
++                placeholder="- 例如：我是龙门县人民医院 ICU 医生，按 4 天一轮值班。"
++                placeholderTextColor={native.tertiaryLabel}
++                textAlignVertical="top"
++                style={styles.editor}
++              />
++              <Text style={styles.meta}>
++                {`已有 ${byteLength(document?.content ?? "")} 字 · 上限 ${maxBytes} 字 · 导入只会在末尾追加，不会覆盖已有记忆`}
++              </Text>
++              <NativeActionButton
++                disabled={!canImport}
++                label={busy ? "导入中…" : "导入到记忆"}
++                onPress={() => void importMemory()}
++                prominence={canImport ? "primary" : "plain"}
++              />
++            </>
++          ) : null}
++          {saved ? (
++            <Text accessibilityRole="alert" style={styles.saved}>
++              {saved}
++            </Text>
++          ) : null}
++          {error ? (
++            <Text accessibilityRole="alert" style={styles.error}>
++              {error}
++            </Text>
++          ) : null}
++        </View>
++
++        <Text style={styles.footnote}>
++          导入的内容会带上日期单独成段；想改动或删掉，回到「记忆」里打开 MEMORY.md 就能改。
++        </Text>
++      </ScrollView>
++    </SafeAreaView>
++  );
++}
++
++function createStyles() {
++  return StyleSheet.create({
++    screen: { flex: 1, backgroundColor: native.groupedPage },
++    content: { padding: 20, gap: 16, paddingBottom: 40 },
++    lead: { color: native.secondaryLabel, fontSize: 14, lineHeight: 20 },
++    card: {
++      borderRadius: 18,
++      borderCurve: "continuous",
++      backgroundColor: native.groupedCell,
++      padding: 16,
++      gap: 12,
++    },
++    cardTitle: { color: native.label, fontSize: 15, fontWeight: "600" },
++    prompt: {
++      color: native.secondaryLabel,
++      fontSize: 14,
++      lineHeight: 21,
++      borderRadius: 12,
++      backgroundColor: native.fill,
++      padding: 12,
++    },
++    editor: {
++      minHeight: 200,
++      borderRadius: 12,
++      backgroundColor: native.fill,
++      color: native.label,
++      padding: 14,
++      fontSize: 15,
++      lineHeight: 21,
++    },
++    meta: { color: native.tertiaryLabel, fontSize: 12 },
++    secondary: { color: native.secondaryLabel, fontSize: 14, lineHeight: 20 },
++    saved: { color: mobileTokens().primary, fontSize: 13, lineHeight: 19 },
++    error: { color: mobileTokens().destructive, fontSize: 13 },
++    footnote: { color: native.tertiaryLabel, fontSize: 12, lineHeight: 18 },
++  });
++}
+diff --git a/apps/mobile/app/(settings)/memory.tsx b/apps/mobile/app/(settings)/memory.tsx
+index 9852476..6d0d327 100644
+--- a/apps/mobile/app/(settings)/memory.tsx
++++ b/apps/mobile/app/(settings)/memory.tsx
+@@ -1,18 +1,36 @@
+ import { useLingui } from "@lingui/react/macro";
++import type { MemoryLearning } from "@rakazo/contracts";
+ import { useQuery } from "@tanstack/react-query";
+ import { useFocusEffect, useRouter } from "expo-router";
+ import { useCallback, useState } from "react";
+-import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text } from "react-native";
++import {
++  ActivityIndicator,
++  Alert,
++  Pressable,
++  RefreshControl,
++  ScrollView,
++  StyleSheet,
++  Text,
++  View,
++} from "react-native";
+ import { SafeAreaView } from "react-native-safe-area-context";
+ import { NativeActionButton } from "../../components/native-action-button";
++import { NativeSymbol } from "../../components/native-symbol";
+ import { SettingsGroup, SettingsRow } from "../../components/settings-group";
++import { rpc } from "../../lib/api";
+ import { mobileTokens } from "../../lib/appearance";
++import { hapticError, hapticSelection, hapticSuccess } from "../../lib/haptics";
+ import { native, useThemedStyles } from "../../lib/native";
+ import { queryClient, rpcQuery } from "../../lib/query";
+ import { useSideInsets } from "../../lib/side-insets";
+ import { errorText } from "../../lib/user-error";
+ 
+-/** The notes every bot in this space shares. A bot's own notes live in its chat settings. */
++/**
++ * The notes every bot in this space shares, and what the daily review proposed keeping.
++ *
++ * A fact the review found is merged into memory on its own; a rule — a standing instruction — waits
++ * here until the person keeps or drops it, because it changes how every later reply is written.
++ */
+ export default function MemoryScreen() {
+   const router = useRouter();
+   const sideInsets = useSideInsets();
+@@ -24,19 +42,54 @@ export default function MemoryScreen() {
+   const error = failure ? errorText(failure, t`Could not load memory`) : null;
+   const [refreshing, setRefreshing] = useState(false);
+ 
++  const pendingRead = rpcQuery("memory/learnings", { status: "pending", limit: 50 });
++  const pending = useQuery(pendingRead, queryClient);
++  const approvedRead = rpcQuery("memory/learnings", { status: "approved", limit: 50 });
++  const approved = useQuery(approvedRead, queryClient);
++  const [deciding, setDeciding] = useState<string | null>(null);
++  const [decideError, setDecideError] = useState<string | null>(null);
++  const [showAllApproved, setShowAllApproved] = useState(false);
++
+   // Bots write memory as they run, and a note may have changed in its editor.
+   useFocusEffect(
+     useCallback(() => {
+       void refetch();
+-    }, [refetch]),
++      void pending.refetch();
++      void approved.refetch();
++    }, [refetch, pending.refetch, approved.refetch]),
+   );
+ 
+   async function refresh() {
+     setRefreshing(true);
+-    await refetch();
++    await Promise.all([refetch(), pending.refetch(), approved.refetch()]);
+     setRefreshing(false);
+   }
+ 
++  /** Keeps or drops one proposed learning, then reads both lists again. */
++  async function decide(learning: MemoryLearning, status: "approved" | "rejected") {
++    if (deciding) return;
++    setDeciding(learning.id);
++    setDecideError(null);
++    try {
++      await rpc("memory/decideLearning", { learningId: learning.id, status });
++      hapticSuccess();
++      // The rule moves between the two lists, and the notes it was merged into may have changed.
++      await Promise.all([
++        queryClient.invalidateQueries({ queryKey: pendingRead.queryKey }),
++        queryClient.invalidateQueries({ queryKey: approvedRead.queryKey }),
++        queryClient.invalidateQueries({ queryKey: read.queryKey }),
++      ]);
++    } catch (reason) {
++      hapticError();
++      setDecideError(errorText(reason, t`Could not save this decision`));
++    } finally {
++      setDeciding(null);
++    }
++  }
++
++  const waiting = pending.data ?? [];
++  const kept = approved.data ?? [];
++
+   return (
+     <SafeAreaView edges={["bottom"]} style={styles.screen}>
+       <ScrollView
+@@ -45,6 +98,77 @@ export default function MemoryScreen() {
+         contentInsetAdjustmentBehavior="automatic"
+         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
+       >
++        {waiting.length ? (
++          <View style={{ gap: 8 }}>
++            <Text accessibilityRole="header" style={styles.sectionLabel}>
++              待审核的记忆
++            </Text>
++            <Text style={styles.sectionFooter}>
++              每日复盘从聊天里看出的规矩，会先放在这里等你决定；通过后才会进入长期记忆，影响以后的回答。
++            </Text>
++            {waiting.map((learning) => (
++              <LearningCard
++                key={learning.id}
++                busy={deciding === learning.id}
++                disabled={Boolean(deciding)}
++                learning={learning}
++                onDecide={decide}
++                styles={styles}
++              />
++            ))}
++          </View>
++        ) : null}
++
++        {pending.error ? (
++          <Text accessibilityRole="alert" style={styles.error}>
++            {errorText(pending.error, t`Could not load memory`)}
++          </Text>
++        ) : null}
++
++        {kept.length ? (
++          <SettingsGroup label="已通过的记忆">
++            {(showAllApproved ? kept : kept.slice(0, 5)).map((learning) => (
++              <SettingsRow
++                key={learning.id}
++                accessibilityRole="button"
++                detail={learning.sourceDate ? `复盘 ${learning.sourceDate}` : undefined}
++                onPress={() =>
++                  Alert.alert(
++                    "已通过的记忆",
++                    learning.text,
++                    [
++                      { text: t`Cancel`, style: "cancel" },
++                      {
++                        text: "移出长期记忆",
++                        style: "destructive",
++                        onPress: () => void decide(learning, "rejected"),
++                      },
++                    ],
++                    { cancelable: true },
++                  )
++                }
++                title={learning.text}
++              />
++            ))}
++            {!showAllApproved && kept.length > 5 ? (
++              <SettingsRow
++                accessibilityRole="button"
++                onPress={() => {
++                  hapticSelection();
++                  setShowAllApproved(true);
++                }}
++                title={t`Show more`}
++              />
++            ) : null}
++          </SettingsGroup>
++        ) : null}
++
++        {decideError ? (
++          <Text accessibilityRole="alert" style={styles.error}>
++            {decideError}
++          </Text>
++        ) : null}
++
+         {!notes && !error ? (
+           <ActivityIndicator color={native.secondaryLabel} accessibilityLabel={t`Loading…`} />
+         ) : null}
+@@ -64,6 +188,15 @@ export default function MemoryScreen() {
+             ))}
+           </SettingsGroup>
+         ) : null}
++        <SettingsGroup footer="把 ChatGPT、Claude、豆包、Grok 已经知道的关于你的偏好和事实，复制成一份清单搬进来；只追加，不覆盖已有记忆。">
++          <SettingsRow
++            accessibilityRole="button"
++            chevron="right"
++            leading={<NativeSymbol ios="square.and.arrow.down" android="download-outline" size={18} color={native.secondaryLabel} />}
++            onPress={() => router.push("/import-memory")}
++            title="从其他 AI 导入记忆"
++          />
++        </SettingsGroup>
+         {error ? (
+           <Text accessibilityRole="alert" style={styles.error}>
+             {error}
+@@ -83,11 +216,110 @@ export default function MemoryScreen() {
+   );
+ }
+ 
++/** One proposed rule, with the two decisions it waits for. */
++function LearningCard({
++  learning,
++  busy,
++  disabled,
++  onDecide,
++  styles,
++}: {
++  learning: MemoryLearning;
++  busy: boolean;
++  disabled: boolean;
++  onDecide: (learning: MemoryLearning, status: "approved" | "rejected") => Promise<void>;
++  styles: ReturnType<typeof createStyles>;
++}) {
++  const tokens = mobileTokens();
++  return (
++    <View style={styles.learningCard}>
++      <Text style={styles.learningText}>{learning.text}</Text>
++      <Text style={styles.learningSource}>
++        {[learning.scope === "user" ? "整个 Space" : "某个 Bot", learning.sourceDate]
++          .filter(Boolean)
++          .join(" · ")}
++      </Text>
++      <View style={styles.learningActions}>
++        <Pressable
++          accessibilityRole="button"
++          accessibilityLabel="通过这条记忆"
++          accessibilityState={{ disabled }}
++          disabled={disabled}
++          onPress={() => void onDecide(learning, "approved")}
++          style={({ pressed }) => [
++            styles.approve,
++            { backgroundColor: pressed ? native.fillPressed : native.fill },
++          ]}
++        >
++          <Text style={[styles.approveText, { color: tokens.foreground }]}>
++            {busy ? "保存中…" : "通过"}
++          </Text>
++        </Pressable>
++        <Pressable
++          accessibilityRole="button"
++          accessibilityLabel="丢弃这条记忆"
++          accessibilityState={{ disabled }}
++          disabled={disabled}
++          onPress={() => void onDecide(learning, "rejected")}
++          style={({ pressed }) => [
++            styles.reject,
++            { backgroundColor: pressed ? native.fillPressed : native.fill },
++          ]}
++        >
++          <Text style={[styles.rejectText, { color: tokens.destructive }]}>丢弃</Text>
++        </Pressable>
++      </View>
++    </View>
++  );
++}
++
+ function createStyles() {
+   return StyleSheet.create({
+     screen: { flex: 1, backgroundColor: native.groupedPage },
+     content: { padding: 20, gap: 16 },
+     secondary: { color: native.secondaryLabel, fontSize: 15 },
+     error: { color: mobileTokens().destructive, fontSize: 13 },
++    sectionLabel: {
++      color: native.secondaryLabel,
++      fontSize: 13,
++      fontWeight: "600",
++      paddingHorizontal: 4,
++    },
++    sectionFooter: {
++      color: native.secondaryLabel,
++      fontSize: 13,
++      lineHeight: 18,
++      paddingHorizontal: 4,
++      paddingBottom: 2,
++    },
++    learningCard: {
++      borderRadius: 16,
++      borderCurve: "continuous",
++      backgroundColor: native.groupedCell,
++      paddingHorizontal: 16,
++      paddingVertical: 14,
++      gap: 8,
++    },
++    learningText: { color: native.label, fontSize: 15, lineHeight: 21 },
++    learningSource: { color: native.tertiaryLabel, fontSize: 12 },
++    learningActions: { flexDirection: "row", gap: 10 },
++    approve: {
++      alignItems: "center",
++      borderRadius: 10,
++      borderCurve: "continuous",
++      flex: 1,
++      height: 36,
++      justifyContent: "center",
++    },
++    approveText: { fontSize: 15, fontWeight: "600" },
++    reject: {
++      alignItems: "center",
++      borderRadius: 10,
++      borderCurve: "continuous",
++      height: 36,
++      justifyContent: "center",
++      paddingHorizontal: 18,
++    },
++    rejectText: { fontSize: 15, fontWeight: "500" },
+   });
+ }
 diff --git a/apps/mobile/app/(settings)/model-connection.tsx b/apps/mobile/app/(settings)/model-connection.tsx
 index 9ac425f..e370360 100644
 --- a/apps/mobile/app/(settings)/model-connection.tsx
@@ -1720,7 +2383,7 @@ index 408ddab..e52d908 100644
 +  appearanceFooter: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 20 },
  });
 diff --git a/apps/mobile/app/index.tsx b/apps/mobile/app/index.tsx
-index 0a5db83..17649ba 100644
+index 0a5db83..39f73cf 100644
 --- a/apps/mobile/app/index.tsx
 +++ b/apps/mobile/app/index.tsx
 @@ -26,8 +26,12 @@ import {
@@ -1921,7 +2584,12 @@ index 0a5db83..17649ba 100644
    );
  
    const organizations = useOrganizations(hasSession && !onShareSelect).data;
-@@ -658,8 +708,6 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -655,11 +705,11 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+ 
+   useHomeHeader({
+     nativeHeader,
++    // The search sheet covers the page, and a native header would still float over its filters.
++    hidden: searchOpen,
      ready,
      hasSession,
      initials,
@@ -1930,7 +2598,7 @@ index 0a5db83..17649ba 100644
      runCreateAction,
      headerTitle,
    });
-@@ -667,6 +715,8 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -667,6 +717,8 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
    const openBot = useCallback(
      (bot: MobileBot | SpaceBot) => {
        if (spaceActionRef.current.busy || spaceActionRef.current.recoveryId) return;
@@ -1939,7 +2607,7 @@ index 0a5db83..17649ba 100644
        void openMobileSpace(bot.spaceId, () => {
          if (onShareSelect) onShareSelect(bot);
          else openChat({ pathname: "/thread", params: { botId: bot.id, name: bot.name } });
-@@ -674,6 +724,49 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -674,6 +726,49 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
      },
      [openChat, onShareSelect],
    );
@@ -1989,7 +2657,7 @@ index 0a5db83..17649ba 100644
    const openGroup = useCallback(
      (group: MobileGroup | SpaceGroup) => {
        if (spaceActionRef.current.busy || spaceActionRef.current.recoveryId) return;
-@@ -751,6 +844,10 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -751,6 +846,10 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
      sharing: !!onShareSelect,
      spaces: spaceSections,
      toggleCollapsed,
@@ -2000,7 +2668,7 @@ index 0a5db83..17649ba 100644
    });
  
    if (!ready) {
-@@ -770,9 +867,34 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -770,9 +869,34 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
    const activityView = !onShareSelect && activityMode && Boolean(userId);
    const showActivity = activityView && !showLoadFailure;
    const rows = activityView || showLoadFailure ? [] : listData;
@@ -2036,7 +2704,7 @@ index 0a5db83..17649ba 100644
        {inlineError ? <Text style={styles.error}>{inlineError}</Text> : null}
        {spaceRecoveryId ? (
          <Pressable
-@@ -830,6 +952,11 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -830,6 +954,11 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
    const refreshInbox = async () => {
      await Promise.all([refreshBots(), loadActivity()]);
    };
@@ -2048,7 +2716,7 @@ index 0a5db83..17649ba 100644
  
    return (
      <View style={styles.screen}>
-@@ -837,8 +964,6 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -837,8 +966,6 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
          <InboxHeader
            embedded={embedded}
            initials={initials}
@@ -2057,7 +2725,7 @@ index 0a5db83..17649ba 100644
            runCreateAction={runCreateAction}
            columnInsets={columnInsets}
            title={headerTitle?.()}
-@@ -860,6 +985,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -860,6 +987,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
                      (!onShareSelect && (item.type === "bot" || item.type === "group"))
                    }
                    header={hasListHeader ? listHeader : null}
@@ -2065,7 +2733,7 @@ index 0a5db83..17649ba 100644
                    empty={listEmpty}
                    footer={listFooter}
                    gutters={{
-@@ -871,6 +997,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -871,6 +999,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
                    onRefresh={refreshInbox}
                    signals={jumpSignals}
                    showJumpPills={!onShareSelect && !refreshing && !inboxHasNoChats(rows)}
@@ -2073,7 +2741,7 @@ index 0a5db83..17649ba 100644
                  />
                ) : (
                  <FlatList<InboxItem>
-@@ -887,7 +1014,11 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -887,7 +1016,11 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
                    indicatorStyle={appearance === "dark" ? "white" : "black"}
                    contentContainerStyle={[
                      styles.list,
@@ -2086,7 +2754,7 @@ index 0a5db83..17649ba 100644
                    ]}
                    contentInsetAdjustmentBehavior="automatic"
                    refreshControl={
-@@ -915,6 +1046,15 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -915,6 +1048,15 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
            </View>
          </CompactRowsContext.Provider>
        </SelectedChatContext.Provider>
@@ -2765,10 +3433,28 @@ index 61a01d5..0a08427 100644
    });
  }
 diff --git a/apps/mobile/app/search.tsx b/apps/mobile/app/search.tsx
-index 5eae039..ff33a22 100644
+index 5eae039..af93f8c 100644
 --- a/apps/mobile/app/search.tsx
 +++ b/apps/mobile/app/search.tsx
-@@ -17,15 +17,17 @@ import {
+@@ -1,31 +1,26 @@
+ import { useLingui } from "@lingui/react/macro";
++import { useTimeout } from "@rakazo/chat-ui/hooks";
+ import { botColors, typeScale } from "@rakazo/ui-tokens";
+ import type { NativeStackNavigationProp } from "expo-router";
+ import { useFocusEffect, useNavigation, useRouter } from "expo-router";
+-import {
+-  useCallback,
+-  useContext,
+-  useEffect,
+-  useMemo,
+-  useRef,
+-  useState,
+-  useSyncExternalStore,
+-} from "react";
++import { useCallback, useContext, useMemo, useRef, useState, useSyncExternalStore } from "react";
+ import type { TextInputInstance } from "react-native";
+ import {
+   Alert,
    FlatList,
    Platform,
    Pressable,
@@ -2787,7 +3473,7 @@ index 5eae039..ff33a22 100644
  import { GlassIconButton } from "../components/glass-icon-button";
  import { GroupAvatar } from "../components/group-avatar";
  import { NativeActionButton } from "../components/native-action-button";
-@@ -52,7 +54,45 @@ const kindIcons = {
+@@ -52,7 +47,45 @@ const kindIcons = {
    routine: { ios: "clock.arrow.circlepath", android: "time-outline" },
  } as const;
  
@@ -2834,7 +3520,7 @@ index 5eae039..ff33a22 100644
    const { t } = useLingui();
    const locale = useUiLocale();
    const router = useRouter();
-@@ -69,9 +109,13 @@ export default function SearchSheet() {
+@@ -69,9 +102,13 @@ export default function SearchSheet() {
    const attempt = useRef(0);
    const focused = useRef(false);
    const [query, setQuery] = useState("");
@@ -2848,7 +3534,7 @@ index 5eae039..ff33a22 100644
  
    const cancelOpen = useCallback(() => {
      attempt.current += 1;
-@@ -81,6 +125,12 @@ export default function SearchSheet() {
+@@ -81,6 +118,12 @@ export default function SearchSheet() {
  
    useFocusEffect(
      useCallback(() => {
@@ -2861,7 +3547,7 @@ index 5eae039..ff33a22 100644
        const arm = () => {
          focused.current = true;
          opening.current = false;
-@@ -96,7 +146,7 @@ export default function SearchSheet() {
+@@ -96,18 +139,13 @@ export default function SearchSheet() {
          cancelOpen();
          unsubscribe();
        };
@@ -2869,8 +3555,23 @@ index 5eae039..ff33a22 100644
 +    }, [navigation, cancelOpen, overlay]),
    );
  
-   useEffect(() => {
-@@ -164,74 +214,50 @@ export default function SearchSheet() {
+-  useEffect(() => {
+-    // Native formSheet may finish attaching after TextInput's autoFocus runs.
+-    const timer = setTimeout(() => {
+-      if (focused.current && !opening.current) field.current?.focus();
+-    }, 350);
+-    return () => {
+-      clearTimeout(timer);
+-    };
+-  }, []);
++  // Native formSheet may finish attaching after TextInput's autoFocus runs.
++  useTimeout(() => {
++    if (focused.current && !opening.current) field.current?.focus();
++  }, 350);
+ 
+   const open = async (row: SearchSheetRow) => {
+     if (!focused.current || opening.current) return;
+@@ -164,74 +202,50 @@ export default function SearchSheet() {
      }
    };
  
@@ -2984,7 +3685,7 @@ index 5eae039..ff33a22 100644
          keyExtractor={(row) => row.key}
          automaticallyAdjustKeyboardInsets={!rootAvoidsKeyboard}
          keyboardDismissMode="interactive"
-@@ -239,7 +265,8 @@ export default function SearchSheet() {
+@@ -239,7 +253,8 @@ export default function SearchSheet() {
          contentContainerStyle={{
            paddingLeft: gutters.left,
            paddingRight: gutters.right,
@@ -2994,7 +3695,7 @@ index 5eae039..ff33a22 100644
          }}
          ListEmptyComponent={
            error ? undefined : (
-@@ -261,51 +288,143 @@ export default function SearchSheet() {
+@@ -261,51 +276,143 @@ export default function SearchSheet() {
              </View>
            ) : undefined
          }
@@ -3170,7 +3871,7 @@ index 5eae039..ff33a22 100644
      fieldPill: {
        flex: 1,
        flexDirection: "row",
-@@ -327,7 +446,7 @@ function createStyles() {
+@@ -327,7 +434,7 @@ function createStyles() {
        flexDirection: "row",
        alignItems: "center",
        paddingHorizontal: 16,
@@ -3179,7 +3880,7 @@ index 5eae039..ff33a22 100644
        gap: 12,
      },
      pressed: { opacity: 0.55 },
-@@ -349,7 +468,7 @@ function createStyles() {
+@@ -349,7 +456,7 @@ function createStyles() {
        ...typeScale.cardTitle,
        writingDirection: "auto",
      },
@@ -59762,10 +60463,37 @@ index 81e0d4a..ced51a2 100644
    line: { ...typeScale.secondary, writingDirection: "auto" },
  });
 diff --git a/apps/mobile/components/ChoiceCard.tsx b/apps/mobile/components/ChoiceCard.tsx
-index 5f54439..e09ddad 100644
+index 5f54439..bf2582d 100644
 --- a/apps/mobile/components/ChoiceCard.tsx
 +++ b/apps/mobile/components/ChoiceCard.tsx
-@@ -17,32 +17,36 @@ import { GlassIconButton } from "./glass-icon-button";
+@@ -1,12 +1,23 @@
+ import { useLingui } from "@lingui/react/macro";
+-import type { MessageBlock } from "@rakazo/contracts";
++import type { ChoiceAnswer, ChoiceQuestion, MessageBlock } from "@rakazo/contracts";
++import { newClientId } from "@rakazo/core";
+ import { typeScale } from "@rakazo/ui-tokens";
+-import { useRef, useState } from "react";
++import { useMemo, useRef, useState } from "react";
+ import type { ViewProps } from "react-native";
+-import { Alert, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
++import {
++  ActivityIndicator,
++  Alert,
++  Pressable,
++  StyleSheet,
++  Text,
++  useWindowDimensions,
++  View,
++} from "react-native";
+ import { rpc } from "../lib/api";
++import { hapticError, hapticSelection, hapticSuccess } from "../lib/haptics";
+ import {
+   choiceCardOptions,
++  choiceCardQuestions,
+   DISMISSED_CHOICE_ANSWER_ID,
+   threadCardWidth,
+ } from "../lib/message-presentation";
+@@ -17,47 +28,93 @@ import { GlassIconButton } from "./glass-icon-button";
  import { NativeSymbol } from "./native-symbol";
  
  const styles = StyleSheet.create({
@@ -59812,7 +60540,99 @@ index 5f54439..e09ddad 100644
    options: { gap: 8 },
    question: typeScale.cardTitle,
    subtitle: typeScale.secondary,
-@@ -149,7 +153,9 @@ export function ChoiceCard({
++  // The question set's own chrome: a step counter, a bar that fills as the set is answered, and
++  // the two pages' controls under the options.
++  setHeader: { gap: 6 },
++  setStep: { alignItems: "center", flexDirection: "row", gap: 8 },
++  setCount: { fontSize: 13, fontWeight: "600", fontVariant: ["tabular-nums"] },
++  setTitle: { flex: 1, textAlign: "right", fontSize: 13 },
++  track: { borderRadius: 2, height: 4, overflow: "hidden" },
++  fill: { borderRadius: 2, height: 4 },
++  stepQuestion: { fontSize: 17, fontWeight: "600", lineHeight: 24 },
++  stepSubtitle: { fontSize: 14, lineHeight: 20 },
++  prompt: { fontSize: 13 },
++  footer: { alignItems: "center", flexDirection: "row", gap: 10 },
++  pageButton: {
++    alignItems: "center",
++    borderRadius: 12,
++    borderCurve: "continuous",
++    flexDirection: "row",
++    gap: 4,
++    height: 38,
++    justifyContent: "center",
++    paddingHorizontal: 14,
++  },
++  pageButtonText: { fontSize: 15, fontWeight: "500" },
++  submit: {
++    alignItems: "center",
++    borderRadius: 12,
++    borderCurve: "continuous",
++    flex: 1,
++    flexDirection: "row",
++    gap: 6,
++    height: 38,
++    justifyContent: "center",
++  },
++  submitText: { fontSize: 15, fontWeight: "600" },
++  sentRow: { alignItems: "center", flexDirection: "row", gap: 6 },
++  sentText: { ...typeScale.secondary, fontSize: 15 },
+ });
+ 
++type ChoiceBlock = Extract<MessageBlock, { kind: "choice" }>;
++
+ export function ChoiceCard({
+   botId,
++  groupId,
+   block,
+   onDismissed,
++  onSubmitted,
+   accessibilityActions,
+   onAccessibilityAction,
+ }: {
+   botId: string;
+-  block: Extract<MessageBlock, { kind: "choice" }>;
++  groupId?: string;
++  block: ChoiceBlock;
+   onDismissed?: () => void;
++  onSubmitted?: () => void;
+   accessibilityActions?: ViewProps["accessibilityActions"];
+   onAccessibilityAction?: ViewProps["onAccessibilityAction"];
+ }) {
+@@ -71,6 +128,7 @@ export function ChoiceCard({
+   // Shows the outcome before the thread stream delivers the updated block.
+   const [localAnswerId, setLocalAnswerId] = useState<string>();
+   const answerId = block.answerId ?? localAnswerId;
++  const questions = useMemo(() => choiceCardQuestions(block), [block]);
+   if (answerId === DISMISSED_CHOICE_ANSWER_ID) return null;
+ 
+   // Dismissing records the server's dismissed answer id, so both outcomes share this path.
+@@ -94,6 +152,25 @@ export function ChoiceCard({
+     }
+   }
+ 
++  // A set of questions, or one question that takes several picks, is answered on the card itself
++  // and sent once: every pick is local until the card's own submit.
++  if (questions) {
++    return (
++      <ChoiceSetCard
++        block={block}
++        groupId={groupId}
++        botId={botId}
++        onSubmitted={onSubmitted}
++        questions={questions}
++        readOnly={readOnly}
++        tokens={tokens}
++        width={threadCardWidth(windowWidth)}
++        accessibilityActions={accessibilityActions}
++        onAccessibilityAction={onAccessibilityAction}
++      />
++    );
++  }
++
+   return (
+     <View
+       testID="choice-card"
+@@ -149,7 +226,9 @@ export function ChoiceCard({
                style={({ pressed }) => [
                  styles.option,
                  {
@@ -59823,6 +60643,298 @@ index 5f54439..e09ddad 100644
                    opacity: busy ? 0.6 : 1,
                  },
                ]}
+@@ -182,3 +261,291 @@ export function ChoiceCard({
+     </View>
+   );
+ }
++
++/**
++ * A question set — a quiz paper or a form — answered a page at a time. Every pick stays on the
++ * phone until the last page's submit, which sends the whole sheet to the bot as one message so it
++ * can mark the answers or act on them.
++ */
++function ChoiceSetCard({
++  block,
++  botId,
++  groupId,
++  questions,
++  readOnly,
++  tokens,
++  width,
++  onSubmitted,
++  accessibilityActions,
++  onAccessibilityAction,
++}: {
++  block: ChoiceBlock;
++  botId: string;
++  groupId?: string;
++  questions: ChoiceQuestion[];
++  readOnly: boolean;
++  tokens: ReturnType<typeof useMobileTokens>;
++  width: number;
++  onSubmitted?: () => void;
++  accessibilityActions?: ViewProps["accessibilityActions"];
++  onAccessibilityAction?: ViewProps["onAccessibilityAction"];
++}) {
++  const { t } = useLingui();
++  // The saved sheet, or what was just sent: a delivered card reads back what was chosen.
++  const [picks, setPicks] = useState<Record<number, string[]>>(() =>
++    picksFromAnswers(questions, block.answers),
++  );
++  const [page, setPage] = useState(0);
++  const [sending, setSending] = useState(false);
++  const [sent, setSent] = useState(block.submitted === true);
++  const [failure, setFailure] = useState<string | null>(null);
++  const question = questions[page];
++  const answered = questions.filter((entry, index) => (picks[index]?.length ?? 0) > 0).length;
++  const last = page === questions.length - 1;
++  const locked = readOnly || sent;
++
++  function pick(optionId: string) {
++    if (locked || sending || !question) return;
++    const multiple = question.multiple === true || block.multiple === true;
++    setFailure(null);
++    setPicks((current) => {
++      const chosen = current[page] ?? [];
++      const next = multiple
++        ? chosen.includes(optionId)
++          ? chosen.filter((id) => id !== optionId)
++          : [...chosen, optionId]
++        : [optionId];
++      return { ...current, [page]: next };
++    });
++    hapticSelection();
++  }
++
++  async function send() {
++    if (locked || sending) return;
++    setSending(true);
++    setFailure(null);
++    try {
++      const answers: ChoiceAnswer[] = questions.map((entry, index) => ({
++        ...(entry.id ? { questionId: entry.id } : {}),
++        question: entry.question,
++        optionIds: picks[index] ?? [],
++      }));
++      await rpc("threads/send", {
++        ...(groupId ? { groupId } : { botId }),
++        clientNonce: newClientId(),
++        text: answerSheetText(block.question, questions, answers),
++      });
++      hapticSuccess();
++      setSent(true);
++      onSubmitted?.();
++    } catch (reason) {
++      hapticError();
++      setFailure(errorText(reason, t`Please try again.`));
++    } finally {
++      setSending(false);
++    }
++  }
++
++  if (!question) return null;
++  const chosen = picks[page] ?? [];
++  return (
++    <View
++      testID="choice-card"
++      style={[styles.card, { width, backgroundColor: native.fill }]}
++    >
++      <View style={styles.setHeader}>
++        <View style={styles.setStep}>
++          <Text
++            accessibilityRole="header"
++            accessibilityActions={accessibilityActions}
++            onAccessibilityAction={onAccessibilityAction}
++            style={[styles.setCount, { color: tokens.mutedForeground }]}
++          >
++            {`${page + 1} / ${questions.length}`}
++          </Text>
++          <Text
++            numberOfLines={1}
++            style={[styles.setTitle, { color: tokens.mutedForeground }]}
++          >
++            {block.question}
++          </Text>
++        </View>
++        <View style={[styles.track, { backgroundColor: native.fillPressed }]}>
++          <View
++            style={[
++              styles.fill,
++              {
++                backgroundColor: tokens.foreground,
++                width: `${Math.round((answered / questions.length) * 100)}%`,
++              },
++            ]}
++          />
++        </View>
++      </View>
++      <View style={{ gap: 4 }}>
++        <Text
++          accessibilityLabel={`${page + 1} / ${questions.length} ${question.question}`}
++          style={[styles.stepQuestion, { color: tokens.foreground }]}
++        >
++          {question.question}
++        </Text>
++        {question.subtitle ? (
++          <Text style={[styles.stepSubtitle, { color: tokens.mutedForeground }]}>
++            {question.subtitle}
++          </Text>
++        ) : null}
++        {question.multiple === true || block.multiple === true ? (
++          <Text style={[styles.prompt, { color: tokens.mutedForeground }]}>{t`Select all that apply`}</Text>
++        ) : null}
++      </View>
++      <View style={styles.options}>
++        {question.options.map((option) => {
++          const picked = chosen.includes(option.id);
++          return (
++            <Pressable
++              key={option.id}
++              accessibilityRole="button"
++              accessibilityLabel={option.label}
++              accessibilityState={{ disabled: locked || sending, selected: picked }}
++              disabled={locked || sending}
++              onPress={() => pick(option.id)}
++              style={({ pressed }) => [
++                styles.option,
++                {
++                  backgroundColor: pressed || picked ? native.fill : native.fillPressed,
++                  opacity: sending ? 0.6 : 1,
++                },
++              ]}
++            >
++              <View style={[styles.letter, { backgroundColor: native.fill }]}>
++                <Text style={[styles.letterText, { color: tokens.mutedForeground }]}>
++                  {option.letter}
++                </Text>
++              </View>
++              <Text
++                style={[
++                  styles.optionLabel,
++                  { color: picked ? tokens.mutedForeground : tokens.foreground },
++                ]}
++              >
++                {option.label}
++              </Text>
++              {picked ? (
++                <NativeSymbol
++                  ios="checkmark"
++                  android="checkmark"
++                  size={15}
++                  color={tokens.mutedForeground}
++                />
++              ) : null}
++            </Pressable>
++          );
++        })}
++      </View>
++      {failure ? (
++        <Text accessibilityRole="alert" style={[styles.prompt, { color: tokens.destructive }]}>
++          {failure}
++        </Text>
++      ) : null}
++      {sent ? (
++        <View style={styles.sentRow}>
++          <NativeSymbol ios="checkmark.circle.fill" android="checkmark-circle" size={16} color={tokens.mutedForeground} />
++          <Text style={[styles.sentText, { color: tokens.mutedForeground }]}>{t`Answers sent`}</Text>
++        </View>
++      ) : (
++        <View style={styles.footer}>
++          {page > 0 ? (
++            <Pressable
++              accessibilityRole="button"
++              accessibilityLabel={t`Previous question`}
++              disabled={sending}
++              onPress={() => setPage((current) => Math.max(0, current - 1))}
++              style={({ pressed }) => [
++                styles.pageButton,
++                { backgroundColor: pressed ? native.fill : native.fillPressed },
++              ]}
++            >
++              <NativeSymbol ios="chevron.left" android="chevron-back" size={13} color={tokens.mutedForeground} />
++              <Text style={[styles.pageButtonText, { color: tokens.foreground }]}>{t`Back`}</Text>
++            </Pressable>
++          ) : null}
++          {last ? (
++            <Pressable
++              accessibilityRole="button"
++              accessibilityLabel={t`Send answers`}
++              accessibilityState={{ disabled: locked || sending || readOnly }}
++              disabled={locked || sending || readOnly}
++              onPress={() => void send()}
++              style={({ pressed }) => [
++                styles.submit,
++                {
++                  backgroundColor: pressed ? native.fillPressed : native.fill,
++                  opacity: sending ? 0.7 : 1,
++                },
++              ]}
++            >
++              {sending ? (
++                <ActivityIndicator size="small" color={tokens.mutedForeground} />
++              ) : (
++                <NativeSymbol ios="paperplane.fill" android="send" size={14} color={tokens.foreground} />
++              )}
++              <Text style={[styles.submitText, { color: tokens.foreground }]}>
++                {t`Submit ${answered}/${questions.length}`}
++              </Text>
++            </Pressable>
++          ) : (
++            <Pressable
++              accessibilityRole="button"
++              accessibilityLabel={t`Next question`}
++              disabled={sending}
++              onPress={() => setPage((current) => Math.min(questions.length - 1, current + 1))}
++              style={({ pressed }) => [
++                styles.submit,
++                { backgroundColor: pressed ? native.fillPressed : native.fill },
++              ]}
++            >
++              <Text style={[styles.submitText, { color: tokens.foreground }]}>{t`Next`}</Text>
++              <NativeSymbol ios="chevron.right" android="chevron-forward" size={13} color={tokens.mutedForeground} />
++            </Pressable>
++          )}
++        </View>
++      )}
++    </View>
++  );
++}
++
++/** The card's own starting state: what the server saved when the sheet was sent. */
++function picksFromAnswers(
++  questions: ChoiceQuestion[],
++  answers: ChoiceAnswer[] | undefined,
++): Record<number, string[]> {
++  const picks: Record<number, string[]> = {};
++  if (!answers?.length) return picks;
++  questions.forEach((question, index) => {
++    const saved =
++      answers.find((answer) => (question.id ? answer.questionId === question.id : false)) ??
++      answers[index];
++    if (saved?.optionIds.length) picks[index] = [...saved.optionIds];
++  });
++  return picks;
++}
++
++/**
++ * The message the bot receives: the card's name, then each question with the letters picked. It
++ * reads as an answer sheet, so a bot that marks a quiz can find every question and choice.
++ */
++export function answerSheetText(
++  title: string,
++  questions: ChoiceQuestion[],
++  answers: ChoiceAnswer[],
++): string {
++  const lines = questions.map((question, index) => {
++    const picked = answers[index]?.optionIds ?? [];
++    const letters = question.options
++      .filter((option) => picked.includes(option.id))
++      .map((option) => option.letter);
++    const body = letters.length ? letters.join("") : "未作答";
++    return `${index + 1}. ${question.question}\n${body}`;
++  });
++  return [title, ...lines].filter((line) => line.trim().length > 0).join("\n");
++}
 diff --git a/apps/mobile/components/account-header-button.tsx b/apps/mobile/components/account-header-button.tsx
 new file mode 100644
 index 0000000..d6e4bc5
@@ -60645,6 +61757,58 @@ index a589810..6e6e014 100644
        <Svg width={size} height={size} viewBox={ORGANIC_AVATAR_VIEWBOX}>
          <Path d={organicAvatarPath(seed)} fill={color} />
          <G transform={`rotate(${organicAvatarEyeTilt(seed)})`}>
+diff --git a/apps/mobile/components/bot-email.tsx b/apps/mobile/components/bot-email.tsx
+index ded60c8..81f662f 100644
+--- a/apps/mobile/components/bot-email.tsx
++++ b/apps/mobile/components/bot-email.tsx
+@@ -1,5 +1,6 @@
+ import { ph } from "@lingui/core/macro";
+ import { useLingui } from "@lingui/react/macro";
++import { useTimeout } from "@rakazo/chat-ui/hooks";
+ import type { BotEmailAddress, BotEmailAddresses } from "@rakazo/contracts";
+ import { parseBotEmailName, suggestedEmailName } from "@rakazo/contracts";
+ import * as Clipboard from "expo-clipboard";
+@@ -92,6 +93,8 @@ export function useBotEmailRows({
+   const [claiming, setClaiming] = useState(false);
+   const [claimError, setClaimError] = useState<string | null>(null);
+   const [copied, setCopied] = useState(false);
++  // The check mark says "copied" for a moment, and the timer dies with the row.
++  useTimeout(() => setCopied(false), copied ? 1500 : null);
+   const domain = email.address?.domain;
+   const address = email.address?.address ?? null;
+ 
+@@ -136,10 +139,7 @@ export function useBotEmailRows({
+           />
+         }
+         onPress={() =>
+-          void Clipboard.setStringAsync(address).then(() => {
+-            setCopied(true);
+-            setTimeout(() => setCopied(false), 1500);
+-          })
++          void Clipboard.setStringAsync(address).then(() => setCopied(true))
+         }
+       />,
+     ];
+@@ -186,6 +186,7 @@ export function BotEmailAddressesGroup() {
+   const { t } = useLingui();
+   const [email, setEmail] = useState<BotEmailAddresses>(null);
+   const [copied, setCopied] = useState<string | null>(null);
++  useTimeout(() => setCopied(null), copied ? 1500 : null);
+   // Read on each visit, so an address claimed elsewhere meanwhile shows up.
+   useFocusEffect(
+     useCallback(() => {
+@@ -222,10 +223,7 @@ export function BotEmailAddressesGroup() {
+             />
+           }
+           onPress={() =>
+-            void Clipboard.setStringAsync(row.address).then(() => {
+-              setCopied(row.address);
+-              setTimeout(() => setCopied(null), 1500);
+-            })
++            void Clipboard.setStringAsync(row.address).then(() => setCopied(row.address))
+           }
+         />
+       ))}
 diff --git a/apps/mobile/components/bot-look-picker.tsx b/apps/mobile/components/bot-look-picker.tsx
 index dc2c99b..2209491 100644
 --- a/apps/mobile/components/bot-look-picker.tsx
@@ -61110,6 +62274,39 @@ index eaa8cfa..2c3f994 100644
        onGroupSettings: () =>
          router.push({ pathname: "/group-settings", params: { groupId: groupId ?? "" } }),
        onInvite: canInvite && botId ? openInvite : undefined,
+diff --git a/apps/mobile/components/code-copy-button.tsx b/apps/mobile/components/code-copy-button.tsx
+index 0416683..0756965 100644
+--- a/apps/mobile/components/code-copy-button.tsx
++++ b/apps/mobile/components/code-copy-button.tsx
+@@ -1,6 +1,7 @@
+ import { useLingui } from "@lingui/react/macro";
++import { useTimeout } from "@rakazo/chat-ui/hooks";
+ import * as Clipboard from "expo-clipboard";
+-import { useEffect, useRef, useState } from "react";
++import { useState } from "react";
+ import { Pressable, StyleSheet } from "react-native";
+ import { useMobileTokens } from "../lib/native";
+ import { NativeSymbol } from "./native-symbol";
+@@ -12,16 +13,12 @@ export function CodeCopyButton({ code }: { code: string }) {
+   const { t } = useLingui();
+   const tokens = useMobileTokens();
+   const [copied, setCopied] = useState(false);
+-  const resetTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+-  useEffect(() => () => clearTimeout(resetTimer.current), []);
++  // The check mark says "copied" for a moment; the wait ends with the button.
++  useTimeout(() => setCopied(false), copied ? COPIED_MS : null);
+ 
+   const copy = () => {
+     void Clipboard.setStringAsync(code)
+-      .then(() => {
+-        setCopied(true);
+-        clearTimeout(resetTimer.current);
+-        resetTimer.current = setTimeout(() => setCopied(false), COPIED_MS);
+-      })
++      .then(() => setCopied(true))
+       .catch(() => undefined);
+   };
+ 
 diff --git a/apps/mobile/components/composer-dictation-bar.tsx b/apps/mobile/components/composer-dictation-bar.tsx
 new file mode 100644
 index 0000000..ef1530f
@@ -61459,6 +62656,109 @@ index 0000000..ef1530f
 +  hintRow: { flexDirection: "row", alignItems: "center", gap: 2 },
 +  hint: { fontSize: 11 },
 +});
+diff --git a/apps/mobile/components/computer-maintenance-actions.tsx b/apps/mobile/components/computer-maintenance-actions.tsx
+index c2757a4..6381b11 100644
+--- a/apps/mobile/components/computer-maintenance-actions.tsx
++++ b/apps/mobile/components/computer-maintenance-actions.tsx
+@@ -9,11 +9,16 @@ import { computerUpdates } from "../lib/computer-updates";
+ import { errorText } from "../lib/user-error";
+ import { SettingsRow } from "./settings-group";
+ 
+-/** Update and Reset rows for a bot's Computer settings group. */
++/**
++ * The one repair a bot's computer offers, and only while that computer is broken.
++ *
++ * Nothing about a healthy computer belongs on this page: it works, so the row that fixes it only
++ * appears when it does not, and then there is one row rather than a maintenance menu.
++ */
+ export function useComputerMaintenanceRows(botId: string | undefined): ReactElement[] {
+   const { t } = useLingui();
+   const [computer, setComputer] = useState<ComputerStatus | null>(null);
+-  const [pending, setPending] = useState<"reset" | "update" | null>(null);
++  const [pending, setPending] = useState<"reset" | "recover" | null>(null);
+   const [error, setError] = useState<string | null>(null);
+ 
+   const latestRead = useRef(0);
+@@ -33,16 +38,21 @@ export function useComputerMaintenanceRows(botId: string | undefined): ReactElem
+   // A queued update or recovery reports progress here; its status changes with it.
+   useEffect(() => computerUpdates.subscribe(() => void refresh()), [refresh]);
+ 
+-  if (!botId || !computer || computer.botId !== botId) return [];
+-  const busy = Boolean(computer.busyBotName) || computer.state === "booting" || pending !== null;
++  // Collapsed by default: a computer that is working needs no rows at all.
++  if (!botId || !computer || computer.botId !== botId || computer.state !== "error") return [];
++  const busy = Boolean(computer.busyBotName) || pending !== null;
+ 
+-  async function run(action: "reset" | "update") {
++  // Recover rebuilds the system where the computer can update in place; otherwise Reset restores
++  // the last saved workspace.
++  const action: "reset" | "recover" = computer.canUpdate ? "recover" : "reset";
++
++  async function run() {
+     if (!botId || busy) return;
+     setPending(action);
+     setError(null);
+     try {
+       if (action === "reset") await rpc("computer/reset", { botId });
+-      else await computerUpdates.start(botId);
++      else await computerUpdates.start(botId, "recover");
+       await refresh();
+     } catch (err) {
+       setError(errorText(err, t`Could not update computer`));
+@@ -52,34 +62,35 @@ export function useComputerMaintenanceRows(botId: string | undefined): ReactElem
+   }
+ 
+   return [
+-    ...(computer.canUpdate
+-      ? [
+-          <SettingsRow
+-            key="update"
+-            accessibilityRole="button"
+-            accessibilityState={{ disabled: busy }}
+-            disabled={busy}
+-            dimmed={busy}
+-            title={pending === "update" ? t`Updating…` : t`Update computer`}
+-            onPress={() => void run("update")}
+-          />,
+-        ]
+-      : []),
+     <SettingsRow
+-      key="reset"
++      key="repair"
+       accessibilityRole="button"
+       accessibilityState={{ disabled: busy }}
+       disabled={busy}
+       dimmed={busy}
+       destructive
+-      title={pending === "reset" ? t`Resetting…` : t`Reset computer`}
++      title={
++        action === "recover"
++          ? pending
++            ? "修复中…"
++            : "修复云电脑"
++          : pending
++            ? "重置中…"
++            : "重置云电脑"
++      }
+       onPress={() =>
+         Alert.alert(
+-          t`Reset computer?`,
+-          t`Restore the last saved workspace. Unsaved work on the computer is lost.`,
++          action === "recover" ? "修复云电脑？" : "重置云电脑？",
++          action === "recover"
++            ? "修复会把交给它之前保存的工作区还原回来，没保存的改动会丢掉。"
++            : "会还原到上一次保存的工作区，云电脑上没保存的内容都会丢失。",
+           [
+             { text: t`Cancel`, style: "cancel" },
+-            { text: t`Reset`, style: "destructive", onPress: () => void run("reset") },
++            {
++              text: action === "recover" ? "修复" : "重置",
++              style: "destructive",
++              onPress: () => void run(),
++            },
+           ],
+         )
+       }
 diff --git a/apps/mobile/components/failed-send-bubble.tsx b/apps/mobile/components/failed-send-bubble.tsx
 index 99090c5..6993c71 100644
 --- a/apps/mobile/components/failed-send-bubble.tsx
@@ -62190,7 +63490,7 @@ index 0000000..04b2e75
 +}
 diff --git a/apps/mobile/components/home-search-sheet.tsx b/apps/mobile/components/home-search-sheet.tsx
 new file mode 100644
-index 0000000..b1abe11
+index 0000000..c2207f1
 --- /dev/null
 +++ b/apps/mobile/components/home-search-sheet.tsx
 @@ -0,0 +1,65 @@
@@ -62223,7 +63523,7 @@ index 0000000..b1abe11
 +  const topGap = Math.round(height * (1 - SHEET_DETENT));
 +  if (!visible) return null;
 +  return (
-+    <View style={StyleSheet.absoluteFill} accessibilityViewIsModal>
++    <View style={[StyleSheet.absoluteFill, { zIndex: 2, elevation: 2 }]} accessibilityViewIsModal>
 +      <Animated.View entering={FadeIn.duration(SHEET_FADE_MS)} style={styles.scrim}>
 +        <View style={StyleSheet.absoluteFill} onTouchEnd={onClose} />
 +      </Animated.View>
@@ -62239,7 +63539,7 @@ index 0000000..b1abe11
 +          },
 +        ]}
 +      >
-+        <SearchSheetScreen overlay onClose={onClose} topInset={-insets.top} />
++        <SearchSheetScreen overlay onClose={onClose} topInset={-insets.top + 8} />
 +      </Animated.View>
 +    </View>
 +  );
@@ -62683,6 +63983,44 @@ index 72b98c9..dc62f99 100644
    children: ReactElement;
  };
  
+diff --git a/apps/mobile/components/mermaid-diagram.tsx b/apps/mobile/components/mermaid-diagram.tsx
+index 432edf9..df71632 100644
+--- a/apps/mobile/components/mermaid-diagram.tsx
++++ b/apps/mobile/components/mermaid-diagram.tsx
+@@ -1,7 +1,8 @@
+ import { useLingui } from "@lingui/react/macro";
++import { useTimeout } from "@rakazo/chat-ui/hooks";
+ import { chatMermaidConfig } from "@rakazo/chat-ui/mermaid";
+ import type { MermaidDiagramProps } from "@rakazo/chat-ui/native";
+-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
++import { useMemo, useState, useSyncExternalStore } from "react";
+ import { StyleSheet, View } from "react-native";
+ import { WebView } from "react-native-webview";
+ import { currentApiBase, subscribeApiBase } from "../lib/api";
+@@ -45,16 +46,17 @@ export function MermaidDiagram({ source, palette, colorScheme, fallback }: Merma
+   });
+   const diagram = state.page === page ? state.diagram : { status: "drawing" as const };
+ 
+-  useEffect(() => {
+-    const timer = setTimeout(() => {
++  // A diagram that has not drawn by then is reported as failed, and the wait ends with the page.
++  useTimeout(
++    () =>
+       setState((current) =>
+         current.page === page && current.diagram.status !== "drawing"
+           ? current
+           : { page, diagram: { status: "failed" } },
+-      );
+-    }, DIAGRAM_TIMEOUT_MS);
+-    return () => clearTimeout(timer);
+-  }, [page]);
++      ),
++    DIAGRAM_TIMEOUT_MS,
++    page,
++  );
+ 
+   if (diagram.status === "failed") return fallback;
+   const drawn = diagram.status === "drawn";
 diff --git a/apps/mobile/components/message-action-menu.tsx b/apps/mobile/components/message-action-menu.tsx
 index adf731c..82abf47 100644
 --- a/apps/mobile/components/message-action-menu.tsx
@@ -67062,8 +68400,204 @@ index 0000000..4fb913d
 +  importButton: { borderRadius: 999, paddingHorizontal: 14, paddingVertical: 6 },
 +  importLabel: { fontSize: 13, fontWeight: "600" },
 +});
+diff --git a/apps/mobile/components/thread/mcp-app-card.tsx b/apps/mobile/components/thread/mcp-app-card.tsx
+index 97967df..3dbff21 100644
+--- a/apps/mobile/components/thread/mcp-app-card.tsx
++++ b/apps/mobile/components/thread/mcp-app-card.tsx
+@@ -1,3 +1,4 @@
++import { useTimeout } from "@rakazo/chat-ui/hooks";
+ import { useNativeLinkConfirm } from "@rakazo/chat-ui/native";
+ import type { MessageBlock } from "@rakazo/contracts";
+ import { MCP_APP_MIME_TYPE } from "@rakazo/contracts";
+@@ -59,11 +60,8 @@ export function McpAppCard({ block, target }: { block: AppBlock; target: MobileA
+     // The artifact is immutable; the target only names where it is read from.
+   }, [block.artifactId]);
+ 
+-  useEffect(() => {
+-    if (!html || started) return;
+-    const timer = setTimeout(() => setFailed(true), START_TIMEOUT_MS);
+-    return () => clearTimeout(timer);
+-  }, [html, started]);
++  // An app that never reports itself started is shown as failed, and the wait follows its source.
++  useTimeout(() => setFailed(true), !html || started ? null : START_TIMEOUT_MS, html);
+ 
+   const excludeHosts = useMemo(apiHost, []);
+   // A refetched message is a new object with the same values; the app's session must outlive it.
+diff --git a/apps/mobile/components/thread/memory-run-sheet.tsx b/apps/mobile/components/thread/memory-run-sheet.tsx
+new file mode 100644
+index 0000000..4762d37
+--- /dev/null
++++ b/apps/mobile/components/thread/memory-run-sheet.tsx
+@@ -0,0 +1,167 @@
++import { useLingui } from "@lingui/react/macro";
++import { useQuery } from "@tanstack/react-query";
++import { ActivityIndicator, Modal, Platform, ScrollView, Text, View } from "react-native";
++import { useSafeAreaInsets } from "react-native-safe-area-context";
++import { useMobileTokens } from "../../lib/native";
++import { queryClient, rpcQuery } from "../../lib/query";
++import { errorText } from "../../lib/user-error";
++import { NativeActionButton } from "../native-action-button";
++
++const SCOPE_LABELS: Record<string, string> = {
++  bot: "这个 Bot 自己的记忆",
++  user: "整个 Space 共用的记忆",
++  daily: "当天的复盘",
++};
++
++/**
++ * What one reply was written with: the memory documents its prompt carried, the ones that did not
++ * fit, and the learnings it hit. Read-only — it explains a reply rather than changing anything.
++ */
++export function MemoryRunSheet({
++  runId,
++  onClose,
++}: {
++  runId: string;
++  onClose: () => void;
++}) {
++  const { t } = useLingui();
++  const tokens = useMobileTokens();
++  const insets = useSafeAreaInsets();
++  const read = rpcQuery("memory/usedByRun", { runId });
++  const { data, error, isPending } = useQuery(read, queryClient);
++
++  return (
++    <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
++      <View
++        accessibilityViewIsModal
++        style={{
++          flex: 1,
++          backgroundColor: tokens.background,
++          paddingTop: Platform.OS === "ios" ? 12 : insets.top + 12,
++          paddingBottom: insets.bottom,
++        }}
++      >
++        <View
++          style={{
++            flexDirection: "row",
++            alignItems: "center",
++            justifyContent: "space-between",
++            paddingHorizontal: 20,
++            paddingBottom: 10,
++          }}
++        >
++          <Text accessibilityRole="header" style={{ color: tokens.foreground, fontSize: 17, fontWeight: "600" }}>
++            这轮回复用到的记忆
++          </Text>
++          <NativeActionButton label={t`Close`} onPress={onClose} prominence="plain" />
++        </View>
++        <ScrollView style={{ flex: 1, paddingHorizontal: 20 }} contentContainerStyle={{ gap: 18, paddingBottom: 24 }}>
++          {isPending ? (
++            <ActivityIndicator color={tokens.mutedForeground} accessibilityLabel={t`Loading…`} />
++          ) : null}
++          {error ? (
++            <Text accessibilityRole="alert" style={{ color: tokens.destructive, fontSize: 13 }}>
++              {errorText(error, t`Could not load memory`)}
++            </Text>
++          ) : null}
++          {data === null ? (
++            <Text style={{ color: tokens.mutedForeground, fontSize: 15 }}>
++              这一轮没有记下任何记忆。
++            </Text>
++          ) : null}
++          {data ? (
++            <>
++              <Section title="带入提示词的记忆" empty="这一轮没有带入记忆文档。" tokens={tokens}>
++                {data.documents.map((document) => (
++                  <Row
++                    key={`${document.scope}:${document.path}`}
++                    detail={`${SCOPE_LABELS[document.scope] ?? document.scope} · ${formatBytes(document.includedBytes)}${
++                      document.truncated ? ` · 只带了前 ${Math.round((document.includedBytes / Math.max(1, document.totalBytes)) * 100)}%` : ""
++                    }`}
++                    label={document.path}
++                    tokens={tokens}
++                  />
++                ))}
++              </Section>
++              {data.omitted.length ? (
++                <Section title="放不下的记忆" empty="" tokens={tokens}>
++                  {data.omitted.map((document) => (
++                    <Row
++                      key={`omitted:${document.scope}:${document.path}`}
++                      detail={`${SCOPE_LABELS[document.scope] ?? document.scope} · 共 ${formatBytes(document.totalBytes)}`}
++                      label={document.path}
++                      tokens={tokens}
++                    />
++                  ))}
++                </Section>
++              ) : null}
++              <Section title="命中的记忆条目" empty="这一轮没有命中已通过的记忆条目。" tokens={tokens}>
++                {data.learnings.map((learning) => (
++                  <Row
++                    key={learning.id}
++                    detail={SCOPE_LABELS[learning.scope] ?? learning.scope}
++                    label={learning.text}
++                    tokens={tokens}
++                  />
++                ))}
++              </Section>
++            </>
++          ) : null}
++        </ScrollView>
++      </View>
++    </Modal>
++  );
++}
++
++function Section({
++  title,
++  empty,
++  tokens,
++  children,
++}: {
++  title: string;
++  empty: string;
++  tokens: ReturnType<typeof useMobileTokens>;
++  children: React.ReactNode;
++}) {
++  const count = Array.isArray(children) ? children.length : children ? 1 : 0;
++  return (
++    <View style={{ gap: 8 }}>
++      <Text style={{ color: tokens.mutedForeground, fontSize: 13, fontWeight: "600" }}>{title}</Text>
++      {count ? children : empty ? (
++        <Text style={{ color: tokens.mutedForeground, fontSize: 14 }}>{empty}</Text>
++      ) : null}
++    </View>
++  );
++}
++
++function Row({
++  label,
++  detail,
++  tokens,
++}: {
++  label: string;
++  detail: string;
++  tokens: ReturnType<typeof useMobileTokens>;
++}) {
++  return (
++    <View
++      style={{
++        borderRadius: 14,
++        borderCurve: "continuous",
++        backgroundColor: tokens.card,
++        paddingHorizontal: 14,
++        paddingVertical: 12,
++        gap: 4,
++      }}
++    >
++      <Text style={{ color: tokens.foreground, fontSize: 15, lineHeight: 20 }}>{label}</Text>
++      <Text style={{ color: tokens.mutedForeground, fontSize: 12 }}>{detail}</Text>
++    </View>
++  );
++}
++
++function formatBytes(bytes: number): string {
++  if (bytes < 1024) return `${bytes} 字`;
++  return `${(bytes / 1024).toFixed(1)} KB`;
++}
 diff --git a/apps/mobile/components/thread/message-bubble.tsx b/apps/mobile/components/thread/message-bubble.tsx
-index aa623d6..08fec64 100644
+index aa623d6..66cc65d 100644
 --- a/apps/mobile/components/thread/message-bubble.tsx
 +++ b/apps/mobile/components/thread/message-bubble.tsx
 @@ -15,7 +15,7 @@ import {
@@ -67170,7 +68704,15 @@ index aa623d6..08fec64 100644
              )}
            </View>
          ))}
-@@ -943,3 +931,65 @@ function AgentEventLabel({
+@@ -758,6 +746,7 @@ const MessageBubbleContent = memo(function MessageBubbleContent({
+         <ChoiceCard
+           key={`choice-${index}`}
+           botId={cardBotId}
++          groupId={groupId}
+           block={block}
+           onDismissed={onChoiceDismissed ? () => onChoiceDismissed(block.question) : undefined}
+           accessibilityActions={actionProps.accessibilityActions}
+@@ -943,3 +932,65 @@ function AgentEventLabel({
      </Pressable>
    );
  }
@@ -67237,7 +68779,7 @@ index aa623d6..08fec64 100644
 +  );
 +}
 diff --git a/apps/mobile/components/thread/message-row.tsx b/apps/mobile/components/thread/message-row.tsx
-index db15142..0f05847 100644
+index db15142..d0746dc 100644
 --- a/apps/mobile/components/thread/message-row.tsx
 +++ b/apps/mobile/components/thread/message-row.tsx
 @@ -6,7 +6,7 @@ import type {
@@ -67278,7 +68820,7 @@ index db15142..0f05847 100644
  import { useMobileTokens, useResolvedAppearance } from "../../lib/native";
  import { selectableTextFromMarkdown } from "../../lib/selectable-text";
  import { ThreadReadOnlyContext } from "../../lib/thread-read-only";
-@@ -36,12 +42,16 @@ import type { UserBubble } from "../../lib/user-bubble";
+@@ -36,12 +42,17 @@ import type { UserBubble } from "../../lib/user-bubble";
  import { BotAvatar } from "../bot-avatar";
  import type { ImageArtifactPreviewTarget } from "../image-artifact-viewer";
  import { presentMessageMenu } from "../message-action-menu";
@@ -67290,12 +68832,13 @@ index db15142..0f05847 100644
  import type { MessageActionProps } from "./message-bubble";
  import { MessageBubble } from "./message-bubble";
 +import { LinkPreviewCard } from "./link-preview-card";
++import { MemoryRunSheet } from "./memory-run-sheet";
 +import { ReactionPill } from "./reaction-pill";
 +import { useMessageSwipe } from "./message-swipe-context";
  
  export type MessageRowActions = {
    helperToggle: (
-@@ -112,6 +122,20 @@ type MessageRowProps = {
+@@ -112,6 +123,20 @@ type MessageRowProps = {
    index: number;
  };
  
@@ -67316,11 +68859,13 @@ index db15142..0f05847 100644
  export const MessageRow = memo(function MessageRow({
    message,
    actions,
-@@ -171,17 +195,21 @@ export const MessageRow = memo(function MessageRow({
+@@ -171,17 +196,23 @@ export const MessageRow = memo(function MessageRow({
    );
    const [optimisticLike, setOptimisticLike] = useState(false);
    const likeInFlight = useRef(false);
 -  const reducedMotion = useReducedMotion();
++  // The run behind this reply, when the person asks what it was written with.
++  const [memoryRunId, setMemoryRunId] = useState<string | null>(null);
 +  // A single card for the first link the message carries: the page it points at, drawn once.
 +  const previewLink = useMemo(
 +    () => firstMessageLink(blockText(message)),
@@ -67342,7 +68887,31 @@ index db15142..0f05847 100644
      likeMessage?: () => void;
    }>(() => {
      const messageText = selectableMessageText(message);
-@@ -242,32 +270,17 @@ export const MessageRow = memo(function MessageRow({
+@@ -192,6 +223,8 @@ export const MessageRow = memo(function MessageRow({
+     const includeReact = !readOnly && canReactToThreadMessage(message);
+     // The call already reads replies aloud; a second voice would talk over it.
+     const includeSpeak = message.role === "bot" && !onCall && Boolean(blockText(message));
++    // Memory is read for a bot's own turn, and the server keeps what that turn carried.
++    const includeMemory = message.role === "bot" && Boolean(message.runId);
+     const includeSelect = messageText.trim().length > 0;
+     // Any sent message can be marked unread; the next open starts New at the first reply from it.
+     const includeUnread = !readOnly && !markedUnread && canMarkMessageUnread(message);
+@@ -236,38 +269,32 @@ export const MessageRow = memo(function MessageRow({
+           ]
+         : []),
+       ...(includeSpeak ? [{ name: "speak", text: t`Speak message`, onPress: speakMessage }] : []),
++      ...(includeMemory
++        ? [
++            {
++              name: "memory",
++              text: t`这轮用到的记忆`,
++              onPress: () => setMemoryRunId(message.runId ?? null),
++            },
++          ]
++        : []),
+       ...(includeSelect ? [{ name: "select", text: t`Select text`, onPress: select }] : []),
+       { name: "copy", text: t`Copy`, onPress: copy },
+       ...(codeBlocks.length === 1
          ? [{ name: "copyCode", text: t`Copy code`, onPress: copyCode }]
          : []),
      ];
@@ -67380,7 +68949,7 @@ index db15142..0f05847 100644
          groups: [
            [
              ...(!readOnly
-@@ -276,6 +289,7 @@ export const MessageRow = memo(function MessageRow({
+@@ -276,6 +303,7 @@ export const MessageRow = memo(function MessageRow({
                      name: "reply",
                      text: t`Reply`,
                      icon: "arrow-undo-outline" as const,
@@ -67388,7 +68957,7 @@ index db15142..0f05847 100644
                      onPress: reply,
                    },
                  ]
-@@ -286,48 +300,51 @@ export const MessageRow = memo(function MessageRow({
+@@ -286,48 +314,62 @@ export const MessageRow = memo(function MessageRow({
                      name: "unread",
                      text: t`Mark as unread`,
                      icon: "mail-unread-outline" as const,
@@ -67435,6 +69004,17 @@ index db15142..0f05847 100644
                    },
                  ]
                : []),
++            ...(includeMemory
++              ? [
++                  {
++                    name: "memory",
++                    text: t`这轮用到的记忆`,
++                    icon: "albums-outline" as const,
++                    iosIcon: "brain.head.profile",
++                    onPress: () => setMemoryRunId(message.runId ?? null),
++                  },
++                ]
++              : []),
 +            ...(includeSelect
 +              ? [
 +                  {
@@ -67454,7 +69034,7 @@ index db15142..0f05847 100644
        likeMessage: canDoubleTapReact(includeReact, message.blocks, waitingForUser)
          ? () => {
              if (hasLike || optimisticLike || likeInFlight.current) return;
-@@ -342,21 +359,8 @@ export const MessageRow = memo(function MessageRow({
+@@ -342,21 +384,8 @@ export const MessageRow = memo(function MessageRow({
                });
            }
          : undefined,
@@ -67477,7 +69057,7 @@ index db15142..0f05847 100644
          accessibilityActions: menuActions.map((action) => ({
            name: action.name,
            label: action.text,
-@@ -380,6 +384,54 @@ export const MessageRow = memo(function MessageRow({
+@@ -380,6 +409,54 @@ export const MessageRow = memo(function MessageRow({
      optimisticLike,
    ]);
    const layout = messageRowLayout(message.blocks, { activityBotId, inGroup, columnWidth });
@@ -67532,7 +69112,7 @@ index db15142..0f05847 100644
    return (
      <View
        key={message.id}
-@@ -392,15 +444,59 @@ export const MessageRow = memo(function MessageRow({
+@@ -392,15 +469,59 @@ export const MessageRow = memo(function MessageRow({
      >
        {separator ? <TimeSeparator createdAt={message.createdAt} /> : null}
        {unreadDivider ? <UnreadDivider afterSeparator={separator} /> : null}
@@ -67601,7 +69181,7 @@ index db15142..0f05847 100644
          {activityBotId ? (
            <View style={{ paddingTop: 22 }}>
              <BotAvatar
-@@ -415,13 +511,19 @@ export const MessageRow = memo(function MessageRow({
+@@ -415,13 +536,19 @@ export const MessageRow = memo(function MessageRow({
              />
            </View>
          ) : null}
@@ -67628,7 +69208,7 @@ index db15142..0f05847 100644
          >
            {isPeerReceiptBlocks(message.blocks) ? null : (
              <ReplyLine
-@@ -435,11 +537,8 @@ export const MessageRow = memo(function MessageRow({
+@@ -435,11 +562,8 @@ export const MessageRow = memo(function MessageRow({
              />
            )}
            <MessageContextMenu
@@ -67640,7 +69220,7 @@ index db15142..0f05847 100644
              onLongPress={actionProps.onLongPress}
              onDoubleTap={messageHasInlineControls(message.blocks) ? undefined : likeMessage}
            >
-@@ -472,41 +571,27 @@ export const MessageRow = memo(function MessageRow({
+@@ -472,41 +596,30 @@ export const MessageRow = memo(function MessageRow({
                />
              </ThreadReadOnlyContext.Provider>
            </MessageContextMenu>
@@ -67693,9 +69273,14 @@ index db15142..0f05847 100644
 +        </GestureDetector>
        </View>
 +      </Animated.View>
++      {memoryRunId ? (
++        <MemoryRunSheet runId={memoryRunId} onClose={() => setMemoryRunId(null)} />
++      ) : null}
      </View>
    );
- });
+-});
++});
+\ No newline at end of file
 diff --git a/apps/mobile/components/thread/message-swipe-context.ts b/apps/mobile/components/thread/message-swipe-context.ts
 new file mode 100644
 index 0000000..1d7e5e8
@@ -73557,6 +75142,36 @@ index c2d471f..01f6e63 100644
    grid_view: require("../assets/material-icons/grid_view.xml"),
 +  notifications: require("../assets/material-icons/notifications.xml"),
  };
+diff --git a/apps/mobile/lib/message-presentation.ts b/apps/mobile/lib/message-presentation.ts
+index 7d18d6c..c4ef253 100644
+--- a/apps/mobile/lib/message-presentation.ts
++++ b/apps/mobile/lib/message-presentation.ts
+@@ -1,4 +1,4 @@
+-import type { MessageBlock } from "@rakazo/contracts";
++import type { ChoiceQuestion, MessageBlock } from "@rakazo/contracts";
+ import { isRetiredImportSetup, isToolActivityBlock } from "@rakazo/core";
+ import { MAX_QUOTABLE_SOURCE_LENGTH, visibleTextFromMarkdown } from "@rakazo/core/message-quote";
+ 
+@@ -88,6 +88,19 @@ export function choiceCardOptions(block: ChoiceBlock): ChoiceBlock["options"] {
+     : block.options;
+ }
+ 
++/**
++ * The questions a card asks one page at a time, or null for the quick card that answers on one
++ * tap. A card with its own `questions` is a set; one that only takes several picks is a single
++ * question with `multiple` set, which the set layout also carries.
++ */
++export function choiceCardQuestions(block: ChoiceBlock): ChoiceQuestion[] | null {
++  if (block.questions?.length) return block.questions;
++  if (block.multiple && block.options.length > 0) {
++    return [{ question: block.question, options: block.options, multiple: true }];
++  }
++  return null;
++}
++
+ /** Pads the content, not the scroll view, so the scroll indicator stays on the screen edge. */
+ export const THREAD_COLUMN_GUTTER = 20;
+ const MESSAGE_COLUMN_RATIO = 0.9;
 diff --git a/apps/mobile/lib/mobile-types.ts b/apps/mobile/lib/mobile-types.ts
 index 27e01ac..f136d3c 100644
 --- a/apps/mobile/lib/mobile-types.ts
@@ -75430,13 +77045,13 @@ index 0000000..1122b91
 +  })();
 +}
 diff --git a/apps/mobile/lib/use-home-header.ts b/apps/mobile/lib/use-home-header.tsx
-similarity index 63%
+similarity index 62%
 rename from apps/mobile/lib/use-home-header.ts
 rename to apps/mobile/lib/use-home-header.tsx
-index acc1e15..08aa665 100644
+index acc1e15..4cf4836 100644
 --- a/apps/mobile/lib/use-home-header.ts
 +++ b/apps/mobile/lib/use-home-header.tsx
-@@ -2,18 +2,17 @@ import { useLingui } from "@lingui/react/macro";
+@@ -2,27 +2,27 @@ import { useLingui } from "@lingui/react/macro";
  import { useNavigation, useRouter } from "expo-router";
  import type { ReactNode } from "react";
  import { useLayoutEffect } from "react";
@@ -75449,6 +77064,7 @@ index acc1e15..08aa665 100644
 +/** Liquid Glass home header: the account on the left, one create button on the right. */
  export function useHomeHeader({
    nativeHeader,
++  hidden,
    ready,
    hasSession,
    initials,
@@ -75457,7 +77073,9 @@ index acc1e15..08aa665 100644
    runCreateAction,
    headerTitle,
  }: {
-@@ -21,8 +20,6 @@ export function useHomeHeader({
+   nativeHeader: boolean;
++  /** A sheet covering the page also covers the bar: a native header always draws above RN views. */
++  hidden?: boolean;
    ready: boolean;
    hasSession: boolean;
    initials: string;
@@ -75466,7 +77084,15 @@ index acc1e15..08aa665 100644
    runCreateAction: (action: CreateAction) => void;
    headerTitle?: () => ReactNode;
  }) {
-@@ -41,30 +38,22 @@ export function useHomeHeader({
+@@ -34,37 +34,29 @@ export function useHomeHeader({
+     if (!nativeHeader) return;
+     const signedIn = ready && hasSession;
+     navigation.setOptions({
+-      headerShown: signedIn,
++      headerShown: signedIn && !hidden,
+       headerTransparent: true,
+       headerStyle: { backgroundColor: "transparent" },
+       title: "",
        headerTitle,
        unstable_headerLeftItems: () => [
          {
@@ -75510,7 +77136,12 @@ index acc1e15..08aa665 100644
          {
            type: "menu" as const,
            label: t`Create`,
-@@ -87,12 +76,11 @@ export function useHomeHeader({
+@@ -83,16 +75,16 @@ export function useHomeHeader({
+     });
+   }, [
+     nativeHeader,
++    hidden,
+     navigation,
      ready,
      hasSession,
      initials,
@@ -76484,10 +78115,10 @@ index 0000000..dbfffd2
 +end
 diff --git a/apps/mobile/modules/rakazo-realtime-audio/ios/RakazoRealtimeAudioModule.swift b/apps/mobile/modules/rakazo-realtime-audio/ios/RakazoRealtimeAudioModule.swift
 new file mode 100644
-index 0000000..92be7b5
+index 0000000..594e42d
 --- /dev/null
 +++ b/apps/mobile/modules/rakazo-realtime-audio/ios/RakazoRealtimeAudioModule.swift
-@@ -0,0 +1,367 @@
+@@ -0,0 +1,345 @@
 +import AVFoundation
 +import AudioToolbox
 +import ExpoModulesCore
@@ -76521,12 +78152,11 @@ index 0000000..92be7b5
 +    .usbAudio, .airPlay, .carAudio,
 +  ]
 +  /// The level the model's voice is played at. Vendors send PCM16 well below full scale (and a call
-+  /// through the voice processing unit is quieter again), so each piece is lifted toward this peak
-+  /// and soft-limited instead of being played at whatever level it arrived at.
-+  private static let downlinkTargetPeak: Float = 0.89
-+  private static let downlinkMaxGain: Float = 3
-+  /// Held between pieces so the level follows the voice rather than pumping packet by packet.
-+  private var downlinkGain: Float = 1
++  /// through the voice processing unit is quieter again), so the reply is lifted by one gentle,
++  /// fixed amount and soft-limited — never by an automatic gain that follows each piece. A gain
++  /// that chased the peaks pulled the quiet parts up and pushed the loud ones down piece by piece,
++  /// and the voice wobbled between syllables instead of sounding like a person.
++  private static let downlinkGain: Float = 1.6
 +
 +  private var inputConverter: AVAudioConverter?
 +  private var captureFormat: AVAudioFormat?
@@ -76665,7 +78295,6 @@ index 0000000..92be7b5
 +
 +    running = true
 +    muted = false
-+    downlinkGain = 1
 +    buffers.async { self.pending.removeAll(keepingCapacity: true) }
 +    microphone.installTap(onBus: 0, bufferSize: 1024, format: hardware) { [weak self] buffer, _ in
 +      self?.consume(buffer)
@@ -76692,7 +78321,6 @@ index 0000000..92be7b5
 +    inputConverter = nil
 +    captureFormat = nil
 +    playbackFormat = nil
-+    downlinkGain = 1
 +    // Give the microphone back the way it was taken: left on, every later recording (dictation, a
 +    // voice note, the turn-based call) would still run through the call's processing.
 +    if voiceProcessingOn, engine.inputNode.isVoiceProcessingEnabled {
@@ -76772,36 +78400,17 @@ index 0000000..92be7b5
 +    else { return }
 +    buffer.frameLength = AVAudioFrameCount(frames)
 +    guard let channel = buffer.floatChannelData?[0] else { return }
-+    // The piece as it arrived, and a peak that says how much room there is above it.
-+    var peak: Float = 0
 +    data.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
 +      let samples = raw.bindMemory(to: Int16.self)
 +      for index in 0..<frames {
 +        let value = Float(Int16(littleEndian: samples[index])) / 32_768.0
-+        channel[index] = value
-+        let magnitude = abs(value)
-+        if magnitude > peak { peak = magnitude }
++        channel[index] = softLimit(value * Self.downlinkGain)
 +      }
-+    }
-+    downlinkGain = gain(for: peak)
-+    for index in 0..<frames {
-+      channel[index] = softLimit(channel[index] * downlinkGain)
 +    }
 +    player.scheduleBuffer(buffer, completionHandler: nil)
 +    if !player.isPlaying {
 +      player.play()
 +    }
-+  }
-+
-+  /// How much to lift this piece, from how loud it actually is.
-+  private func gain(for peak: Float) -> Float {
-+    // A pause, or the room's noise floor between phrases, says nothing about how loud the voice is.
-+    guard peak > 0.04 else { return downlinkGain }
-+    let wanted = min(Self.downlinkMaxGain, Self.downlinkTargetPeak / peak)
-+    // Turning down takes effect at once, so nothing loud is ever pushed past full scale; turning up
-+    // eases in, so the level does not jump from packet to packet.
-+    guard wanted > downlinkGain else { return wanted }
-+    return downlinkGain + (wanted - downlinkGain) * 0.2
 +  }
 +
 +  /// Keeps a lifted sample inside full scale without the crackle of a hard clip.
@@ -81762,6 +83371,50 @@ index 1a3bc9b..71eb249 100644
  
  /**
   * Whether the run may post another durable interim chat message right now.
+diff --git a/packages/chat-ui/package.json b/packages/chat-ui/package.json
+index 1332b29..322db21 100644
+--- a/packages/chat-ui/package.json
++++ b/packages/chat-ui/package.json
+@@ -4,6 +4,7 @@
+   "license": "Apache-2.0",
+   "type": "module",
+   "exports": {
++    "./hooks": "./src/hooks.ts",
+     "./mermaid": "./src/mermaid.ts",
+     "./native": "./src/markdown.native.tsx",
+     "./web": "./src/markdown.web.tsx"
+diff --git a/packages/chat-ui/src/hooks.ts b/packages/chat-ui/src/hooks.ts
+new file mode 100644
+index 0000000..1b886b6
+--- /dev/null
++++ b/packages/chat-ui/src/hooks.ts
+@@ -0,0 +1,26 @@
++import { useEffect, useEffectEvent, useState } from "react";
++
++/**
++ * Calls `callback` once, `ms` after mount. A new `ms` or `restartKey` starts the wait again and
++ * `null` cancels it; the latest callback runs, and nothing runs after unmount.
++ */
++export function useTimeout(callback: () => void, ms: number | null, restartKey?: unknown): void {
++  const fire = useEffectEvent(callback);
++  useEffect(() => {
++    if (ms === null) return;
++    const timer = setTimeout(() => fire(), ms);
++    return () => clearTimeout(timer);
++  }, [ms, restartKey]);
++}
++
++/** `Date.now()`, refreshed every `ms` while it is not `null` and at once when it resumes. */
++export function useNow(ms: number | null): number {
++  const [now, setNow] = useState(Date.now);
++  useEffect(() => {
++    if (ms === null) return;
++    setNow(Date.now());
++    const timer = setInterval(() => setNow(Date.now()), ms);
++    return () => clearInterval(timer);
++  }, [ms]);
++  return now;
++}
 diff --git a/packages/chat-ui/src/markdown-emphasis.test.ts b/packages/chat-ui/src/markdown-emphasis.test.ts
 new file mode 100644
 index 0000000..7fdfca7
@@ -82805,7 +84458,7 @@ index eca1f50..2fdde1f 100644
    "generate_secret",
    "list_secrets",
 diff --git a/packages/contracts/src/domain.ts b/packages/contracts/src/domain.ts
-index d45cd5a..451d987 100644
+index d45cd5a..f8a29f9 100644
 --- a/packages/contracts/src/domain.ts
 +++ b/packages/contracts/src/domain.ts
 @@ -100,6 +100,12 @@ export const BotSchema = z.object({
@@ -82821,6 +84474,119 @@ index d45cd5a..451d987 100644
    memoryScope: MemoryScopeSchema.nullable(),
    threadId: Id,
    preview: z.string(),
+@@ -845,6 +851,49 @@ export function isDeletableMemoryDocument(path: string): boolean {
+   return path !== MEMORY_INDEX_PATH;
+ }
+ 
++/**
++ * A durable fact the daily review proposed keeping, and whether it is in the long-term memory the
++ * prompt carries. A fact is merged in on its own; a rule is a standing instruction and waits for
++ * the person to approve or drop it.
++ */
++export const MemoryLearningStatusSchema = z.enum(["pending", "approved", "rejected"]);
++export type MemoryLearningStatus = z.infer<typeof MemoryLearningStatusSchema>;
++export const MemoryLearningKindSchema = z.enum(["fact", "rule"]);
++export type MemoryLearningKind = z.infer<typeof MemoryLearningKindSchema>;
++export const MemoryLearningSchema = z.object({
++  id: Id,
++  scope: MemoryScope,
++  botId: Id.nullable(),
++  kind: MemoryLearningKindSchema,
++  text: z.string(),
++  status: MemoryLearningStatusSchema,
++  source: z.string(),
++  sourceDate: z.string().nullable(),
++  decidedAt: z.string().nullable(),
++  createdAt: z.string(),
++});
++export type MemoryLearning = z.infer<typeof MemoryLearningSchema>;
++
++/** Which durable memory a turn's prompt carried, for the read-only "this reply used" view. */
++export const MemoryRunUseDocumentSchema = z.object({
++  scope: z.enum(["bot", "user", "daily"]),
++  path: z.string(),
++  revision: z.number().int(),
++  totalBytes: z.number().int().nonnegative(),
++  includedBytes: z.number().int().nonnegative(),
++  truncated: z.boolean(),
++});
++export type MemoryRunUseDocument = z.infer<typeof MemoryRunUseDocumentSchema>;
++export const MemoryRunUseSchema = z.object({
++  documents: z.array(MemoryRunUseDocumentSchema),
++  omitted: z.array(MemoryRunUseDocumentSchema),
++  learnings: z.array(
++    z.object({ id: Id, scope: MemoryScope, botId: Id.nullable(), text: z.string() }),
++  ),
++  recordedAt: z.string(),
++});
++export type MemoryRunUse = z.infer<typeof MemoryRunUseSchema>;
++
+ export const ConnectionSchema = z.object({
+   id: Id,
+   connectorId: z.string(),
+diff --git a/packages/contracts/src/events.ts b/packages/contracts/src/events.ts
+index 277ebf5..e7205f7 100644
+--- a/packages/contracts/src/events.ts
++++ b/packages/contracts/src/events.ts
+@@ -6,6 +6,35 @@ import { McpTransportSchema } from "./mcp.js";
+ import { McpAppCspSchema } from "./mcp-app.js";
+ import { PAGE_TITLE_MAX_LENGTH } from "./pages.js";
+ 
++/** One option of a choice card, numbered the way the card shows it. */
++export const ChoiceOptionSchema = z.object({
++  id: z.string(),
++  letter: z.string(),
++  label: z.string(),
++});
++export type ChoiceOption = z.infer<typeof ChoiceOptionSchema>;
++
++/**
++ * One question of a card that asks several: a quiz's question, or a form's line. Its own options
++ * carry the letters the person taps, and `multiple` says whether more than one may be picked.
++ */
++export const ChoiceQuestionSchema = z.object({
++  id: z.string().optional(),
++  question: z.string(),
++  subtitle: z.string().optional(),
++  options: z.array(ChoiceOptionSchema),
++  multiple: z.boolean().optional(),
++});
++export type ChoiceQuestion = z.infer<typeof ChoiceQuestionSchema>;
++
++/** What was picked on one question of a set. */
++export const ChoiceAnswerSchema = z.object({
++  questionId: z.string().optional(),
++  question: z.string().optional(),
++  optionIds: z.array(z.string()),
++});
++export type ChoiceAnswer = z.infer<typeof ChoiceAnswerSchema>;
++
+ export const ProductEventType = z.enum([
+   "thread.message.created",
+   "thread.cleared",
+@@ -187,9 +216,21 @@ export const MessageBlock = z.discriminatedUnion("kind", [
+     kind: z.literal("choice"),
+     question: z.string(),
+     subtitle: z.string().optional(),
+-    options: z.array(z.object({ id: z.string(), letter: z.string(), label: z.string() })),
++    options: z.array(ChoiceOptionSchema),
+     /** Set once the user picks an option; renders the picker as answered. */
+     answerId: z.string().optional(),
++    /**
++     * More than one question on the card: a question set the person works through a page at a
++     * time, or a form that needs several answers at once. `question` is then the card's title and
++     * the top-level `options` may be empty.
++     */
++    questions: z.array(ChoiceQuestionSchema).optional(),
++    /** A single question that takes several picks, answered together and sent once. */
++    multiple: z.boolean().optional(),
++    /** What the person picked on each question, saved when the whole set is sent. */
++    answers: z.array(ChoiceAnswerSchema).optional(),
++    /** The set was sent as one message; the card reads back what was chosen. */
++    submitted: z.literal(true).optional(),
+   }),
+   z.object({
+     /** Inline app authorization card (Composio-backed): logo, name, one-line
 diff --git a/packages/contracts/src/grok-bot.ts b/packages/contracts/src/grok-bot.ts
 new file mode 100644
 index 0000000..8785a2b
@@ -83008,10 +84774,21 @@ index c1eddc1..6003f82 100644
 +
  export type MessageReaction = z.infer<typeof MessageReactionSchema>;
 diff --git a/packages/contracts/src/rpc.ts b/packages/contracts/src/rpc.ts
-index 94ad5b0..d5b6e2a 100644
+index 94ad5b0..babf8cb 100644
 --- a/packages/contracts/src/rpc.ts
 +++ b/packages/contracts/src/rpc.ts
-@@ -160,12 +160,14 @@ import {
+@@ -107,7 +107,10 @@ import {
+   IncomingBotCallSchema,
+   IntegrationCatalogResultSchema,
+   MemoryDocumentSchema,
++  MemoryLearningSchema,
++  MemoryLearningStatusSchema,
+   MemoryPromptBudgetSchema,
++  MemoryRunUseSchema,
+   MemoryScopeSchema,
+   MeSchema,
+   MessagingAgentConnectionSchema,
+@@ -160,12 +163,14 @@ import {
    VoiceStatusSchema,
  } from "./domain.js";
  import { ComputerCommandSchema, ProductEventSchema } from "./events.js";
@@ -83026,7 +84803,7 @@ index 94ad5b0..d5b6e2a 100644
  import {
    BotMcpServerSchema,
    McpServerConfigInput,
-@@ -187,6 +189,12 @@ import {
+@@ -187,6 +192,12 @@ import {
  } from "./model-connections.js";
  import { ModelHeadersSchema } from "./model-headers.js";
  import { ModelRoleSchema, ModelRoleUpdateSchema, ModelRoleViewSchema } from "./model-roles.js";
@@ -83039,7 +84816,7 @@ index 94ad5b0..d5b6e2a 100644
  import {
    PAGE_LIST_MAX_LIMIT,
    PageDetailSchema,
-@@ -213,6 +221,11 @@ import { SecurityEventListInputSchema, SecurityEventSchema } from "./security-ev
+@@ -213,6 +224,11 @@ import { SecurityEventListInputSchema, SecurityEventSchema } from "./security-ev
  import { SettingsScopeSchema, SpaceSettingSchema, settingsScopeInput } from "./settings-scope.js";
  import { SpaceAvailabilitySchema } from "./space-availability.js";
  import { VaultImportInput, VaultImportResult } from "./vault-import.js";
@@ -83051,7 +84828,7 @@ index 94ad5b0..d5b6e2a 100644
  
  const botId = z.object({ botId: Id });
  const groupId = z.object({ groupId: Id });
-@@ -527,6 +540,17 @@ export const appContract = {
+@@ -527,6 +543,17 @@ export const appContract = {
        )
        .output(ModelRoleViewSchema),
      list: oc.output(z.array(ModelCatalogEntrySchema)),
@@ -83069,7 +84846,7 @@ index 94ad5b0..d5b6e2a 100644
      credentials: oc.output(z.array(ModelCredentialSchema)),
      backups: oc.output(z.array(ModelBackupChoiceSchema)),
      setBackups: oc.input(ModelBackupListSchema).output(z.object({ ok: z.literal(true) })),
-@@ -609,8 +633,17 @@ export const appContract = {
+@@ -609,8 +636,17 @@ export const appContract = {
      importCreate: oc.input(AgentImportCreateInput).output(BotSchema),
      importSetupState: oc.input(AgentImportSetupStateInput).output(AgentImportSetupStateSchema),
      templates: oc.output(z.array(BotTemplateListingSchema)),
@@ -83087,7 +84864,31 @@ index 94ad5b0..d5b6e2a 100644
      reorder: oc.input(ReorderBotsInput).output(z.object({ ok: z.literal(true) })),
      update: oc.input(UpdateBotInput).output(BotSchema),
      restoreInstructions: oc
-@@ -1571,6 +1604,11 @@ export const appContract = {
+@@ -915,6 +951,23 @@ export const appContract = {
+       )
+       .output(MemoryDocumentSchema),
+     remove: oc.input(z.object({ documentId: Id })).output(z.object({ ok: z.literal(true) })),
++    /** Durable facts the assistant proposed keeping: waiting, already merged, or dropped. */
++    learnings: oc
++      .input(
++        z.object({
++          botId: Id.optional(),
++          scope: z.enum(["bot", "user"]).optional(),
++          status: MemoryLearningStatusSchema.optional(),
++          limit: z.number().int().min(1).max(200).optional(),
++        }),
++      )
++      .output(z.array(MemoryLearningSchema)),
++    /** Keep or drop one proposed learning; approving merges it into the long-term memory. */
++    decideLearning: oc
++      .input(z.object({ learningId: Id, status: z.enum(["approved", "rejected"]) }))
++      .output(MemoryLearningSchema),
++    /** Which durable memory a run's prompt carried. Null when the run recorded none. */
++    usedByRun: oc.input(z.object({ runId: Id })).output(MemoryRunUseSchema.nullable()),
+     exportMarkdown: oc.input(z.object({ botId: Id.optional() })).output(z.string()),
+     providerConfig: oc.output(SpaceMemoryConfigSchema.nullable()),
+     connectProvider: oc
+@@ -1571,6 +1624,11 @@ export const appContract = {
        // The longest origin: a scheme, a 253-character host name and a port.
        .input(z.object({ origin: z.string().max("https://".length + 253 + ":65535".length) }))
        .output(z.object({ icon: z.string().nullable(), retry: z.boolean().optional() })),
@@ -83099,7 +84900,7 @@ index 94ad5b0..d5b6e2a 100644
    },
    runs: {
      list: oc.input(z.object({ filter: z.enum(["active", "recent"]) })).output(RunsListOutputSchema),
-@@ -1661,6 +1699,13 @@ export const appContract = {
+@@ -1661,6 +1719,13 @@ export const appContract = {
          }),
        )
        .output(z.object({ ready: z.boolean(), utterances: z.array(z.string()) })),

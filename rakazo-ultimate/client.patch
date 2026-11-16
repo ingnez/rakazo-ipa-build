@@ -728,21 +728,19 @@ index 513abcf..b00060f 100644
      </SafeAreaView>
 diff --git a/apps/mobile/app/(settings)/import-memory.tsx b/apps/mobile/app/(settings)/import-memory.tsx
 new file mode 100644
-index 0000000..aac39bf
+index 0000000..7e57db0
 --- /dev/null
 +++ b/apps/mobile/app/(settings)/import-memory.tsx
-@@ -0,0 +1,334 @@
+@@ -0,0 +1,312 @@
 +import { useLingui } from "@lingui/react/macro";
 +import type { MemoryDocument } from "@rakazo/contracts";
 +import { MEMORY_INDEX_PATH } from "@rakazo/contracts";
 +import { useTimeout } from "@rakazo/chat-ui/hooks";
 +import * as Clipboard from "expo-clipboard";
-+import type { NativeStackNavigationOptions } from "expo-router";
-+import { useLocalSearchParams, useNavigation } from "expo-router";
-+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
++import { useLocalSearchParams } from "expo-router";
++import { useCallback, useEffect, useRef, useState } from "react";
 +import {
 +  ActivityIndicator,
-+  Alert,
 +  ScrollView,
 +  StyleSheet,
 +  Text,
@@ -801,7 +799,6 @@ index 0000000..aac39bf
 +/** Brings memory that another assistant already knows into this Space's or a bot's memory. */
 +export default function ImportMemoryScreen() {
 +  const params = useLocalSearchParams<{ botId?: string; name?: string }>();
-+  const navigation = useNavigation();
 +  const sideInsets = useSideInsets();
 +  const styles = useThemedStyles(createStyles);
 +  const { t } = useLingui();
@@ -880,8 +877,8 @@ index 0000000..aac39bf
 +        const next = `${existing ? `${existing}\n\n` : ""}${section}\n${addition}`;
 +        if (byteLength(next) > maxBytes) {
 +          const limit = botId
-+            ? t`This Bot's memory is full (4 KB). Open the memory note and merge or delete a few lines first.`
-+            : t`Shared memory is full (14 KB). Open the memory note and merge or delete a few lines first.`;
++            ? "这个 Bot 的记忆满了（上限 4 KB）。先去 MEMORY.md 合并或删掉几行，再回来导入。"
++            : "共享记忆满了（上限 14 KB）。先去 MEMORY.md 合并或删掉几行，再回来导入。";
 +          throw new Error(limit);
 +        }
 +        try {
@@ -894,8 +891,8 @@ index 0000000..aac39bf
 +          setDraft("");
 +          setSaved(
 +            botId
-+              ? t`Saved into ${targetName}'s memory; what was already there is kept.`
-+              : t`Saved into shared memory; what was already there is kept.`,
++              ? `已存入「${targetName}」的记忆，原有内容都保留了。`
++              : "已存入整个 Space 的共享记忆，原有内容都保留了。",
 +          );
 +          hapticSuccess();
 +          return;
@@ -914,25 +911,6 @@ index 0000000..aac39bf
 +  }
 +
 +  const canImport = state === "ready" && draft.trim().length > 0 && !busy;
-+  useLayoutEffect(() => {
-+    navigation.setOptions({
-+      title: "从其他 AI 导入记忆",
-+      ...(state === "ready"
-+        ? {
-+            headerRight: () => (
-+              <NativeActionButton
-+                disabled={!canImport}
-+                fill={false}
-+                label={busy ? "导入中…" : "导入"}
-+                onPress={() => void importMemory()}
-+              />
-+            ),
-+          }
-+        : { headerRight: undefined }),
-+    } satisfies NativeStackNavigationOptions);
-+    // The handler needs the latest draft, so the options follow it.
-+    // biome-ignore lint/correctness/useExhaustiveDependencies: importMemory closes over the draft
-+  }, [navigation, state, canImport, busy, draft, t]);
 +
 +  return (
 +    <SafeAreaView edges={["bottom"]} style={styles.screen}>

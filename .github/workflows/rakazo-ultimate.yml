@@ -2,7 +2,7 @@ name: Rakazo Ultimate iOS
 on: [workflow_dispatch]
 jobs:
   build:
-    runs-on: self-hosted
+    runs-on: xcode-27
     timeout-minutes: 240
     steps:
       - { uses: actions/checkout@v4, with: { ref: rakazo-ultimate } }

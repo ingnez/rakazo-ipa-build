@@ -3662,7 +3662,7 @@ index 61a01d5..0a08427 100644
    });
  }
 diff --git a/apps/mobile/app/search.tsx b/apps/mobile/app/search.tsx
-index 5eae039..ccf5539 100644
+index 5eae039..7d63a1d 100644
 --- a/apps/mobile/app/search.tsx
 +++ b/apps/mobile/app/search.tsx
 @@ -1,22 +1,16 @@
@@ -3710,7 +3710,7 @@ index 5eae039..ccf5539 100644
  import { native, useThemedStyles } from "../lib/native";
  import { getSearchInbox, subscribeSearchInbox } from "../lib/search-inbox";
  import type { SearchSheetRow } from "../lib/search-sheet";
-@@ -52,7 +49,48 @@ const kindIcons = {
+@@ -52,7 +49,50 @@ const kindIcons = {
    routine: { ios: "clock.arrow.circlepath", android: "time-outline" },
  } as const;
  
@@ -3720,6 +3720,8 @@ index 5eae039..ccf5539 100644
 +
 +/** The fade above the field: what the field uncovers as the list scrolls under it. */
 +const FIELD_FADE = 26;
++/** The soft edge under the field, so the list behind it never meets the keys as a cut row. */
++const FIELD_SILL = 10;
 +
 +const FILTERS: readonly { id: SearchFilter; label: string }[] = [
 +  { id: "all", label: "全部" },
@@ -3760,7 +3762,7 @@ index 5eae039..ccf5539 100644
    const { t } = useLingui();
    const locale = useUiLocale();
    const router = useRouter();
-@@ -69,9 +107,26 @@ export default function SearchSheet() {
+@@ -69,9 +109,28 @@ export default function SearchSheet() {
    const attempt = useRef(0);
    const focused = useRef(false);
    const [query, setQuery] = useState("");
@@ -3775,7 +3777,9 @@ index 5eae039..ccf5539 100644
 +    paddingBottom: interpolate(
 +      keyboardLift.height.value,
 +      [0, 24],
-+      [insets.bottom + 6, 12],
++      // With the keys up the field sits on the keyboard's own top edge — no strip of list showing
++      // between them; at rest it rests above the home indicator.
++      [insets.bottom + 6, 0],
 +      "clamp",
 +    ),
 +  }));
@@ -3787,7 +3791,7 @@ index 5eae039..ccf5539 100644
  
    const cancelOpen = useCallback(() => {
      attempt.current += 1;
-@@ -81,6 +136,12 @@ export default function SearchSheet() {
+@@ -81,6 +140,12 @@ export default function SearchSheet() {
  
    useFocusEffect(
      useCallback(() => {
@@ -3800,7 +3804,7 @@ index 5eae039..ccf5539 100644
        const arm = () => {
          focused.current = true;
          opening.current = false;
-@@ -96,18 +157,13 @@ export default function SearchSheet() {
+@@ -96,18 +161,13 @@ export default function SearchSheet() {
          cancelOpen();
          unsubscribe();
        };
@@ -3824,7 +3828,7 @@ index 5eae039..ccf5539 100644
  
    const open = async (row: SearchSheetRow) => {
      if (!focused.current || opening.current) return;
-@@ -164,74 +220,50 @@ export default function SearchSheet() {
+@@ -164,74 +224,50 @@ export default function SearchSheet() {
      }
    };
  
@@ -3938,7 +3942,7 @@ index 5eae039..ccf5539 100644
          keyExtractor={(row) => row.key}
          automaticallyAdjustKeyboardInsets={!rootAvoidsKeyboard}
          keyboardDismissMode="interactive"
-@@ -239,7 +271,8 @@ export default function SearchSheet() {
+@@ -239,7 +275,8 @@ export default function SearchSheet() {
          contentContainerStyle={{
            paddingLeft: gutters.left,
            paddingRight: gutters.right,
@@ -3948,7 +3952,7 @@ index 5eae039..ccf5539 100644
          }}
          ListEmptyComponent={
            error ? undefined : (
-@@ -261,51 +294,149 @@ export default function SearchSheet() {
+@@ -261,51 +298,155 @@ export default function SearchSheet() {
              </View>
            ) : undefined
          }
@@ -4039,6 +4043,11 @@ index 5eae039..ccf5539 100644
 +        <View pointerEvents="none" style={styles.fieldFadeBox}>
 +          <BottomFade height={FIELD_FADE} id="search-field-fade" color={String(native.page)} />
 +        </View>
++        {/* A soft sill behind the field's own bottom edge: rows behind it fade into the page
++            instead of being cut by the pill where it meets the keyboard. */}
++        <View pointerEvents="none" style={styles.fieldSill}>
++          <BottomFade height={FIELD_SILL} id="search-field-sill" color={String(native.page)} />
++        </View>
 +        <View
 +          style={[
 +            styles.bottom,
@@ -4123,6 +4132,7 @@ index 5eae039..ccf5539 100644
 +    // The field and its fade: one column at the page's foot, lifted by the keyboard.
 +    fieldLayer: { position: "absolute", left: 0, right: 0, bottom: 0 },
 +    fieldFadeBox: { height: FIELD_FADE },
++    fieldSill: { position: "absolute", left: 0, right: 0, bottom: 0, height: FIELD_SILL },
 +    filters: { flexDirection: "row", alignItems: "center", gap: 8 },
 +    filter: { borderRadius: 999, paddingHorizontal: 14, paddingVertical: 7 },
 +    filterText: { fontSize: 14, fontWeight: "500" },
@@ -4130,7 +4140,7 @@ index 5eae039..ccf5539 100644
      fieldPill: {
        flex: 1,
        flexDirection: "row",
-@@ -327,7 +458,7 @@ function createStyles() {
+@@ -327,7 +468,7 @@ function createStyles() {
        flexDirection: "row",
        alignItems: "center",
        paddingHorizontal: 16,
@@ -4139,7 +4149,7 @@ index 5eae039..ccf5539 100644
        gap: 12,
      },
      pressed: { opacity: 0.55 },
-@@ -349,7 +480,7 @@ function createStyles() {
+@@ -349,7 +490,7 @@ function createStyles() {
        ...typeScale.cardTitle,
        writingDirection: "auto",
      },
@@ -62482,12 +62492,12 @@ index dc2c99b..6979171 100644
 +}
 diff --git a/apps/mobile/components/bot-profile-tabs.tsx b/apps/mobile/components/bot-profile-tabs.tsx
 new file mode 100644
-index 0000000..c6e4f62
+index 0000000..efd0f7d
 --- /dev/null
 +++ b/apps/mobile/components/bot-profile-tabs.tsx
-@@ -0,0 +1,610 @@
+@@ -0,0 +1,772 @@
 +import { useLingui } from "@lingui/react/macro";
-+import type { FrontDeskTask, MemoryLearning, Routine } from "@rakazo/contracts";
++import type { DiarySummary, FrontDeskTask, MemoryLearning, Routine } from "@rakazo/contracts";
 +import { useQuery } from "@tanstack/react-query";
 +import { useRouter } from "expo-router";
 +import { useCallback, useEffect, useMemo, useState } from "react";
@@ -62576,7 +62586,7 @@ index 0000000..c6e4f62
 +        <TasksColumn botId={botId} botName={botName} onOpenChat={onOpenChat} />
 +      ) : null}
 +      {tab === "schedules" ? <SchedulesColumn botId={botId} botName={botName} /> : null}
-+      {tab === "memory" ? <MemoryColumn botId={botId} /> : null}
++      {tab === "memory" ? <MemoryColumn botId={botId} botName={botName} /> : null}
 +    </View>
 +  );
 +}
@@ -62801,10 +62811,15 @@ index 0000000..c6e4f62
 +  );
 +}
 +
-+/** 记忆与总结: what the daily review proposed, what was kept, and the notes this Bot holds. */
-+function MemoryColumn({ botId }: { botId: string }) {
++/**
++ * 记忆与总结: the stage diaries this chat was written up into, what the daily review proposed and
++ * kept, and the notes this Bot holds.
++ */
++function MemoryColumn({ botId, botName }: { botId: string; botName: string }) {
 +  const tokens = useMobileTokens();
 +  const router = useRouter();
++  const diaryRead = rpcQuery("memory/diaries", { botId, limit: 20 });
++  const diaries = useQuery(diaryRead);
 +  const pendingRead = rpcQuery("memory/learnings", { botId, status: "pending", limit: 50 });
 +  const pending = useQuery(pendingRead, queryClient);
 +  const approvedRead = rpcQuery("memory/learnings", { botId, status: "approved", limit: 50 });
@@ -62814,6 +62829,10 @@ index 0000000..c6e4f62
 +  const [deciding, setDeciding] = useState<string | null>(null);
 +  const [decideError, setDecideError] = useState<string | null>(null);
 +  const [opened, setOpened] = useState<MemoryLearning | null>(null);
++  const [openedDiary, setOpenedDiary] = useState<DiarySummary | null>(null);
++  // The list carries no bodies: the one that is open reads its own, in full.
++  const diaryBodyRead = rpcQuery("memory/diary", { diaryId: openedDiary?.id ?? "" });
++  const diaryBody = useQuery({ ...diaryBodyRead, enabled: Boolean(openedDiary?.id) }, queryClient);
 +
 +  const decide = useCallback(
 +    async (learning: MemoryLearning, status: "approved" | "rejected") => {
@@ -62840,6 +62859,7 @@ index 0000000..c6e4f62
 +  );
 +
 +  const waiting = pending.data ?? [];
++  const written = diaries.data ?? [];
 +  const kept = useMemo(() => approved.data ?? [], [approved.data]);
 +  // Kept rules read as the day's reviews: one card per day the review wrote them on.
 +  const byDay = useMemo(() => {
@@ -62853,6 +62873,38 @@ index 0000000..c6e4f62
 +
 +  return (
 +    <View style={{ gap: 14 }}>
++      {written.length > 0 ? (
++        <View style={{ gap: 8 }}>
++          <Text style={[styles.sectionLabel, { color: native.secondaryLabel }]}>阶段日记</Text>
++          {written.map((diary) => (
++            <DiaryCard
++              key={diary.id}
++              diary={diary}
++              body={openedDiary?.id === diary.id ? diaryBody.data?.body : undefined}
++              opened={openedDiary?.id === diary.id}
++              onOpen={() => {
++                hapticSelection();
++                setOpenedDiary(openedDiary?.id === diary.id ? null : diary);
++              }}
++              onJump={() =>
++                router.push({
++                  pathname: "/thread",
++                  params: {
++                    botId,
++                    name: botName,
++                    // The diary names the message the stretch starts at; an older row that did
++                    // not keep the id still names its place in the chat by seq.
++                    ...(diary.startMessageId
++                      ? { messageId: diary.startMessageId }
++                      : { seq: String(diary.startSeq) }),
++                  },
++                })
++              }
++            />
++          ))}
++        </View>
++      ) : null}
++
 +      {waiting.length > 0 ? (
 +        <View style={{ gap: 8 }}>
 +          <Text style={[styles.sectionLabel, { color: native.secondaryLabel }]}>等你审核</Text>
@@ -62994,6 +63046,7 @@ index 0000000..c6e4f62
 +      ) : null}
 +
 +      {!pending.isLoading &&
++      written.length === 0 &&
 +      waiting.length === 0 &&
 +      byDay.length === 0 &&
 +      (notes.data ?? []).length === 0 ? (
@@ -63003,6 +63056,112 @@ index 0000000..c6e4f62
 +      ) : null}
 +    </View>
 +  );
++}
++
++/**
++ * One stretch of this chat, as it was written up afterwards: the day and the messages it covers,
++ * what came of it, what it left open, and the one tap back to where it starts.
++ */
++function DiaryCard({
++  diary,
++  body,
++  opened,
++  onOpen,
++  onJump,
++}: {
++  diary: DiarySummary;
++  /** The full record, once the opened card has read it. */
++  body?: string;
++  opened: boolean;
++  onOpen: () => void;
++  onJump: () => void;
++}) {
++  const tokens = useMobileTokens();
++  const hooks = diary.openHooks;
++  // A long stretch says how many hooks are still open; the first two are worth reading at once.
++  const shownHooks = opened ? hooks : hooks.slice(0, 2);
++  return (
++    <View style={[styles.card, styles.stack, { backgroundColor: native.groupedCell }]}>
++      <Pressable
++        accessibilityRole="button"
++        accessibilityLabel={`${diary.title}，${diary.summary}`}
++        onPress={onOpen}
++        style={{ gap: 3 }}
++      >
++        <Text style={[styles.dayLabel, { color: native.tertiaryLabel }]}>{diarySpan(diary)}</Text>
++        <Text
++          numberOfLines={opened ? undefined : 2}
++          style={[styles.cardTitle, { color: native.label }]}
++        >
++          {diary.title}
++        </Text>
++        <Text
++          numberOfLines={opened ? undefined : 2}
++          style={[styles.learningText, { color: native.secondaryLabel }]}
++        >
++          {diary.summary}
++        </Text>
++      </Pressable>
++      {opened ? (
++        <Text style={[styles.learningText, { color: native.label }]}>
++          {body?.trim() || diary.summary}
++        </Text>
++      ) : null}
++      {shownHooks.length > 0 ? (
++        <View style={styles.hooks}>
++          {shownHooks.map((hook) => (
++            <View key={hook} style={[styles.hookChip, { backgroundColor: native.fill }]}>
++              <NativeSymbol
++                ios="circle.dashed"
++                android="ellipse-outline"
++                size={11}
++                color={tokens.warning}
++              />
++              <Text numberOfLines={1} style={[styles.hookText, { color: native.secondaryLabel }]}>
++                {hook}
++              </Text>
++            </View>
++          ))}
++          {!opened && hooks.length > shownHooks.length ? (
++            <Text style={[styles.hookText, { color: native.tertiaryLabel }]}>
++              +{hooks.length - shownHooks.length}
++            </Text>
++          ) : null}
++        </View>
++      ) : null}
++      {opened ? (
++        <Pressable
++          accessibilityRole="button"
++          accessibilityLabel="跳回原对话"
++          onPress={onJump}
++          style={({ pressed }) => [styles.jumpRow, { opacity: pressed ? 0.6 : 1 }]}
++        >
++          <NativeSymbol
++            ios="arrow.uturn.backward"
++            android="return-up-back-outline"
++            size={14}
++            color={tokens.accent}
++          />
++          <Text style={[styles.link, { color: tokens.accent }]}>跳回原对话</Text>
++        </Pressable>
++      ) : null}
++    </View>
++  );
++}
++
++/** "11月16日 23:41 · #120-#134 · 15 条消息": the day it happened and the stretch it covers. */
++function diarySpan(diary: DiarySummary): string {
++  const day = /^(\d{4})-(\d{2})-(\d{2})$/.exec(diary.day);
++  const date = day ? `${Number(day[2])}月${Number(day[3])}日` : diary.day;
++  const at = new Date(diary.createdAt);
++  const time = Number.isNaN(at.getTime())
++    ? ""
++    : at.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
++  const range =
++    diary.endSeq > diary.startSeq ? `#${diary.startSeq}-#${diary.endSeq}` : `#${diary.startSeq}`;
++  return [date, time, range, diary.messageCount > 0 ? `${diary.messageCount} 条消息` : ""]
++    .filter(Boolean)
++    .join(" · ");
 +}
 +
 +/** A breathing mark for work still in hand, so a still list still reads as alive. */
@@ -63095,6 +63254,19 @@ index 0000000..c6e4f62
 +  linkRow: { paddingVertical: 6, alignItems: "flex-start" },
 +  link: { fontSize: 14, fontWeight: "500" },
 +  dot: { width: 7, height: 7, borderRadius: 3.5 },
++  hooks: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6 },
++  hookChip: {
++    flexDirection: "row",
++    alignItems: "center",
++    gap: 4,
++    maxWidth: "100%",
++    borderRadius: 8,
++    borderCurve: "continuous",
++    paddingHorizontal: 7,
++    paddingVertical: 3,
++  },
++  hookText: { fontSize: 12, flexShrink: 1 },
++  jumpRow: { flexDirection: "row", alignItems: "center", gap: 5, paddingTop: 2 },
 +});
 diff --git a/apps/mobile/components/bottom-fade.tsx b/apps/mobile/components/bottom-fade.tsx
 new file mode 100644
@@ -69846,26 +70018,31 @@ index 0000000..eef8d6b
 +});
 diff --git a/apps/mobile/components/thread/link-preview-card.tsx b/apps/mobile/components/thread/link-preview-card.tsx
 new file mode 100644
-index 0000000..4fb913d
+index 0000000..8ea006a
 --- /dev/null
 +++ b/apps/mobile/components/thread/link-preview-card.tsx
-@@ -0,0 +1,161 @@
+@@ -0,0 +1,207 @@
 +import { ph } from "@lingui/core/macro";
 +import { useLingui } from "@lingui/react/macro";
 +import type { Bot } from "@rakazo/contracts";
 +import { useRouter } from "expo-router";
 +import { memo, useState } from "react";
-+import { Alert, Image, Linking, Pressable, StyleSheet, Text, View } from "react-native";
++import { Alert, Linking, Pressable, StyleSheet, Text, View } from "react-native";
 +import { rpc } from "../../lib/api";
-+import { linkSiteLabel, useLinkPreview } from "../../lib/link-preview";
++import { isFormLink, linkSiteLabel, useLinkPreview } from "../../lib/link-preview";
 +import { useMobileTokens, useResolvedAppearance } from "../../lib/native";
 +import { errorText } from "../../lib/user-error";
 +import { NativeSymbol } from "../native-symbol";
 +import { PressScale } from "../press-scale";
 +
 +/**
-+ * The card a pasted link becomes: the page's cover, its title and a line of its own description,
-+ * with the site underneath — and, for a Grok Bot share, one tap to make it a real bot here.
++ * The card a pasted link becomes — kept small so it never takes the chat's screen.
++ *
++ * A link whose page is a form to fill in or an authorization to confirm (a sign-in, a device code,
++ * a page that asks the person to continue) is the one thing here a person must act on, so it is
++ * drawn the way the reference app draws it: a `🌐 表单` line, the page's title, and one `继续`
++ * button. Every other link is a single quiet line with its title and site: it is a reference, not
++ * a page to read in the chat, and the half-screen cover it used to draw is gone.
 + *
 + * It sits outside the bubble, so it reads as the page rather than as something the speaker said.
 + * A link with nothing to show draws no card at all: the text already carries it.
@@ -69876,29 +70053,104 @@ index 0000000..4fb913d
 +  /** The link as it appeared in the message. */
 +  url: string;
 +}) {
++  const preview = useLinkPreview(url);
++  if (!preview) return null;
++  const title = preview.title?.trim() || linkSiteLabel(preview.url);
++  if (isGrokShare(preview.url)) return <BotShare url={preview.url} title={title} />;
++  const site = preview.siteName?.trim() || linkSiteLabel(preview.url);
++  return isFormLink(preview.url) ? (
++    <FormCard url={preview.url} title={title} site={site} />
++  ) : (
++    <LinkLine url={preview.url} title={title} site={site} />
++  );
++});
++
++/** An external form or an authorization waiting on the person: one title, one button. */
++function FormCard({ url, title, site }: { url: string; title: string; site: string }) {
++  const { t } = useLingui();
++  const tokens = useMobileTokens();
++  const theme = useResolvedAppearance();
++  const card = theme === "dark" ? tokens.card : "#FFFFFF";
++  // The reference app's button is light on a dark card; on a light card it takes the ink instead.
++  const button = theme === "dark" ? "#FFFFFF" : tokens.foreground;
++  const label = theme === "dark" ? "#000000" : tokens.background;
++  return (
++    <View
++      accessibilityRole="button"
++      accessibilityLabel={t`Continue in ${ph({ site })}`}
++      testID="form-card"
++      style={[styles.form, { backgroundColor: card, borderColor: tokens.border }]}
++    >
++      <View style={styles.formHead}>
++        <NativeSymbol
++          ios="globe"
++          android="globe-outline"
++          size={12}
++          color={tokens.mutedForeground}
++        />
++        <Text style={[styles.formKind, { color: tokens.mutedForeground }]}>{t`表单`}</Text>
++      </View>
++      <Text numberOfLines={2} style={[styles.formTitle, { color: tokens.foreground }]}>
++        {title}
++      </Text>
++      <View style={styles.formFoot}>
++        <PressScale
++          accessibilityRole="button"
++          accessibilityLabel={t`Continue`}
++          testID="form-card-continue"
++          onPress={() => void Linking.openURL(url).catch(() => undefined)}
++          containerStyle={styles.continueContainer}
++          style={[styles.continue, { backgroundColor: button }]}
++        >
++          <Text style={[styles.continueLabel, { color: label }]}>{t`继续`}</Text>
++        </PressScale>
++      </View>
++    </View>
++  );
++}
++
++/** Any other link: one line with its title and its site. Nothing to fill in, nothing to cover. */
++function LinkLine({ url, title, site }: { url: string; title: string; site: string }) {
++  const { t } = useLingui();
++  const tokens = useMobileTokens();
++  return (
++    <Pressable
++      accessibilityRole="link"
++      accessibilityLabel={t`Open ${ph({ title })}`}
++      testID="link-line"
++      onPress={() => void Linking.openURL(url).catch(() => undefined)}
++      style={({ pressed }) => [
++        styles.line,
++        { backgroundColor: tokens.muted, opacity: pressed ? 0.7 : 1 },
++      ]}
++    >
++      <NativeSymbol ios="link" android="link-outline" size={12} color={tokens.mutedForeground} />
++      <Text numberOfLines={1} style={[styles.lineTitle, { color: tokens.foreground }]}>
++        {title}
++      </Text>
++      <Text numberOfLines={1} style={[styles.lineSite, { color: tokens.mutedForeground }]}>
++        {site}
++      </Text>
++    </Pressable>
++  );
++}
++
++/** A public Grok Bot share: the same compact card, with the one action it carries. */
++function BotShare({ url, title }: { url: string; title: string }) {
 +  const { t } = useLingui();
 +  const router = useRouter();
 +  const tokens = useMobileTokens();
 +  const theme = useResolvedAppearance();
-+  const preview = useLinkPreview(url);
 +  const [importing, setImporting] = useState(false);
-+  if (!preview) return null;
-+
-+  const title = preview.title?.trim() || linkSiteLabel(preview.url);
-+  const description = preview.description?.trim();
-+  const site = preview.siteName?.trim() || linkSiteLabel(preview.url);
-+  const cover = preview.imageDataUrl ?? preview.imageUrl;
-+  const botLink = isGrokShare(preview.url);
-+
-+  const open = () => {
-+    void Linking.openURL(preview.url).catch(() => undefined);
-+  };
++  const card = theme === "dark" ? tokens.card : "#FFFFFF";
++  const button = theme === "dark" ? "#FFFFFF" : tokens.foreground;
++  const label = theme === "dark" ? "#000000" : tokens.background;
 +
 +  async function importBot() {
 +    if (importing) return;
 +    setImporting(true);
 +    try {
-+      const bot: Bot = await rpc("bots/importGrokLink", { url: preview?.url ?? url });
++      const bot: Bot = await rpc("bots/importGrokLink", { url });
 +      router.push({ pathname: "/thread", params: { botId: bot.id, name: bot.name } });
 +    } catch (cause) {
 +      Alert.alert(t`Could not import this bot`, errorText(cause, t`Please try again.`));
@@ -69908,69 +70160,30 @@ index 0000000..4fb913d
 +  }
 +
 +  return (
-+    <View
-+      style={[
-+        styles.card,
-+        { backgroundColor: theme === "dark" ? tokens.card : "#FFFFFF", borderColor: tokens.border },
-+      ]}
-+    >
-+      <Pressable
-+        accessibilityRole="link"
-+        accessibilityLabel={t`Open ${ph({ title })}`}
-+        onPress={open}
-+        style={styles.linkArea}
-+      >
-+        {cover ? (
-+          <Image
-+            accessibilityIgnoresInvertColors
-+            source={{ uri: cover }}
-+            style={[styles.cover, { backgroundColor: tokens.muted }]}
-+            resizeMode="cover"
-+          />
-+        ) : null}
-+        <View style={styles.text}>
-+          <Text numberOfLines={2} style={[styles.title, { color: tokens.foreground }]}>
-+            {title}
++    <View style={[styles.form, { backgroundColor: card, borderColor: tokens.border }]}>
++      <View style={styles.formHead}>
++        <NativeSymbol ios="link" android="link-outline" size={12} color={tokens.mutedForeground} />
++        <Text style={[styles.formKind, { color: tokens.mutedForeground }]}>{t`Bot 链接`}</Text>
++      </View>
++      <Text numberOfLines={2} style={[styles.formTitle, { color: tokens.foreground }]}>
++        {title}
++      </Text>
++      <View style={styles.formFoot}>
++        <PressScale
++          accessibilityRole="button"
++          disabled={importing}
++          onPress={() => void importBot()}
++          containerStyle={styles.continueContainer}
++          style={[styles.continue, { backgroundColor: button }]}
++        >
++          <Text style={[styles.continueLabel, { color: label }]}>
++            {importing ? t`Importing…` : t`Import bot`}
 +          </Text>
-+          {description ? (
-+            <Text
-+              numberOfLines={2}
-+              style={[styles.description, { color: tokens.mutedForeground }]}
-+            >
-+              {description}
-+            </Text>
-+          ) : null}
-+          <View style={styles.siteRow}>
-+            <NativeSymbol
-+              ios="link"
-+              android="link-outline"
-+              size={11}
-+              color={tokens.mutedForeground}
-+            />
-+            <Text numberOfLines={1} style={[styles.site, { color: tokens.mutedForeground }]}>
-+              {site}
-+            </Text>
-+          </View>
-+        </View>
-+      </Pressable>
-+      {botLink ? (
-+        <View style={[styles.importRow, { borderTopColor: tokens.border }]}>
-+          <PressScale
-+            accessibilityRole="button"
-+            disabled={importing}
-+            onPress={() => void importBot()}
-+            containerStyle={styles.importButtonContainer}
-+            style={[styles.importButton, { backgroundColor: tokens.foreground }]}
-+          >
-+            <Text style={[styles.importLabel, { color: tokens.background }]}>
-+              {importing ? t`Importing…` : t`Import bot`}
-+            </Text>
-+          </PressScale>
-+        </View>
-+      ) : null}
++        </PressScale>
++      </View>
 +    </View>
 +  );
-+});
++}
 +
 +/** The same rule the server uses for an importable share, kept local so the card can decide. */
 +function isGrokShare(url: string): boolean {
@@ -69984,32 +70197,37 @@ index 0000000..4fb913d
 +}
 +
 +const styles = StyleSheet.create({
-+  card: {
-+    borderRadius: 16,
++  // Narrower than a message bubble and only as tall as its three lines.
++  form: {
++    alignSelf: "flex-start",
++    minWidth: 208,
++    maxWidth: 292,
++    borderRadius: 20,
++    borderCurve: "continuous",
 +    borderWidth: StyleSheet.hairlineWidth,
-+    overflow: "hidden",
-+    marginTop: 6,
++    paddingHorizontal: 16,
++    paddingTop: 12,
++    paddingBottom: 10,
++    gap: 8,
 +  },
-+  linkArea: { padding: 10, gap: 10 },
-+  cover: {
-+    width: "100%",
-+    height: 104,
-+    borderRadius: 11,
-+  },
-+  text: { gap: 3 },
-+  title: { fontSize: 15, fontWeight: "600", lineHeight: 20 },
-+  description: { fontSize: 13, lineHeight: 18 },
-+  siteRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 },
-+  site: { fontSize: 11 },
-+  importRow: {
-+    borderTopWidth: StyleSheet.hairlineWidth,
++  formHead: { flexDirection: "row", alignItems: "center", gap: 6 },
++  formKind: { fontSize: 12.5, fontWeight: "500" },
++  formTitle: { fontSize: 16, fontWeight: "600", lineHeight: 21 },
++  formFoot: { flexDirection: "row", justifyContent: "flex-end" },
++  continueContainer: { alignSelf: "flex-end" },
++  continue: { borderRadius: 999, paddingHorizontal: 16, paddingVertical: 7 },
++  continueLabel: { fontSize: 13.5, fontWeight: "600" },
++  line: {
++    flexDirection: "row",
++    alignItems: "center",
++    gap: 6,
++    borderRadius: 12,
++    borderCurve: "continuous",
 +    paddingHorizontal: 10,
-+    paddingVertical: 8,
-+    alignItems: "flex-end",
++    paddingVertical: 7,
 +  },
-+  importButtonContainer: { alignSelf: "flex-end" },
-+  importButton: { borderRadius: 999, paddingHorizontal: 14, paddingVertical: 6 },
-+  importLabel: { fontSize: 13, fontWeight: "600" },
++  lineTitle: { fontSize: 12.5, fontWeight: "500", flexShrink: 1 },
++  lineSite: { fontSize: 11.5, flexShrink: 1 },
 +});
 diff --git a/apps/mobile/components/thread/mcp-app-card.tsx b/apps/mobile/components/thread/mcp-app-card.tsx
 index 97967df..3dbff21 100644
@@ -71477,7 +71695,7 @@ index 722969f..2360c7e 100644
        react: (message, reaction) => rowActionsRef.current.react(message, reaction),
        markUnread: (message) => rowActionsRef.current.markUnread(message),
 diff --git a/apps/mobile/components/thread/thread-screen.tsx b/apps/mobile/components/thread/thread-screen.tsx
-index c3c0cfd..fd57cd9 100644
+index c3c0cfd..afa5bf1 100644
 --- a/apps/mobile/components/thread/thread-screen.tsx
 +++ b/apps/mobile/components/thread/thread-screen.tsx
 @@ -3,7 +3,6 @@ import { useLingui } from "@lingui/react/macro";
@@ -71562,7 +71780,24 @@ index c3c0cfd..fd57cd9 100644
  import { useThreadHeader } from "./thread-header";
  import { LoadEarlierButton, ThreadWorkingFooter } from "./thread-list-controls";
  import { ThreadMessageList } from "./thread-message-list";
-@@ -133,6 +146,11 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -118,6 +131,7 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+     groupId,
+     name,
+     messageId,
++    seq: seqParam,
+     threadId,
+     readOnly: readOnlyParam,
+   } = useLocalSearchParams<{
+@@ -125,6 +139,8 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+     groupId?: string;
+     name?: string;
+     messageId?: string;
++    /** A message's seq, for a caller that kept the place but not the id — a stage diary. */
++    seq?: string;
+     threadId?: string;
+     readOnly?: string;
+   }>();
+@@ -133,6 +149,11 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
    const inGroup = Boolean(groupId);
    const call = useCallSession();
    const rootAvoidsKeyboard = useContext(CallKeyboardContext);
@@ -71574,7 +71809,7 @@ index c3c0cfd..fd57cd9 100644
    const contentBottomInset = useContentBottomInset();
    const onCall = Boolean(botId) && call?.botId === botId;
    // The composer floats over the list, which scrolls underneath; this keeps the newest message
-@@ -218,12 +236,25 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -218,12 +239,25 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
    );
    const feedback = useThreadFeedback(threadKey, newClientId, echoed);
    const { error, setError } = feedback;
@@ -71601,7 +71836,7 @@ index c3c0cfd..fd57cd9 100644
    const composerMentionTargets = useMemo(
      () =>
        buildComposerMentionOptions({
-@@ -263,6 +294,14 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -263,6 +297,14 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
      snap && (!showingSaved || error)
        ? snap.run?.status
        : (titleBot?.threadStatus ?? snap?.run?.status);
@@ -71616,7 +71851,7 @@ index c3c0cfd..fd57cd9 100644
    // The group's members in its order, once the chat or its group list has loaded them; the
    // title seats the inbox's copy until then.
    const groupMembers = threadGroupMembers(groupId, snap, mentionGroups);
-@@ -271,6 +310,8 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -271,6 +313,8 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
      (message) => message.id.startsWith("progress:") && liveMessageComposing(message.blocks),
    );
    const activityLine = liveActivityLine(snap?.messages ?? []);
@@ -71625,10 +71860,24 @@ index c3c0cfd..fd57cd9 100644
    const workingRoutine = workingRoutineName(snap?.activeRuns ?? (snap?.run ? [snap.run] : []));
    const userBubble = useMemo(
      () =>
-@@ -365,6 +406,64 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -365,6 +409,78 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
      markReadIfVisible,
    });
  
++  // A caller that kept the place in the chat but not the message id — a stage diary's start —
++  // names it by seq: the first message at or after it is where the stretch begins.
++  const jumpSeq = Number(seqParam);
++  const seqJumped = useRef(false);
++  useEffect(() => {
++    if (seqJumped.current || !seqParam || !Number.isFinite(jumpSeq) || !snap) return;
++    const target = snap.messages.find(
++      (message) => message.seq !== undefined && message.seq >= jumpSeq,
++    );
++    if (!target) return;
++    seqJumped.current = true;
++    void applyMessageJump({ botId, groupId, messageId: target.id }).catch(() => undefined);
++  }, [applyMessageJump, botId, groupId, jumpSeq, seqParam, snap]);
++
 +  // The ledger of work running behind this chat: the title capsule opens it, this screen fills it.
 +  // The server's own ledger rows are the source — what the front desk handed to the back office,
 +  // with the desk, the model and the step it is on — and only a server that publishes none leaves
@@ -71690,7 +71939,7 @@ index c3c0cfd..fd57cd9 100644
    const paging = useThreadPaging({
      history,
      scroll,
-@@ -447,7 +546,8 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -447,7 +563,8 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
        setReplyQuote(null);
      },
      quote: setQuoteTarget,
@@ -71700,7 +71949,7 @@ index c3c0cfd..fd57cd9 100644
      speak,
      react: composer.react,
      markUnread: markUnreadFrom,
-@@ -527,6 +627,14 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -527,6 +644,14 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
              status: bot.status,
            }))
          : [];
@@ -71715,7 +71964,7 @@ index c3c0cfd..fd57cd9 100644
    const workingFooter = (
      <ThreadWorkingFooter
        bots={workingBots.map((bot) => ({
-@@ -535,7 +643,8 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -535,7 +660,8 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
        }))}
        atBottom={!scroll.state.detached}
        label={
@@ -71725,7 +71974,7 @@ index c3c0cfd..fd57cd9 100644
        }
      />
    );
-@@ -572,23 +681,20 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -572,23 +698,20 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
    );
  
    return (
@@ -71762,7 +72011,7 @@ index c3c0cfd..fd57cd9 100644
          <View style={{ flex: 1 }}>
            <NewestPageCards.Provider value={newestPages}>
              <ThreadMessageList
-@@ -610,35 +716,12 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -610,35 +733,12 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
                showLatest={showLatest}
              />
            </NewestPageCards.Provider>
@@ -71799,7 +72048,7 @@ index c3c0cfd..fd57cd9 100644
              attachmentNotice={attachments.attachmentNotice}
              attachments={attachments.activePendingAttachments}
              onRemoveAttachment={(id) =>
-@@ -650,6 +733,10 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -650,6 +750,10 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
              <ThreadComposer
                key={threadKey}
                ref={composer.composerRef}
@@ -71810,7 +72059,7 @@ index c3c0cfd..fd57cd9 100644
                draftScope={draftScope}
                agentSkills={agentSkills}
                composerMentionTargets={composerMentionTargets}
-@@ -657,9 +744,25 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -657,9 +761,25 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
                composerPrompt={composerPrompt}
                replyTargetId={replyTarget?.id}
                replyQuote={replyQuote}
@@ -71836,7 +72085,7 @@ index c3c0cfd..fd57cd9 100644
                botId={botId}
                onCall={onCall}
                sending={attachments.shareImporting}
-@@ -673,27 +776,47 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -673,27 +793,47 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
              />
            </ThreadComposerDock>
          </View>
@@ -74573,7 +74822,7 @@ index 0000000..0292bf8
 +  return result.action === Share.sharedAction;
 +}
 diff --git a/apps/mobile/lib/call-card-keep-awake.test.tsx b/apps/mobile/lib/call-card-keep-awake.test.tsx
-index fdd254f..b11e03c 100644
+index fdd254f..37e3f38 100644
 --- a/apps/mobile/lib/call-card-keep-awake.test.tsx
 +++ b/apps/mobile/lib/call-card-keep-awake.test.tsx
 @@ -6,7 +6,6 @@ import type { Root } from "react-dom/client";
@@ -74584,7 +74833,16 @@ index fdd254f..b11e03c 100644
  import type { CallDeps } from "./call-session";
  import { endCall, startCall, toggleTranscript, useCallActive } from "./call-session";
  import { hapticImpact } from "./haptics";
-@@ -267,31 +266,27 @@ describe("CallCard background lifetime", () => {
+@@ -148,6 +147,8 @@ const deps: CallDeps = {
+   followUp: vi.fn(),
+   endCall: async () => undefined,
+   speak: async () => undefined,
++  speakMore: vi.fn(),
++  waitForSpeechEnd: async () => undefined,
+   watch: () => vi.fn(),
+   stopSpeaking: vi.fn(),
+   audio: async () => undefined,
+@@ -267,31 +268,27 @@ describe("CallCard background lifetime", () => {
      expect(activeTags.has("rakazo-call")).toBe(true);
    });
  
@@ -74625,7 +74883,7 @@ index fdd254f..b11e03c 100644
    });
  });
 diff --git a/apps/mobile/lib/call-session.test.ts b/apps/mobile/lib/call-session.test.ts
-index 2a5da46..dbc12c4 100644
+index 2a5da46..bb1a407 100644
 --- a/apps/mobile/lib/call-session.test.ts
 +++ b/apps/mobile/lib/call-session.test.ts
 @@ -11,7 +11,6 @@ vi.mock("./haptics", () => ({ hapticImpact: vi.fn(), hapticSuccess: vi.fn() }));
@@ -74636,7 +74894,27 @@ index 2a5da46..dbc12c4 100644
    ExpectedTurnFailure,
    endCall,
    endCallBeforeSessionEnd,
-@@ -1848,163 +1847,6 @@ describe("mobile call session on a timer", () => {
+@@ -68,6 +67,8 @@ vi.mock("./voice", () => ({
+   setCallAudio: vi.fn(async () => undefined),
+   setDictationAudio: vi.fn(async () => undefined),
+   speakText: vi.fn(),
++  appendSpeech: vi.fn(),
++  waitForSpeechEnd: vi.fn(async () => undefined),
+   stopSpeaking: vi.fn(),
+ }));
+ vi.mock("./call-sounds", () => ({ playCallCue: vi.fn() }));
+@@ -217,6 +218,10 @@ function fakes(opts: { onDevice?: boolean; loadThread?: boolean } = {}) {
+       speeches.push(next);
+       return next.promise;
+     },
++    speakMore: (_botId, text) => {
++      spoken.push(text);
++    },
++    waitForSpeechEnd: async () => undefined,
+     watch: (botId, onReply, onCallEnded, onThread) => {
+       reply = onReply;
+       ended = onCallEnded;
+@@ -1848,163 +1853,6 @@ describe("mobile call session on a timer", () => {
      expect(getSnapshot()).toBeNull();
    });
  
@@ -74801,7 +75079,7 @@ index 2a5da46..dbc12c4 100644
      const { rpc } = await import("./api");
      const { subscribeThread } = await import("./api-live");
 diff --git a/apps/mobile/lib/call-session.ts b/apps/mobile/lib/call-session.ts
-index bdc1f57..69e46c0 100644
+index bdc1f57..9f107f3 100644
 --- a/apps/mobile/lib/call-session.ts
 +++ b/apps/mobile/lib/call-session.ts
 @@ -1,5 +1,5 @@
@@ -74819,7 +75097,7 @@ index bdc1f57..69e46c0 100644
  import type { ApiRequestContext } from "./api";
  import { captureApiRequestContext, rpc } from "./api";
  import { subscribeThread } from "./api-live";
-@@ -41,11 +40,16 @@ import {
+@@ -41,22 +40,30 @@ import {
  } from "./call-sounds";
  import type { DictationGiveUp } from "./dictation";
  import * as dictation from "./dictation";
@@ -74835,8 +75113,46 @@ index bdc1f57..69e46c0 100644
 +import { openRealtimeSocket } from "./realtime-socket";
  import { fetchServer } from "./server-headers";
  import { currentSessionGeneration, subscribeSessionGeneration } from "./session";
++import { takeSpeakablePiece } from "./stream-speech";
  import { errorText, voiceAccountErrorText } from "./user-error";
-@@ -160,6 +164,10 @@ const callSends = createCallSendTracker();
+ import type { SpeechOwner } from "./voice";
+ import {
++  appendSpeech,
+   createSpeechOwner,
+   ensureVoiceConsent,
+   setCallAudio,
+   setDictationAudio,
+   speakText,
+   stopSpeaking,
++  waitForSpeechEnd,
+ } from "./voice";
+ 
+ export type CallPhase = "listening" | "thinking" | "speaking";
+@@ -106,6 +113,10 @@ export type CallDeps = {
+   /** Tells the server the caller hung up, so it files the call marker and the wrap-up run. */
+   endCall: (botId: string, callId: string) => Promise<void>;
+   speak: (botId: string, text: string) => Promise<void>;
++  /** Adds the next piece of a reply that is still being written to the voice already playing. */
++  speakMore: (botId: string, text: string) => void;
++  /** Resolves once this call's speech has played everything it queued. */
++  waitForSpeechEnd: () => Promise<void>;
+   /** Cuts the reply off when the caller talks over it. */
+   stopSpeaking: () => void;
+   /** The opening cue as the call starts, the closing one once the caller's turn is heard. */
+@@ -115,7 +126,11 @@ export type CallDeps = {
+   waitSound: (action: "preload" | "start" | "stop" | "release") => void;
+   watch: (
+     botId: string,
+-    onReply: (messageId: string, text: string, runId?: string) => void,
++    /**
++     * A reply to speak: `text` is everything it has said so far, and each call carries more of it
++     * than the last. `final` says the reply is complete, so whatever is left is all there is.
++     */
++    onReply: (messageId: string, text: string, runId?: string, final?: boolean) => void,
+     onCallEnded: (ended: CallEnded) => void,
+     /** Every update of the call's thread, so a turn can answer what the bot is waiting on. */
+     onThread: (thread: MobileSnapshot) => void,
+@@ -160,6 +175,10 @@ const callSends = createCallSendTracker();
  const hangUps = new Set<Promise<void>>();
  /** The run this call's last turn started: replies to anything else are not spoken. */
  let callRunId: string | null = null;
@@ -74847,7 +75163,16 @@ index bdc1f57..69e46c0 100644
  let deps: CallDeps = productionDeps();
  let turn: AbortController | null = null;
  let unwatch: (() => void) | null = null;
-@@ -192,7 +200,6 @@ let micOpen = false;
+@@ -172,6 +191,8 @@ let consentBlocked = false;
+ let botEndedCall = false;
+ let hangUpTimer: ReturnType<typeof setTimeout> | null = null;
+ let spokenMessageId: string | null = null;
++/** What of the reply being said has been handed to the voice, so the rest can follow it. */
++let streamSpoken = 0;
+ /** The call's thread as the live feed last reported it. */
+ let thread: MobileSnapshot | null = null;
+ /** The microphone stays shut while the bot waits on a code typed on screen. */
+@@ -192,7 +213,6 @@ let micOpen = false;
  let opening = false;
  /** The caller cut the reply off: the speaker going idle must not reopen the microphone. */
  let bargedIn = false;
@@ -74855,7 +75180,7 @@ index bdc1f57..69e46c0 100644
  /** Counting down a phrase heard over the reply, before it counts as cutting in. */
  const interim = createInterimBargeIn(() => {
    if (state?.phase !== "speaking") return;
-@@ -257,6 +264,11 @@ export function startCall(
+@@ -257,6 +277,11 @@ export function startCall(
      transcribe?: boolean;
      /** Spoken as the call connects, before the caller's first turn. */
      greeting?: string;
@@ -74867,7 +75192,7 @@ index bdc1f57..69e46c0 100644
      answered?: { callId: string };
      requestContext?: ApiRequestContext;
      /** Called with each finished turn; a target means the caller asked for that bot instead. */
-@@ -278,6 +290,9 @@ export function startCall(
+@@ -278,6 +303,9 @@ export function startCall(
    recognitionFailures = 0;
    micOpen = false;
    bargedIn = false;
@@ -74877,7 +75202,7 @@ index bdc1f57..69e46c0 100644
    spokenMemory.clear();
    state = {
      botId: call.botId,
-@@ -291,12 +306,18 @@ export function startCall(
+@@ -291,12 +319,18 @@ export function startCall(
      heard: "",
      exchanges: [],
    };
@@ -74897,7 +75222,7 @@ index bdc1f57..69e46c0 100644
    void openCall(callId, call.greeting);
    return callId;
  }
-@@ -317,6 +338,113 @@ async function openCall(openedCallId: string, greeting?: string): Promise<void>
+@@ -317,6 +351,113 @@ async function openCall(openedCallId: string, greeting?: string): Promise<void>
    else void listen();
  }
  
@@ -75011,7 +75336,7 @@ index bdc1f57..69e46c0 100644
  /** A background voice/status result can enable provider fallback after the call has started. */
  export function setCallProviderTranscribe(enabled: boolean, forCallId?: string): void {
    if (!state || (forCallId !== undefined && forCallId !== callId)) return;
-@@ -333,9 +461,18 @@ export function hangUp(): void {
+@@ -333,9 +474,18 @@ export function hangUp(): void {
  }
  
  export function endCall(): void {
@@ -75031,7 +75356,7 @@ index bdc1f57..69e46c0 100644
      const { botId } = state;
      const closingCallId = callId;
      const closeServerCall = deps.endCall;
-@@ -355,7 +492,6 @@ export function endCall(): void {
+@@ -355,7 +505,6 @@ export function endCall(): void {
    if (state) void deps.audio(false).catch(() => undefined);
    unwatch?.();
    unwatch = null;
@@ -75039,7 +75364,7 @@ index bdc1f57..69e46c0 100644
    if (hangUpTimer) clearTimeout(hangUpTimer);
    hangUpTimer = null;
    hangUpAfterReply = false;
-@@ -379,34 +515,9 @@ export function endCall(): void {
+@@ -379,34 +528,9 @@ export function endCall(): void {
    emit();
  }
  
@@ -75074,7 +75399,7 @@ index bdc1f57..69e46c0 100644
  /**
   * Hangs up while the session still exists, waiting at most `SIGN_OUT_HANG_UP_MS` for pending
   * sends and the hang-up. What follows — a sign-out or a server switch — discards the session,
-@@ -431,6 +542,9 @@ configureSessionEndHangUp(endCallBeforeSessionEnd);
+@@ -431,6 +555,9 @@ configureSessionEndHangUp(endCallBeforeSessionEnd);
  export function toggleMute(): void {
    if (!state) return;
    const muted = !state.muted;
@@ -75084,7 +75409,7 @@ index bdc1f57..69e46c0 100644
    set({ muted, heard: "" });
    if (muted) {
      turn?.abort();
-@@ -450,7 +564,6 @@ export function toggleTranscript(): void {
+@@ -450,7 +577,6 @@ export function toggleTranscript(): void {
  
  async function listen(): Promise<void> {
    if (!state) return;
@@ -75092,7 +75417,7 @@ index bdc1f57..69e46c0 100644
    // The caller said goodbye: every path back to listening hangs up instead.
    if (hangUpAfterReply) {
      endCall();
-@@ -500,8 +613,8 @@ async function openMic(): Promise<void> {
+@@ -500,8 +626,8 @@ async function openMic(): Promise<void> {
                onDevice = false;
                recognitionFailures += 1;
              }
@@ -75103,7 +75428,7 @@ index bdc1f57..69e46c0 100644
            },
          },
          controller.signal,
-@@ -553,10 +666,6 @@ async function handleTranscript(raw: string): Promise<void> {
+@@ -553,10 +679,6 @@ async function handleTranscript(raw: string): Promise<void> {
      return;
    }
    if (state.phase === "speaking") {
@@ -75114,7 +75439,7 @@ index bdc1f57..69e46c0 100644
      if (!isCallBargeIn(text)) {
        // The microphone caught the reply, not the caller: reopen so a real interruption
        // still lands, and let the reply play out.
-@@ -680,8 +789,6 @@ async function handleTranscript(raw: string): Promise<void> {
+@@ -680,8 +802,6 @@ async function handleTranscript(raw: string): Promise<void> {
  
  function failTurn(error: unknown): void {
    if (!(error instanceof ExpectedTurnFailure)) reportMobileError(error, "voice.turn");
@@ -75123,7 +75448,7 @@ index bdc1f57..69e46c0 100644
    failures += 1;
    if (failures >= MAX_TURN_FAILURES) {
      endCall();
-@@ -694,7 +801,6 @@ function failTurn(error: unknown): void {
+@@ -694,7 +814,6 @@ function failTurn(error: unknown): void {
  /** A denied disclosure is not a transient call failure: wait for an explicit retry. */
  function blockForConsent(error: AiConsentBlocked): void {
    consentBlocked = true;
@@ -75131,7 +75456,7 @@ index bdc1f57..69e46c0 100644
    turn?.abort();
    turn = null;
    micOpen = false;
-@@ -720,7 +826,6 @@ function heardInterim(text: string): void {
+@@ -720,17 +839,38 @@ function heardInterim(text: string): void {
      set({ heard: text });
      return;
    }
@@ -75139,7 +75464,42 @@ index bdc1f57..69e46c0 100644
    interim.hear(text);
  }
  
-@@ -760,7 +865,6 @@ function onThread(next: MobileSnapshot): void {
+-function onReply(messageId: string, text: string, runId?: string): void {
++function onReply(messageId: string, text: string, runId?: string, _final = true): void {
+   // Work the bot files after hanging up belongs in the thread, not in the caller's ear.
+-  if (!state || switching || botEndedCall || messageId === spokenMessageId) return;
++  if (!state || switching || botEndedCall) return;
+   // A reply to something typed into the thread mid-call belongs on screen only.
+   if (callRunId && runId && runId !== callRunId) return;
++  if (messageId === spokenMessageId) {
++    // More of the same reply has been written: say the new part over the words still playing.
++    speakMoreOfReply(messageId, text);
++    return;
++  }
+   spokenMessageId = messageId;
+-  speakAndListen(text);
++  streamSpoken = text.length;
++  speakAndListen(text, { streaming: true });
++}
++
++/**
++ * The reply grew while it was being said: hand the new sentence to the voice and keep the call's
++ * transcript on the words the bot has actually got to.
++ */
++function speakMoreOfReply(messageId: string, text: string): void {
++  if (!state || messageId !== spokenMessageId) return;
++  const growth = text.slice(streamSpoken);
++  if (!growth.trim()) return;
++  streamSpoken = text.length;
++  spokenMemory.remember(growth.trim());
++  set({
++    exchanges: [...state.exchanges.slice(0, -1), { role: "bot", text: text.trim() }],
++  });
++  if (!consentBlocked) deps.speakMore(state.botId, growth.trim());
+ }
+ 
+ /** Keeps the thread current, and the microphone shut while the bot waits on a typed code. */
+@@ -760,7 +900,6 @@ function onThread(next: MobileSnapshot): void {
  async function switchCall(target: CallSwitch, heard: string): Promise<void> {
    if (!state || switching) return;
    switching = true;
@@ -75147,15 +75507,18 @@ index bdc1f57..69e46c0 100644
    const { botId } = state;
    const switchingCallId = callId;
    const notice = t`OK, switching to ${ph({ name: target.name })}.`;
-@@ -794,7 +898,6 @@ async function switchCall(target: CallSwitch, heard: string): Promise<void> {
+@@ -792,9 +931,8 @@ async function switchCall(target: CallSwitch, heard: string): Promise<void> {
+   target.ring();
+ }
  
- function speakAndListen(text: string): void {
+-function speakAndListen(text: string): void {
++function speakAndListen(text: string, { streaming = false }: { streaming?: boolean } = {}): void {
    if (!state) return;
 -  clearEchoGuard();
    const { botId } = state;
    const speakingCallId = callId;
    // Bump before anything else: this attempt supersedes all older ones, even if it then
-@@ -814,16 +917,15 @@ function speakAndListen(text: string): void {
+@@ -814,16 +952,15 @@ function speakAndListen(text: string): void {
      return;
    }
    spokenMemory.remember(text);
@@ -75176,20 +75539,38 @@ index bdc1f57..69e46c0 100644
    void deps
      .speak(botId, text)
      .catch((error: unknown) => {
-@@ -845,11 +947,7 @@ function speakAndListen(text: string): void {
+@@ -845,11 +982,16 @@ function speakAndListen(text: string): void {
        if (blockedByConsent) return;
        // The caller cut in: the microphone is already theirs and their turn is on its way.
        if (bargedIn) return;
 -      if (hangUpAfterReply || Platform.OS !== "android") {
 -        void listen();
--        return;
--      }
++      // A reply still being written says the rest of it after this piece: listening again now
++      // would cut the person off mid-sentence and hear the end of the reply as their own turn.
++      if (streaming) {
++        void deps.waitForSpeechEnd().then(() => {
++          if (superseded() || bargedIn || blockedByConsent) return;
++          void listen();
++        });
+         return;
+       }
 -      guardThenListen();
 +      void listen();
      });
  }
  
-@@ -952,6 +1050,8 @@ let recordingTurn: AbortSignal | undefined;
+@@ -919,6 +1061,10 @@ function productionDeps(requestContext?: ApiRequestContext): CallDeps {
+       ),
+     endCall: async (botId, id) => closeCall(botId, id, await callContext()),
+     speak: (botId, text) => speakReply(botId, text, speechOwner, requestContext),
++    // The rest of a reply that is still being typed joins the voice it already started, so the
++    // person hears the first sentence while the model is still writing the last one.
++    speakMore: (botId, text) => appendSpeech({ text, botId, owner: speechOwner, requestContext }),
++    waitForSpeechEnd: () => waitForSpeechEnd(speechOwner),
+     stopSpeaking: () => stopSpeaking(speechOwner),
+     audio: setCallAudio,
+     cue: playCallCue,
+@@ -952,6 +1098,8 @@ let recordingTurn: AbortSignal | undefined;
  export async function recordClip(
    signal: AbortSignal,
    until?: AbortSignal,
@@ -75198,7 +75579,7 @@ index bdc1f57..69e46c0 100644
  ): Promise<CallClip | null> {
    const { AudioModule, RecordingPresets } = await import("expo-audio");
    if (signal.aborted) return null;
-@@ -992,6 +1092,7 @@ export async function recordClip(
+@@ -992,6 +1140,7 @@ export async function recordClip(
        // has reported a level, or never does, nothing is left to endpoint on, so stop.
        // A dictated clip has `until` to end it, so it keeps recording.
        const level = recorder.getStatus().metering;
@@ -75206,6 +75587,66 @@ index bdc1f57..69e46c0 100644
        if (level === undefined) {
          if (until) continue;
          if (metered || elapsed + METER_POLL_MS >= METER_START_MS) break;
+@@ -1087,7 +1236,11 @@ async function speakReply(
+ /** Live feed for the bot on the call, independent of whichever thread is on screen. */
+ function watchReplies(
+   botId: string,
+-  onNewReply: (messageId: string, text: string, runId?: string) => void,
++  /**
++   * A reply to speak, with everything it has said so far. Called again as it grows; `final` says
++   * the reply is complete and nothing more will follow.
++   */
++  onNewReply: (messageId: string, text: string, runId?: string, final?: boolean) => void,
+   onEnded: (ended: CallEnded) => void,
+   onThread: (thread: MobileSnapshot) => void,
+   requestContext?: ApiRequestContext,
+@@ -1097,6 +1250,8 @@ function watchReplies(
+   void (async () => {
+     let snapshot: MobileSnapshot | null = null;
+     let lastSeen: string | null = null;
++    /** How many characters of the reply being said have been handed over to be spoken. */
++    let spoken = 0;
+     let cursor = 0;
+     let retry = FEED_RETRY_MIN_MS;
+     let failure: unknown;
+@@ -1134,19 +1289,31 @@ function watchReplies(
+             if (!snapshot) return;
+             if (snapshot !== previous) onThread(snapshot);
+             const message = latestSpokenCallReply(snapshot.messages, watchedCallId);
+-            if (!message || message.id === lastSeen) return;
+-            // Wait for the message's own run to settle so half-written blocks are never
+-            // spoken; another run still working says nothing about this one.
++            if (!message) return;
+             // An answered question can resume a run behind the one the thread shows first, so
+             // look the message's run up among every active run.
+             const run =
+               snapshot?.activeRuns?.find((active) => active.id === message.runId) ?? snapshot?.run;
+             const fromAnotherRun = Boolean(message.runId && message.runId !== run?.id);
+-            if (!fromAnotherRun && run && ACTIVE_RUN_STATUSES.some((s) => s === run.status)) return;
++            // The reply is whole once its own run has settled; another run still working says
++            // nothing about this one.
++            const complete =
++              fromAnotherRun || !run || !ACTIVE_RUN_STATUSES.some((s) => s === run.status);
+             const text = blockText(message).trim();
+             if (!text) return;
+-            lastSeen = message.id;
+-            onNewReply(message.id, text, message.runId);
++            if (message.id !== lastSeen) {
++              lastSeen = message.id;
++              spoken = 0;
++            }
++            // Say the finished sentences now instead of holding every word until the run closes:
++            // the first sound then lands while the model is still writing the rest. Nothing short
++            // of a sentence is spoken, and the tail is only said once the reply is complete.
++            const piece = takeSpeakablePiece(text, spoken, { final: complete });
++            if (!piece.piece) return;
++            spoken = piece.taken;
++            // The caller hears the accumulated text's spoken part; the call keeps its transcript
++            // from the same text, so what is on screen and what is in the ear agree.
++            onNewReply(message.id, text.slice(0, spoken), message.runId, complete);
+           },
+           controller.signal,
+           requestContext,
 diff --git a/apps/mobile/lib/call-sounds.test.ts b/apps/mobile/lib/call-sounds.test.ts
 index 00e3082..fbeecf0 100644
 --- a/apps/mobile/lib/call-sounds.test.ts
@@ -77881,10 +78322,10 @@ index 0000000..bda9f42
 +}
 diff --git a/apps/mobile/lib/link-preview.ts b/apps/mobile/lib/link-preview.ts
 new file mode 100644
-index 0000000..8c7cb05
+index 0000000..d162781
 --- /dev/null
 +++ b/apps/mobile/lib/link-preview.ts
-@@ -0,0 +1,125 @@
+@@ -0,0 +1,175 @@
 +import type { LinkPreview } from "@rakazo/contracts";
 +import { useEffect, useState } from "react";
 +import { rpc } from "./api";
@@ -77952,7 +78393,9 @@ index 0000000..8c7cb05
 +  try {
 +    const parsed = new URL(url);
 +    const host = parsed.hostname.toLowerCase();
-+    return (host === "x.ai" || host === "www.x.ai") && /^\/bot\/[A-Za-z0-9_-]+/.test(parsed.pathname);
++    return (
++      (host === "x.ai" || host === "www.x.ai") && /^\/bot\/[A-Za-z0-9_-]+/.test(parsed.pathname)
++    );
 +  } catch {
 +    return false;
 +  }
@@ -77964,6 +78407,54 @@ index 0000000..8c7cb05
 +    return new URL(url).hostname.replace(/^www\./, "");
 +  } catch {
 +    return url;
++  }
++}
++
++/**
++ * A link whose page asks the person to do something — sign in, confirm an authorization, fill in a
++ * code — rather than a page to read. These get the one-button card, because the whole point of
++ * them is the tap; any other link is a reference and stays a single line.
++ */
++const FORM_HOSTS = [
++  "accounts.google.com",
++  "login.microsoftonline.com",
++  "login.live.com",
++  "appleid.apple.com",
++];
++/** Path words that only appear on a page waiting on a person: a login, a code, an approval. */
++const FORM_PATH_WORDS = [
++  "login",
++  "log-in",
++  "signin",
++  "sign-in",
++  "sign_in",
++  "oauth",
++  "authorize",
++  "device",
++  "activate",
++  "verify",
++  "verification",
++  "confirm",
++  "2fa",
++  "mfa",
++  "otp",
++  "sms",
++  "auth/",
++];
++
++/** Whether a link is a form or an authorization to continue in, not a page to read. */
++export function isFormLink(url: string): boolean {
++  try {
++    const parsed = new URL(url);
++    const host = parsed.hostname.toLowerCase().replace(/^www\./, "");
++    const path = parsed.pathname.toLowerCase();
++    // A page that says in its own query that it is a code entry or an approval.
++    const query = parsed.search.toLowerCase();
++    if (/[?&](code|otp|verify|verification|token|continue|confirm)=/.test(query)) return true;
++    if (FORM_HOSTS.some((known) => host === known)) return true;
++    return FORM_PATH_WORDS.some((word) => path.includes(word));
++  } catch {
++    return false;
 +  }
 +}
 +
@@ -79783,6 +80274,161 @@ index eef99b9..1866719 100644
  
  const STARTUP_TIMEOUT_MS = 20_000;
  const pending = new Set<StartupStep>();
+diff --git a/apps/mobile/lib/stream-speech.test.ts b/apps/mobile/lib/stream-speech.test.ts
+new file mode 100644
+index 0000000..da6203f
+--- /dev/null
++++ b/apps/mobile/lib/stream-speech.test.ts
+@@ -0,0 +1,65 @@
++import { describe, expect, it } from "vitest";
++import { takeSpeakablePiece } from "./stream-speech";
++
++/**
++ * The rule that lets a call start speaking a reply while it is still being written: only whole
++ * sentences go out, nothing is said twice, and a finished reply says whatever is left.
++ */
++describe("takeSpeakablePiece", () => {
++  it("says the first finished sentence and leaves the rest", () => {
++    const text = "好的，我在。你想先查哪个网段？后面再说。";
++    const first = takeSpeakablePiece(text, 0);
++    expect(first.piece).toBe("好的，我在。");
++    const second = takeSpeakablePiece(text, first.taken);
++    expect(second.piece).toBe("你想先查哪个网段？");
++    const third = takeSpeakablePiece(text, second.taken);
++    expect(third.piece).toBe("后面再说。");
++    expect(takeSpeakablePiece(text, third.taken).piece).toBe("");
++  });
++
++  it("holds half a sentence rather than cutting a word", () => {
++    const text = "正在重新登录，出结果告";
++    expect(takeSpeakablePiece(text, 0).piece).toBe("");
++  });
++
++  it("waits for a piece worth opening the voice for", () => {
++    // A stray "。" right at the start is punctuation, not a sentence to say.
++    expect(takeSpeakablePiece("。它是。", 0).piece).toBe("。它是。");
++    expect(takeSpeakablePiece("，。", 0).piece).toBe("");
++  });
++
++  it("speaks what is left once the reply is complete", () => {
++    const text = "查到了。所属网段是 104.28.192.0/24";
++    const first = takeSpeakablePiece(text, 0);
++    expect(first.piece).toBe("查到了。");
++    const rest = takeSpeakablePiece(text, first.taken, { final: true });
++    expect(rest.piece).toBe("所属网段是 104.28.192.0/24");
++    expect(rest.taken).toBe(text.length);
++  });
++
++  it("breaks a long sentence at a clause instead of holding the voice", () => {
++    // No full stop anywhere: without a clause break the voice would wait for the whole run.
++    const text = "这是一段很长的说明，".repeat(20);
++    const piece = takeSpeakablePiece(text, 0);
++    expect(piece.piece.length).toBeGreaterThan(20);
++    expect(piece.piece.length).toBeLessThanOrEqual(120);
++    expect(piece.piece.endsWith("，")).toBe(true);
++  });
++
++  it("keeps a decimal number together", () => {
++    const text = "版本是 1.25。";
++    expect(takeSpeakablePiece(text, 0).piece).toBe("版本是 1.25。");
++  });
++
++  it("never hands over more than the text it was given", () => {
++    expect(takeSpeakablePiece("短", 99).piece).toBe("");
++    expect(takeSpeakablePiece("短", 99, { final: true }).taken).toBe(1);
++  });
++
++  it("says an English sentence at its own full stop", () => {
++    const text = "The login page is open. Enter the code.";
++    const first = takeSpeakablePiece(text, 0);
++    expect(first.piece).toBe("The login page is open.");
++    expect(takeSpeakablePiece(text, first.taken).piece).toBe("Enter the code.");
++  });
++});
+diff --git a/apps/mobile/lib/stream-speech.ts b/apps/mobile/lib/stream-speech.ts
+new file mode 100644
+index 0000000..8c747a6
+--- /dev/null
++++ b/apps/mobile/lib/stream-speech.ts
+@@ -0,0 +1,78 @@
++/**
++ * Cutting a reply that is still being written into pieces that can be spoken now.
++ *
++ * The call used to wait for the bot's run to settle before it said anything, so the first sound
++ * arrived only after the last word was written. This is the rule that lets it start on the first
++ * finished sentence instead: a piece ends where a sentence ends, so the voice never stops on half
++ * a clause, and the rest of the reply joins the queue as it arrives.
++ */
++
++/** A character that ends a sentence in either language the app is read in. */
++const SENTENCE_END = new Set(["。", "！", "？", "!", "?", "…", "\n", "；", ";"]);
++/** A place a long sentence may be broken without losing the sense of it. */
++const CLAUSE_END = new Set(["，", ",", "、", "：", ":", " "]);
++/** A piece shorter than this is not worth opening the voice for; it waits for the next one. */
++const MIN_PIECE = 4;
++/** A sentence still unfinished by this many characters is broken at its last clause instead. */
++const MAX_HOLD = 120;
++/** A trailing "." ends a sentence only when a space or the end follows: `1.5` is one number. */
++function endsWithStop(text: string, index: number): boolean {
++  if (text[index] !== ".") return false;
++  const next = text[index + 1];
++  return next === undefined || next === " " || next === "\n" || next === "）";
++}
++
++export type SpeakablePiece = {
++  /** What to speak now: a whole sentence, trimmed. Empty when nothing is ready yet. */
++  piece: string;
++  /** How much of the text has been handed over, for the next call. */
++  taken: number;
++};
++
++/**
++ * The next piece of `text` after `taken` characters that is safe to speak.
++ *
++ * With `final`, everything left is the piece — the reply is done being written, so half a
++ * sentence is all there will ever be. Otherwise only text up to a sentence end is taken; a reply
++ * still typing out its first sentence yields nothing, and the caller waits for its next update.
++ */
++export function takeSpeakablePiece(
++  text: string,
++  taken: number,
++  { final = false }: { final?: boolean } = {},
++): SpeakablePiece {
++  const from = Math.max(0, Math.min(taken, text.length));
++  const rest = text.slice(from);
++  if (!rest.trim()) return { piece: "", taken: from };
++  if (final) {
++    const trimmed = rest.trim();
++    return { piece: trimmed.length >= 1 ? trimmed : "", taken: text.length };
++  }
++  let end = -1;
++  for (let index = 0; index < rest.length; index += 1) {
++    if (SENTENCE_END.has(rest[index]!) || endsWithStop(rest, index)) {
++      // Include the mark itself and any punctuation right after it, so "。！" stay together.
++      let stop = index + 1;
++      while (stop < rest.length && SENTENCE_END.has(rest[stop]!)) stop += 1;
++      if (rest.slice(0, stop).trim().length >= MIN_PIECE) {
++        end = stop;
++        break;
++      }
++      index = stop - 1;
++    }
++  }
++  if (end < 0) {
++    // A long run with no sentence end: break it where a clause ends rather than hold the voice.
++    if (rest.trim().length >= MAX_HOLD) {
++      for (let index = Math.min(MAX_HOLD, rest.length) - 1; index >= MIN_PIECE; index -= 1) {
++        if (CLAUSE_END.has(rest[index]!)) {
++          end = index + 1;
++          break;
++        }
++      }
++    }
++    if (end < 0) return { piece: "", taken: from };
++  }
++  const piece = rest.slice(0, end).trim();
++  return { piece, taken: from + end };
++}
 diff --git a/apps/mobile/lib/text-scale.ts b/apps/mobile/lib/text-scale.ts
 index b12a1a5..7f19b78 100644
 --- a/apps/mobile/lib/text-scale.ts
@@ -80591,10 +81237,47 @@ index d3f14e2..194e723 100644
      ["call", () => setCallAudio(true), () => setCallAudio(false)],
      ["dictation", () => setDictationAudio(true), () => setDictationAudio(false)],
 diff --git a/apps/mobile/lib/voice.ts b/apps/mobile/lib/voice.ts
-index 3e1cc86..fc255ab 100644
+index 3e1cc86..c986169 100644
 --- a/apps/mobile/lib/voice.ts
 +++ b/apps/mobile/lib/voice.ts
-@@ -704,12 +704,6 @@ async function playWithHtmlAudio(
+@@ -291,6 +291,36 @@ export async function speakText(text: string, opts: SpeechOptions = {}): Promise
+   return speakPrepared(text, opts, beginSpeech(opts.owner));
+ }
+ 
++/**
++ * Adds one more piece to the voice that is already speaking, instead of replacing it: the rest of
++ * a reply that is still being written. A piece that arrives while nothing is playing opens the
++ * playback by itself, exactly as `speakText` would.
++ */
++export function appendSpeech(item: SpeechQueueItem): void {
++  const mine = item.owner === undefined || activeSpeechOwner === item.owner;
++  if (!mine || playback.status === "idle") {
++    void speakQueue([item]).catch(() => undefined);
++    return;
++  }
++  speechQueue.push(item);
++}
++
++/**
++ * Resolves once nothing is left to say for this owner — the last queued piece played, or the
++ * playback was replaced by someone else's. A reply written in pieces listens again only then.
++ */
++export async function waitForSpeechEnd(
++  owner?: SpeechOwner,
++  { pollMs = 120, limitMs = 120_000 }: { pollMs?: number; limitMs?: number } = {},
++): Promise<void> {
++  const started = Date.now();
++  while (Date.now() - started < limitMs) {
++    if (owner !== undefined && activeSpeechOwner !== owner) return;
++    if (playback.status === "idle" && speechQueue.length === 0) return;
++    await new Promise((resolve) => setTimeout(resolve, pollMs));
++  }
++}
++
+ async function speakPrepared(text: string, opts: SpeechOptions, epoch: number): Promise<boolean> {
+   if (!isCurrentSpeech(epoch)) return false;
+   // Each queued item owns the epoch while it prepares and plays.
+@@ -704,12 +734,6 @@ async function playWithHtmlAudio(
    }
  }
  
@@ -80607,7 +81290,7 @@ index 3e1cc86..fc255ab 100644
  async function playWithNativeAudio(bytes: Uint8Array, session?: HostedSession): Promise<void> {
    if (session?.isStopped) return;
    await changeAudioMode(async () => {
-@@ -737,7 +731,7 @@ async function playWithNativeAudio(bytes: Uint8Array, session?: HostedSession):
+@@ -737,7 +761,7 @@ async function playWithNativeAudio(bytes: Uint8Array, session?: HostedSession):
          else resolve();
        };
        const armStartupWatchdog = () => {
@@ -80616,7 +81299,7 @@ index 3e1cc86..fc255ab 100644
        };
        const sub = player.addListener("playbackStatusUpdate", (status) => {
          if (status.error) {
-@@ -752,9 +746,7 @@ async function playWithNativeAudio(bytes: Uint8Array, session?: HostedSession):
+@@ -752,9 +776,7 @@ async function playWithNativeAudio(bytes: Uint8Array, session?: HostedSession):
            finish();
            return;
          }
@@ -87800,7 +88483,7 @@ index 0000000..8785a2b
 +/** Sent as the error's `data.reason` when the page could not be read (blocked, gone, empty). */
 +export const GROK_BOT_LINK_UNREADABLE = "grok_bot_link_unreadable";
 diff --git a/packages/contracts/src/index.ts b/packages/contracts/src/index.ts
-index 0767b64..1f41153 100644
+index 0767b64..fc03537 100644
 --- a/packages/contracts/src/index.ts
 +++ b/packages/contracts/src/index.ts
 @@ -20,6 +20,8 @@ export * from "./computer.js";
@@ -87812,7 +88495,7 @@ index 0767b64..1f41153 100644
  export * from "./events.js";
  export * from "./experiments.js";
  export * from "./history.js";
-@@ -44,6 +46,7 @@ export * from "./reactions.js";
+@@ -44,15 +46,18 @@ export * from "./reactions.js";
  export * from "./routine-watch.js";
  export * from "./rpc.js";
  export * from "./runs.js";
@@ -87820,7 +88503,13 @@ index 0767b64..1f41153 100644
  export * from "./search.js";
  export * from "./security-events.js";
  export * from "./server-headers.js";
-@@ -56,3 +59,4 @@ export * from "./vault-import.js";
+ export * from "./settings-scope.js";
+ export * from "./signup-attribution.js";
+ export * from "./space-availability.js";
++export * from "./stage-diaries.js";
+ export * from "./terminal.js";
+ export * from "./user-devices.js";
+ export * from "./vault-import.js";
  export * from "./vault-items.js";
  export * from "./voice-connection-ui.js";
  export * from "./voice-errors.js";
@@ -87934,7 +88623,7 @@ index c1eddc1..6003f82 100644
 +
  export type MessageReaction = z.infer<typeof MessageReactionSchema>;
 diff --git a/packages/contracts/src/rpc.ts b/packages/contracts/src/rpc.ts
-index 94ad5b0..f7efc88 100644
+index 94ad5b0..16b7859 100644
 --- a/packages/contracts/src/rpc.ts
 +++ b/packages/contracts/src/rpc.ts
 @@ -107,7 +107,10 @@ import {
@@ -87948,7 +88637,7 @@ index 94ad5b0..f7efc88 100644
    MemoryScopeSchema,
    MeSchema,
    MessagingAgentConnectionSchema,
-@@ -160,12 +163,14 @@ import {
+@@ -160,12 +163,15 @@ import {
    VoiceStatusSchema,
  } from "./domain.js";
  import { ComputerCommandSchema, ProductEventSchema } from "./events.js";
@@ -87960,10 +88649,11 @@ index 94ad5b0..f7efc88 100644
  } from "./integration-settings.js";
  import { LabFeatureSchema } from "./labs.js";
 +import { LinkPreviewInput, LinkPreviewSchema } from "./link-preview.js";
++import { DiarySchema, DiarySummarySchema } from "./stage-diaries.js";
  import {
    BotMcpServerSchema,
    McpServerConfigInput,
-@@ -208,11 +213,22 @@ import {
+@@ -208,11 +214,22 @@ import {
    RoutineRunCursorSchema,
    RunsListOutputSchema,
  } from "./runs.js";
@@ -87986,7 +88676,7 @@ index 94ad5b0..f7efc88 100644
  
  const botId = z.object({ botId: Id });
  const groupId = z.object({ groupId: Id });
-@@ -527,6 +543,17 @@ export const appContract = {
+@@ -527,6 +544,17 @@ export const appContract = {
        )
        .output(ModelRoleViewSchema),
      list: oc.output(z.array(ModelCatalogEntrySchema)),
@@ -88004,7 +88694,7 @@ index 94ad5b0..f7efc88 100644
      credentials: oc.output(z.array(ModelCredentialSchema)),
      backups: oc.output(z.array(ModelBackupChoiceSchema)),
      setBackups: oc.input(ModelBackupListSchema).output(z.object({ ok: z.literal(true) })),
-@@ -609,8 +636,17 @@ export const appContract = {
+@@ -609,8 +637,17 @@ export const appContract = {
      importCreate: oc.input(AgentImportCreateInput).output(BotSchema),
      importSetupState: oc.input(AgentImportSetupStateInput).output(AgentImportSetupStateSchema),
      templates: oc.output(z.array(BotTemplateListingSchema)),
@@ -88022,7 +88712,7 @@ index 94ad5b0..f7efc88 100644
      reorder: oc.input(ReorderBotsInput).output(z.object({ ok: z.literal(true) })),
      update: oc.input(UpdateBotInput).output(BotSchema),
      restoreInstructions: oc
-@@ -720,9 +756,11 @@ export const appContract = {
+@@ -720,9 +757,11 @@ export const appContract = {
        )
        .output(z.object({ ok: z.literal(true), runIds: z.array(Id).optional() })),
      stop: oc.input(threadTarget).output(z.object({ ok: z.literal(true) })),
@@ -88036,10 +88726,28 @@ index 94ad5b0..f7efc88 100644
        .output(z.object({ ok: z.literal(true) })),
      followUp: oc
        .input(
-@@ -915,6 +953,23 @@ export const appContract = {
+@@ -915,6 +954,41 @@ export const appContract = {
        )
        .output(MemoryDocumentSchema),
      remove: oc.input(z.object({ documentId: Id })).output(z.object({ ok: z.literal(true) })),
++    /**
++     * The stage diaries of one bot, newest first: what each stretch of its chat came to, what it
++     * left open, and where the app can jump back to the messages it covers.
++     */
++    diaries: oc
++      .input(
++        z.object({
++          botId: Id,
++          query: z.string().trim().min(1).max(200).optional(),
++          /** Inclusive day bounds, YYYY-MM-DD as the person's clock reads them. */
++          from: z.iso.date().optional(),
++          to: z.iso.date().optional(),
++          limit: z.number().int().min(1).max(50).optional(),
++        }),
++      )
++      .output(z.array(DiarySummarySchema)),
++    /** One stage diary in full, with the body and its anchors. */
++    diary: oc.input(z.object({ diaryId: Id })).output(DiarySchema),
 +    /** Durable facts the assistant proposed keeping: waiting, already merged, or dropped. */
 +    learnings: oc
 +      .input(
@@ -88060,7 +88768,7 @@ index 94ad5b0..f7efc88 100644
      exportMarkdown: oc.input(z.object({ botId: Id.optional() })).output(z.string()),
      providerConfig: oc.output(SpaceMemoryConfigSchema.nullable()),
      connectProvider: oc
-@@ -1571,6 +1626,11 @@ export const appContract = {
+@@ -1571,6 +1645,11 @@ export const appContract = {
        // The longest origin: a scheme, a 253-character host name and a port.
        .input(z.object({ origin: z.string().max("https://".length + 253 + ":65535".length) }))
        .output(z.object({ icon: z.string().nullable(), retry: z.boolean().optional() })),
@@ -88072,7 +88780,7 @@ index 94ad5b0..f7efc88 100644
    },
    runs: {
      list: oc.input(z.object({ filter: z.enum(["active", "recent"]) })).output(RunsListOutputSchema),
-@@ -1661,6 +1721,13 @@ export const appContract = {
+@@ -1661,6 +1740,13 @@ export const appContract = {
          }),
        )
        .output(z.object({ ready: z.boolean(), utterances: z.array(z.string()) })),
@@ -88290,6 +88998,48 @@ index 0000000..9b62734
 +): ThinkingLevel | null {
 +  return chosen ?? SCENARIO_DEFAULT_THINKING[slot];
 +}
+diff --git a/packages/contracts/src/stage-diaries.ts b/packages/contracts/src/stage-diaries.ts
+new file mode 100644
+index 0000000..24f91c0
+--- /dev/null
++++ b/packages/contracts/src/stage-diaries.ts
+@@ -0,0 +1,36 @@
++import { z } from "zod";
++import { Id } from "./ids.js";
++
++/**
++ * A stage diary: one stretch of a chat, written a few minutes after the person stopped writing,
++ * so a later turn — or a later day's page — can pick the thread up without re-reading everything.
++ *
++ * It carries its own anchors: the seq and message ids of the first and last message it covers, so
++ * the app can jump back to the exact place in the conversation it came from.
++ */
++export const DiarySchema = z.object({
++  id: Id,
++  botId: Id,
++  threadId: Id,
++  /** The person's local day (YYYY-MM-DD) the stretch mostly happened on. */
++  day: z.string(),
++  title: z.string(),
++  /** One line: what this stretch of conversation came to. */
++  summary: z.string(),
++  /** The diary itself, markdown. */
++  body: z.string(),
++  /** What is still owed to the person: unfinished work, questions left open. */
++  openHooks: z.array(z.string()),
++  startSeq: z.number().int().nonnegative(),
++  endSeq: z.number().int().nonnegative(),
++  startMessageId: Id.nullable(),
++  endMessageId: Id.nullable(),
++  messageCount: z.number().int().nonnegative(),
++  taskCount: z.number().int().nonnegative(),
++  createdAt: z.string(),
++});
++export type Diary = z.infer<typeof DiarySchema>;
++
++/** The list the app reads: summaries and hooks, without the bodies. */
++export const DiarySummarySchema = DiarySchema.omit({ body: true });
++export type DiarySummary = z.infer<typeof DiarySummarySchema>;
 diff --git a/packages/contracts/src/voice-realtime.ts b/packages/contracts/src/voice-realtime.ts
 new file mode 100644
 index 0000000..9644e41

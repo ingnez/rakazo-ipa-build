@@ -64019,7 +64019,7 @@ index 4fe7d6d..60db132 100644
            actions={createMenuActions(Platform.OS)}
            {...(Platform.OS === "android" ? { style: { marginBottom: -CREATE_MENU_GAP } } : {})}
 diff --git a/apps/mobile/components/inbox-render-item.tsx b/apps/mobile/components/inbox-render-item.tsx
-index 882affd..2b4ac54 100644
+index 882affd..ed476c3 100644
 --- a/apps/mobile/components/inbox-render-item.tsx
 +++ b/apps/mobile/components/inbox-render-item.tsx
 @@ -18,7 +18,7 @@ import type { useInboxChatActions } from "../lib/use-inbox-chat-actions";
@@ -64039,7 +64039,7 @@ index 882affd..2b4ac54 100644
    onDelete,
    appearance,
  }: {
-@@ -182,20 +183,38 @@ function SectionHeading({
+@@ -182,20 +183,36 @@ function SectionHeading({
    count?: number;
    collapsed: boolean;
    onPress: () => void;
@@ -64050,9 +64050,7 @@ index 882affd..2b4ac54 100644
  }) {
    const { t } = useLingui();
 +  const actions: NativeRowMenuItem[] = [
-+    ...(onRename
-+      ? [{ id: "rename", title: t`Rename`, image: "pencil" as const }]
-+      : []),
++    ...(onRename ? [{ id: "rename", title: "重命名分组", image: "pencil" as const }] : []),
 +    ...(onDelete
 +      ? [
 +          {
@@ -64083,7 +64081,7 @@ index 882affd..2b4ac54 100644
              }
            : undefined
        }
-@@ -224,6 +243,7 @@ export function useInboxRenderItem({
+@@ -224,6 +241,7 @@ export function useInboxRenderItem({
    day,
    now,
    deleteSection,
@@ -64091,7 +64089,7 @@ index 882affd..2b4ac54 100644
    editSectionFromMenu,
    groupAction,
    spaceId,
-@@ -238,6 +258,10 @@ export function useInboxRenderItem({
+@@ -238,6 +256,10 @@ export function useInboxRenderItem({
    spaceBusy,
    spaceRecoveryId,
    toggleCollapsed,
@@ -64102,7 +64100,7 @@ index 882affd..2b4ac54 100644
  }: Pick<
    ChatActions,
    | "botAction"
-@@ -247,6 +271,8 @@ export function useInboxRenderItem({
+@@ -247,6 +269,8 @@ export function useInboxRenderItem({
    | "deleteSection"
    | "snoozeChat"
  > & {
@@ -64111,7 +64109,7 @@ index 882affd..2b4ac54 100644
    appearance: ResolvedAppearance;
    chooseInboxSpace: (spaceId: string) => void;
    confirmDeleteSpace: (space: InboxSpace) => void;
-@@ -267,10 +293,22 @@ export function useInboxRenderItem({
+@@ -267,10 +291,22 @@ export function useInboxRenderItem({
    spaceBusy: boolean;
    spaceRecoveryId: string | null;
    toggleCollapsed: (key: string) => void;
@@ -64134,7 +64132,7 @@ index 882affd..2b4ac54 100644
    return useCallback(
      ({ item }: { item: InboxItem }) => {
        const sectionsOf = (chatSpaceId: string | undefined) =>
-@@ -343,6 +381,13 @@ export function useInboxRenderItem({
+@@ -343,6 +379,13 @@ export function useInboxRenderItem({
              count={item.collapsed ? (item.count ?? 0) : undefined}
              collapsed={item.collapsed === true}
              onPress={() => toggleCollapsed(item.key)}
@@ -64148,7 +64146,7 @@ index 882affd..2b4ac54 100644
              onDelete={
                sharing || !item.sectionId
                  ? undefined
-@@ -378,6 +423,11 @@ export function useInboxRenderItem({
+@@ -378,6 +421,11 @@ export function useInboxRenderItem({
            onOrganize={organizeFromMenu}
            onEditSection={editSectionFromMenu}
            onSnooze={snoozeChat}
@@ -64160,7 +64158,7 @@ index 882affd..2b4ac54 100644
          />
        );
      },
-@@ -388,10 +438,16 @@ export function useInboxRenderItem({
+@@ -388,10 +436,16 @@ export function useInboxRenderItem({
        confirmDeleteSpace,
        createBotInSpace,
        deleteSection,

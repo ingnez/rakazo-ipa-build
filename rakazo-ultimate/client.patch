@@ -2360,8 +2360,134 @@ index 408ddab..e52d908 100644
 +  appearanceRemovePhoto: { alignItems: "center", paddingVertical: 4 },
 +  appearanceFooter: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 20 },
  });
+diff --git a/apps/mobile/app/computer.tsx b/apps/mobile/app/computer.tsx
+index 616d4cc..3795dff 100644
+--- a/apps/mobile/app/computer.tsx
++++ b/apps/mobile/app/computer.tsx
+@@ -33,6 +33,7 @@ import {
+   SafeAreaView,
+ } from "react-native-safe-area-context";
+ import { WebView } from "react-native-webview";
++import { ComputerDetailsSheet } from "../components/computer-details-sheet";
+ import { ComputerKeyboardBar } from "../components/computer-keyboard-bar";
+ import { ComputerModePicker } from "../components/computer-mode-picker";
+ import { GlassIconButton } from "../components/glass-icon-button";
+@@ -63,6 +64,8 @@ import {
+ } from "../lib/computer-keyboard";
+ import { tabletopLayout } from "../lib/fold-layout";
+ import { useFoldRegions } from "../lib/fold-regions";
++import { hapticImpact, hapticSelection } from "../lib/haptics";
++import { computerRecenterScript, computerTrackpadScript } from "../lib/computer-trackpad";
+ import { useMobileTokens } from "../lib/native";
+ import { iosAtLeast } from "../lib/native-controls";
+ import { useSideInsets } from "../lib/side-insets";
+@@ -104,6 +107,9 @@ export default function Computer() {
+   const [switchingCount, setSwitchingCount] = useState(0);
+   const switching = switchingCount > 0;
+   const [computerOpen, setComputerOpen] = useState(false);
++  // The desktop's own pointer mode, and the page that says what this computer is.
++  const [trackpadOn, setTrackpadOn] = useState(false);
++  const [detailsOpen, setDetailsOpen] = useState(false);
+   // The keyboard closes on the Hand back tap, not when the server answers.
+   const [releasing, setReleasing] = useState(false);
+   const autoBooted = useRef<string | null>(null);
+@@ -132,6 +138,24 @@ export default function Computer() {
+     computer?.controlHolder === "user" &&
+     computer.controlBotId === botId &&
+     !computer.controlledByOther;
++  // Without control the desktop is a picture, and a trackpad over a picture means nothing.
++  useEffect(() => {
++    if (!hasControl) setTrackpadOn(false);
++  }, [hasControl]);
++  /** Runs a script in the desktop page; the page owns the pointer, this only asks it. */
++  const injectPointerScript = useCallback((script: string) => {
++    screenWebViewRef.current?.injectJavaScript(script);
++  }, []);
++  const toggleTrackpad = useCallback(() => {
++    const next = !trackpadOn;
++    hapticImpact();
++    setTrackpadOn(next);
++    injectPointerScript(computerTrackpadScript(next));
++  }, [injectPointerScript, trackpadOn]);
++  const recenterPointer = useCallback(() => {
++    hapticSelection();
++    injectPointerScript(computerRecenterScript());
++  }, [injectPointerScript]);
+   // Propped open like a laptop, the desktop stays above the fold and the keys go below it.
+   const tabletop = hasControl ? tabletopLayout(windowSize.width, windowSize.height, folds) : null;
+   const screenVisible =
+@@ -153,6 +177,10 @@ export default function Computer() {
+     };
+   }
+   const keyboardSession = String(keyboardGate.current.session);
++  // A page that loaded again starts in direct touch; the switch says so too.
++  useEffect(() => {
++    setTrackpadOn(false);
++  }, [screenReload, loadedScreenUrl]);
+ 
+   useEffect(() => {
+     if (!computerOpen || !hasControl || !loadedScreenUrl) return;
+@@ -629,6 +657,21 @@ export default function Computer() {
+         disabled={switching || bootPending}
+         onChange={(mode) => void setComputerMode(mode)}
+       />
++      <NativeActionButton
++        label={t`云电脑详情`}
++        prominence="secondary"
++        size="compact"
++        style={{ marginTop: 12, alignSelf: "flex-start" }}
++        onPress={() => setDetailsOpen(true)}
++      />
++      <ComputerDetailsSheet
++        open={detailsOpen}
++        computer={computer}
++        updating={switching}
++        cleaningUp={cleaningUp}
++        onClose={() => setDetailsOpen(false)}
++        onCleanUp={computer?.state === "running" ? () => void cleanUpDisk() : undefined}
++      />
+ 
+       <Modal
+         visible={computerOpen}
+@@ -678,6 +721,36 @@ export default function Computer() {
+                 </Text>
+               </View>
+               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
++                <GlassIconButton
++                  accessibilityLabel="云电脑详情"
++                  onPress={() => setDetailsOpen(true)}
++                  ios="info.circle"
++                  android="information-circle-outline"
++                  size={36}
++                  iconSize={16}
++                />
++                {hasControl ? (
++                  // The pointer follows a drag instead of a spot, as a trackpad moves it.
++                  <GlassIconButton
++                    accessibilityLabel={trackpadOn ? "退出触控板模式" : "触控板模式"}
++                    selected={trackpadOn}
++                    onPress={toggleTrackpad}
++                    ios="rectangle.and.hand.point.up.left"
++                    android="hand-left-outline"
++                    size={36}
++                    iconSize={16}
++                  />
++                ) : null}
++                {hasControl ? (
++                  <GlassIconButton
++                    accessibilityLabel="指针归中"
++                    onPress={recenterPointer}
++                    ios="scope"
++                    android="locate-outline"
++                    size={36}
++                    iconSize={16}
++                  />
++                ) : null}
+                 {hasControl ? (
+                   <ComputerReleaseActions
+                     takeoverRequested={computer?.takeoverRequested ?? false}
 diff --git a/apps/mobile/app/index.tsx b/apps/mobile/app/index.tsx
-index 0a5db83..39f73cf 100644
+index 0a5db83..eb1c270 100644
 --- a/apps/mobile/app/index.tsx
 +++ b/apps/mobile/app/index.tsx
 @@ -26,8 +26,12 @@ import {
@@ -2377,15 +2503,25 @@ index 0a5db83..39f73cf 100644
  import { createHomeStyles } from "../components/home-styles";
  import { ActivitySection } from "../components/inbox-activity";
  import { InboxHeader } from "../components/inbox-header";
-@@ -45,6 +49,7 @@ import { selectSpace } from "../lib/api-server";
+@@ -35,6 +39,7 @@ import { InboxListFooter, SWIPE_ROWS, useInboxRenderItem } from "../components/i
+ import { CompactRowsContext, SelectedChatContext } from "../components/inbox-rows";
+ import { NativeInboxList } from "../components/native-inbox-list";
+ import { OrganizationTitleMenu } from "../components/organization-menu";
++import { useTextEditDialog } from "../components/profile-edit-dialog";
+ import { PickChatPane } from "../components/pick-chat-pane";
+ import { useUnreadJumpPills } from "../components/unread-jump-overlay";
+ import { loadActivityMode, saveActivityMode } from "../lib/activity-mode";
+@@ -44,7 +49,9 @@ import { signOut } from "../lib/api-auth";
+ import { selectSpace } from "../lib/api-server";
  import { forgetAppBadge, syncInboxAppBadge, unreadChatCount } from "../lib/app-badge";
  import { mobileTokens, resolveMobileAppearance } from "../lib/appearance";
++import { useAppResume } from "../lib/app-foreground";
  import { explicitSignInRoute } from "../lib/auth-routing";
 +import { shareBotTemplate } from "../lib/bot-template-share";
  import { AvatarViewportScope, createAvatarViewport } from "../lib/avatar-life";
  import { useContentBottomInset } from "../lib/content-bottom-inset";
  import type { CreateAction } from "../lib/create-chooser";
-@@ -54,6 +59,7 @@ import { hapticImpact, hapticSelection } from "../lib/haptics";
+@@ -54,6 +61,7 @@ import { hapticImpact, hapticSelection } from "../lib/haptics";
  import { useUiLocale } from "../lib/i18n";
  import { onInboxChanged, onOpenChatFromInbox } from "../lib/inbox-changes";
  import { retainInboxValue } from "../lib/inbox-retention";
@@ -2393,7 +2529,7 @@ index 0a5db83..39f73cf 100644
  import type { InboxItem, InboxSpace, PinnedChat } from "../lib/inbox-spaces";
  import {
    canDeleteInboxSpace,
-@@ -70,6 +76,14 @@ import {
+@@ -70,6 +78,14 @@ import {
  import { applyUnreadOverrides, withoutArchiving } from "../lib/inbox-swipe";
  import { mobileLogoAvatarActivity } from "../lib/logo-avatar-activity";
  import type { MobileBot, MobileGroup } from "../lib/mobile-types";
@@ -2408,7 +2544,7 @@ index 0a5db83..39f73cf 100644
  import { native, useThemedStyles } from "../lib/native";
  import { iosAtLeast } from "../lib/native-controls";
  import {
-@@ -93,6 +107,7 @@ import {
+@@ -93,6 +109,7 @@ import {
    subscribeSessionGeneration,
  } from "../lib/session";
  import { useSplitView } from "../lib/split-view";
@@ -2416,7 +2552,7 @@ index 0a5db83..39f73cf 100644
  import { confirmUnsentSendLoss } from "../lib/unsent-send-warning";
  import { useArchivedCount } from "../lib/use-archived-count";
  import { useCollapsedSections } from "../lib/use-collapsed-sections";
-@@ -158,7 +173,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -158,7 +175,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
    const tokens = mobileTokens();
    const appearance = resolveMobileAppearance();
    const styles = useThemedStyles(createHomeStyles);
@@ -2425,7 +2561,7 @@ index 0a5db83..39f73cf 100644
    const locale = useUiLocale();
    const isFocused = useIsFocused();
    const day = useInboxDay();
-@@ -198,10 +213,27 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -198,10 +215,27 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
    const [spaceBusy, setSpaceBusy] = useState(false);
    const [spaceRecoveryId, setSpaceRecoveryId] = useState<string | null>(null);
    const userId = me?.userId;
@@ -2453,7 +2589,21 @@ index 0a5db83..39f73cf 100644
    useEffect(() => {
      void loadActivityMode().then((on) => {
        setActivityMode(on);
-@@ -318,6 +350,12 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -278,6 +312,13 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+     rosterSignalsLive ? INBOX_SIGNALLED_POLL_INTERVAL_MS : INBOX_POLL_INTERVAL_MS,
+     inboxShown,
+   );
++  // Back from the background, the inbox reconnects on its own: the load runs again whether or not
++  // a poll was left mid-flight, and the moment the server answers, "Could not reach the server"
++  // goes away — no closing and reopening the app to get the chats back.
++  useAppResume(() => {
++    void loadBots().catch(() => undefined);
++    void loadActivity().catch(() => undefined);
++  });
+   useEffect(() => onInboxChanged(() => void refreshBots().catch(() => undefined)), [refreshBots]);
+ 
+   const archivedCount = useArchivedCount(me?.spaceId, hasSession);
+@@ -318,6 +359,12 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
        withoutArchiving("group", applyUnreadOverrides("group", groups, unreadOverrides), archiving),
      [groups, unreadOverrides, archiving],
    );
@@ -2466,7 +2616,7 @@ index 0a5db83..39f73cf 100644
    const shownSpaces = useMemo(
      () =>
        archiving.size === 0
-@@ -334,7 +372,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -334,7 +381,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
        shownSpaces.length > 0
          ? shownSpaces.map((space) =>
              space.id === me?.spaceId
@@ -2475,7 +2625,7 @@ index 0a5db83..39f73cf 100644
                : space,
            )
          : me
-@@ -344,21 +382,29 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -344,21 +391,29 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
                  name: t`Personal`,
                  isDefault: true,
                  hasContent: true,
@@ -2508,7 +2658,7 @@ index 0a5db83..39f73cf 100644
    const spaceSections = retainInboxValue(
      keptSections,
      inboxSpaces.map(({ id, botSections }) => ({ id, botSections })),
-@@ -378,7 +424,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -378,7 +433,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
      // Android pins sit above the list; iOS keeps rows with native swipe and context menus.
      const otherSpaces = shownSpaces.filter((space) => space.id !== me?.spaceId);
      const pinned: PinnedChat[] = [
@@ -2517,7 +2667,7 @@ index 0a5db83..39f73cf 100644
          .filter((bot) => bot.pinned && !chatSnoozed(bot, snoozeNow))
          .map((bot) => ({ kind: "bot" as const, bot })),
        ...[...visibleGroups, ...otherSpaces.flatMap((space) => space.groups)]
-@@ -400,17 +446,20 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -400,17 +455,20 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
      collapsed,
      me?.spaceId,
      shownSpaces,
@@ -2541,7 +2691,7 @@ index 0a5db83..39f73cf 100644
            groups: space.groups.filter((group) => !chatSnoozed(group, snoozeNow)),
          })),
        )
-@@ -472,7 +521,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -472,7 +530,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
      listRef,
      // The Liquid Glass header floats over the list; the older header sits above it.
      topInset: nativeHeader ? headerHeight : 0,
@@ -2550,7 +2700,7 @@ index 0a5db83..39f73cf 100644
    });
    const router = useRouter();
    const pathname = usePathname();
-@@ -641,9 +690,10 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -641,9 +699,10 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
    const runCreateAction = useCallback(
      (action: CreateAction) => {
        if (action === "bot") newBot();
@@ -2562,7 +2712,7 @@ index 0a5db83..39f73cf 100644
    );
  
    const organizations = useOrganizations(hasSession && !onShareSelect).data;
-@@ -655,11 +705,11 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -655,11 +714,11 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
  
    useHomeHeader({
      nativeHeader,
@@ -2576,7 +2726,7 @@ index 0a5db83..39f73cf 100644
      runCreateAction,
      headerTitle,
    });
-@@ -667,6 +717,8 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -667,6 +726,8 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
    const openBot = useCallback(
      (bot: MobileBot | SpaceBot) => {
        if (spaceActionRef.current.busy || spaceActionRef.current.recoveryId) return;
@@ -2585,7 +2735,7 @@ index 0a5db83..39f73cf 100644
        void openMobileSpace(bot.spaceId, () => {
          if (onShareSelect) onShareSelect(bot);
          else openChat({ pathname: "/thread", params: { botId: bot.id, name: bot.name } });
-@@ -674,6 +726,49 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -674,6 +735,49 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
      },
      [openChat, onShareSelect],
    );
@@ -2635,7 +2785,37 @@ index 0a5db83..39f73cf 100644
    const openGroup = useCallback(
      (group: MobileGroup | SpaceGroup) => {
        if (spaceActionRef.current.busy || spaceActionRef.current.recoveryId) return;
-@@ -751,6 +846,10 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -728,6 +832,21 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+   const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: ListViewToken[] }) =>
+     avatarViewport.update(viewableItems.map((token) => token.key)),
+   ).current;
++  // Holding a section's title offers its name for editing, right where the title is.
++  const sectionRename = useTextEditDialog(t`Rename section`, 40);
++  const sectionRenameRef = useRef(sectionRename);
++  sectionRenameRef.current = sectionRename;
++  const askSectionRename = useCallback(
++    (section: { id: string; name: string }) => {
++      sectionRenameRef.current.ask(section.name, (next) => {
++        if (!next || next === section.name) return;
++        void renameSection(section.id, next, me?.spaceId).catch((err) =>
++          Alert.alert(t`Could not rename section`, errorText(err, t`Try again.`)),
++        );
++      });
++    },
++    [me?.spaceId, renameSection, t],
++  );
+   const renderItem = useInboxRenderItem({
+     appearance,
+     botAction,
+@@ -737,6 +856,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+     day,
+     now: snoozeNow,
+     deleteSection,
++    renameSection: askSectionRename,
+     editSectionFromMenu,
+     groupAction,
+     spaceId: me?.spaceId,
+@@ -751,6 +871,10 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
      sharing: !!onShareSelect,
      spaces: spaceSections,
      toggleCollapsed,
@@ -2646,7 +2826,7 @@ index 0a5db83..39f73cf 100644
    });
  
    if (!ready) {
-@@ -770,9 +869,34 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -770,9 +894,34 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
    const activityView = !onShareSelect && activityMode && Boolean(userId);
    const showActivity = activityView && !showLoadFailure;
    const rows = activityView || showLoadFailure ? [] : listData;
@@ -2682,7 +2862,7 @@ index 0a5db83..39f73cf 100644
        {inlineError ? <Text style={styles.error}>{inlineError}</Text> : null}
        {spaceRecoveryId ? (
          <Pressable
-@@ -830,6 +954,11 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -830,6 +979,11 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
    const refreshInbox = async () => {
      await Promise.all([refreshBots(), loadActivity()]);
    };
@@ -2694,7 +2874,7 @@ index 0a5db83..39f73cf 100644
  
    return (
      <View style={styles.screen}>
-@@ -837,8 +966,6 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -837,8 +991,6 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
          <InboxHeader
            embedded={embedded}
            initials={initials}
@@ -2703,7 +2883,7 @@ index 0a5db83..39f73cf 100644
            runCreateAction={runCreateAction}
            columnInsets={columnInsets}
            title={headerTitle?.()}
-@@ -860,6 +987,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -860,6 +1012,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
                      (!onShareSelect && (item.type === "bot" || item.type === "group"))
                    }
                    header={hasListHeader ? listHeader : null}
@@ -2711,7 +2891,7 @@ index 0a5db83..39f73cf 100644
                    empty={listEmpty}
                    footer={listFooter}
                    gutters={{
-@@ -871,6 +999,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -871,6 +1024,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
                    onRefresh={refreshInbox}
                    signals={jumpSignals}
                    showJumpPills={!onShareSelect && !refreshing && !inboxHasNoChats(rows)}
@@ -2719,7 +2899,7 @@ index 0a5db83..39f73cf 100644
                  />
                ) : (
                  <FlatList<InboxItem>
-@@ -887,7 +1016,11 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -887,7 +1041,11 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
                    indicatorStyle={appearance === "dark" ? "white" : "black"}
                    contentContainerStyle={[
                      styles.list,
@@ -2732,7 +2912,7 @@ index 0a5db83..39f73cf 100644
                    ]}
                    contentInsetAdjustmentBehavior="automatic"
                    refreshControl={
-@@ -915,6 +1048,15 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -915,6 +1073,15 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
            </View>
          </CompactRowsContext.Provider>
        </SelectedChatContext.Provider>
@@ -2748,6 +2928,14 @@ index 0a5db83..39f73cf 100644
        {organizeChat && organizeTarget ? (
          <BotOrganizeModal
            bot={organizeChat}
+@@ -938,6 +1105,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+           }}
+         />
+       ) : null}
++      {sectionRename.dialog}
+     </View>
+   );
+ }
 diff --git a/apps/mobile/app/new-bot.tsx b/apps/mobile/app/new-bot.tsx
 index ad487f6..e672a99 100644
 --- a/apps/mobile/app/new-bot.tsx
@@ -62239,6 +62427,123 @@ index 0000000..929a7e1
 +    </View>
 +  );
 +}
+diff --git a/apps/mobile/components/chat-header-title.tsx b/apps/mobile/components/chat-header-title.tsx
+index 1ebd47f..319d856 100644
+--- a/apps/mobile/components/chat-header-title.tsx
++++ b/apps/mobile/components/chat-header-title.tsx
+@@ -2,12 +2,21 @@ import { useLingui } from "@lingui/react/macro";
+ import type { SpaceBot } from "@rakazo/contracts";
+ import { displayName as safeDisplayName } from "@rakazo/core";
+ import { useRouter } from "expo-router";
+-import { useSyncExternalStore } from "react";
+-import { Pressable } from "react-native";
++import { useEffect, useSyncExternalStore } from "react";
++import { Pressable, View } from "react-native";
++import Animated, {
++  useAnimatedStyle,
++  useReducedMotion,
++  useSharedValue,
++  withRepeat,
++  withTiming,
++} from "react-native-reanimated";
+ import type { ChatTitleRoute } from "../lib/chat-settings-route";
+ import { chatTitleRoute } from "../lib/chat-settings-route";
++import { hapticImpact } from "../lib/haptics";
++import { toggleLedgerOpen, useLedgerOpen, useLedgerTasks } from "../lib/ledger-store";
+ import type { MobileBot, MobileGroup } from "../lib/mobile-types";
+-import { useThemedStyles } from "../lib/native";
++import { useMobileTokens, useThemedStyles } from "../lib/native";
+ import { useInboxBot, useInboxGroup } from "../lib/search-inbox";
+ import { CHAT_TITLE_AVATAR_SIZE, ChatTitleAvatar } from "./chat-title-avatar";
+ import { ChatTitleLabel } from "./chat-title-label";
+@@ -75,10 +84,15 @@ export function ChatHeaderTitle({
+   const { t } = useLingui();
+   const router = useRouter();
+   const styles = useThemedStyles(createThreadHeaderStyles);
++  const tokens = useMobileTokens();
+   const published = useSyncExternalStore(subscribe, () => titles.get(routeKey));
+   const inboxBot = useInboxBot(params.botId);
+   const inboxGroup = useInboxGroup(params.groupId);
+   const inGroup = Boolean(params.groupId);
++  // The pill of a bot chat opens the background ledger; holding it still opens the profile.
++  const ledgerTarget = !inGroup && Boolean(params.botId) && params.readOnly !== "1";
++  const ledgerTasks = useLedgerTasks(routeKey);
++  const ledgerOpen = useLedgerOpen(routeKey);
+   const title: ChatTitle = published ?? {
+     bot: inboxBot,
+     status: inboxBot?.status,
+@@ -95,14 +109,41 @@ export function ChatHeaderTitle({
+   const members = inGroup ? (title.members ?? inboxGroup?.members) : undefined;
+   const label = safeDisplayName(title.name, inGroup ? t`Group` : t`Bot`) || t`Thread`;
+   const opens = title.opens;
++  const working = ledgerTasks.length;
+   return (
+     <Pressable
+       accessibilityRole="button"
+-      accessibilityLabel={opens ? (inGroup ? t`Group settings` : t`Profile`) : label}
+-      disabled={!opens}
++      accessibilityLabel={
++        ledgerTarget
++          ? working > 0
++            ? `后台账本，${working} 路在做`
++            : "后台账本"
++          : opens
++            ? inGroup
++              ? t`Group settings`
++              : t`Profile`
++            : label
++      }
++      accessibilityState={ledgerTarget ? { expanded: ledgerOpen } : undefined}
++      disabled={!opens && !ledgerTarget}
+       onPress={() => {
++        if (ledgerTarget) {
++          // A light tap under the thumb, then the panel slides out of the header.
++          hapticImpact();
++          toggleLedgerOpen(routeKey);
++          return;
++        }
+         if (opens) router.push(opens);
+       }}
++      // Holding the pill keeps the profile reachable now that a tap opens the ledger.
++      onLongPress={
++        ledgerTarget && opens
++          ? () => {
++              hapticImpact();
++              router.push(opens);
++            }
++          : undefined
++      }
+     >
+       <GlassSurface style={styles.titleCapsule} fallbackStyle={styles.titleCapsuleFill}>
+         {!inGroup && params.botId ? (
+@@ -110,7 +151,27 @@ export function ChatHeaderTitle({
+         ) : null}
+         {inGroup ? <GroupSeats members={members ?? []} size={CHAT_TITLE_AVATAR_SIZE} /> : null}
+         <ChatTitleLabel label={label} placeholder={!title.name} style={styles.title} />
++        {ledgerTarget && working > 0 ? (
++          <BreathingLedgerDot color={tokens.warning} expanded={ledgerOpen} />
++        ) : null}
+       </GlassSurface>
+     </Pressable>
+   );
+ }
++
++/** The tiny breathing dot beside the pill: background work is running, without saying it loudly. */
++function BreathingLedgerDot({ color, expanded }: { color: string; expanded: boolean }) {
++  const styles = useThemedStyles(createThreadHeaderStyles);
++  const reducedMotion = useReducedMotion();
++  const pulse = useSharedValue(1);
++  useEffect(() => {
++    if (reducedMotion) return;
++    pulse.value = withRepeat(withTiming(0.3, { duration: 900 }), -1, true);
++    return () => {
++      pulse.value = 1;
++    };
++  }, [pulse, reducedMotion]);
++  // Open, the ledger itself says how much is running; the dot goes solid so it reads as a switch.
++  const style = useAnimatedStyle(() => ({ opacity: expanded ? 1 : pulse.value }));
++  return <Animated.View style={[styles.ledgerDot, { backgroundColor: color }, style]} />;
++}
 diff --git a/apps/mobile/components/chat-route-header.tsx b/apps/mobile/components/chat-route-header.tsx
 index eaa8cfa..2c3f994 100644
 --- a/apps/mobile/components/chat-route-header.tsx
@@ -63714,10 +64019,79 @@ index 4fe7d6d..60db132 100644
            actions={createMenuActions(Platform.OS)}
            {...(Platform.OS === "android" ? { style: { marginBottom: -CREATE_MENU_GAP } } : {})}
 diff --git a/apps/mobile/components/inbox-render-item.tsx b/apps/mobile/components/inbox-render-item.tsx
-index 882affd..3c8d893 100644
+index 882affd..2b4ac54 100644
 --- a/apps/mobile/components/inbox-render-item.tsx
 +++ b/apps/mobile/components/inbox-render-item.tsx
-@@ -238,6 +238,10 @@ export function useInboxRenderItem({
+@@ -18,7 +18,7 @@ import type { useInboxChatActions } from "../lib/use-inbox-chat-actions";
+ import { DragSafePressable } from "./drag-safe-pressable";
+ import { createHomeStyles } from "./home-styles";
+ import { ArchivedChatsRow, BotRow, GroupRow, PinnedTiles, SectionToggle } from "./inbox-rows";
+-import type { NativeRowMenu } from "./native-row";
++import type { NativeRowMenu, NativeRowMenuItem } from "./native-row";
+ import { NativeRow } from "./native-row";
+ import { NativeSymbol } from "./native-symbol";
+ 
+@@ -175,6 +175,7 @@ function SectionHeading({
+   count,
+   collapsed,
+   onPress,
++  onRename,
+   onDelete,
+   appearance,
+ }: {
+@@ -182,20 +183,38 @@ function SectionHeading({
+   count?: number;
+   collapsed: boolean;
+   onPress: () => void;
++  /** Holding the title offers its name for editing, which is the point of holding it at all. */
++  onRename?: () => void;
+   onDelete?: () => void;
+   appearance: ResolvedAppearance;
+ }) {
+   const { t } = useLingui();
++  const actions: NativeRowMenuItem[] = [
++    ...(onRename
++      ? [{ id: "rename", title: t`Rename`, image: "pencil" as const }]
++      : []),
++    ...(onDelete
++      ? [
++          {
++            id: "delete",
++            title: t`Delete section`,
++            image: "trash" as const,
++            destructive: true,
++          },
++        ]
++      : []),
++  ];
+   return (
+     <HeadingWithMenu
+       menu={
+-        onDelete
++        actions.length > 0
+           ? {
+-              actions: [
+-                { id: "delete", title: t`Delete section`, image: "trash", destructive: true },
+-              ],
++              actions,
+               label: t`Section actions for ${ph({ name: title })}`,
+-              onAction: onDelete,
++              onAction: (id) => {
++                if (id === "rename") onRename?.();
++                else if (id === "delete") onDelete?.();
++              },
+             }
+           : undefined
+       }
+@@ -224,6 +243,7 @@ export function useInboxRenderItem({
+   day,
+   now,
+   deleteSection,
++  renameSection,
+   editSectionFromMenu,
+   groupAction,
+   spaceId,
+@@ -238,6 +258,10 @@ export function useInboxRenderItem({
    spaceBusy,
    spaceRecoveryId,
    toggleCollapsed,
@@ -63728,7 +64102,16 @@ index 882affd..3c8d893 100644
  }: Pick<
    ChatActions,
    | "botAction"
-@@ -267,10 +271,22 @@ export function useInboxRenderItem({
+@@ -247,6 +271,8 @@ export function useInboxRenderItem({
+   | "deleteSection"
+   | "snoozeChat"
+ > & {
++  /** Renames a section from its heading, which asks for the new name itself. */
++  renameSection?: (section: { id: string; name: string }) => void;
+   appearance: ResolvedAppearance;
+   chooseInboxSpace: (spaceId: string) => void;
+   confirmDeleteSpace: (space: InboxSpace) => void;
+@@ -267,10 +293,22 @@ export function useInboxRenderItem({
    spaceBusy: boolean;
    spaceRecoveryId: string | null;
    toggleCollapsed: (key: string) => void;
@@ -63751,7 +64134,21 @@ index 882affd..3c8d893 100644
    return useCallback(
      ({ item }: { item: InboxItem }) => {
        const sectionsOf = (chatSpaceId: string | undefined) =>
-@@ -378,6 +394,11 @@ export function useInboxRenderItem({
+@@ -343,6 +381,13 @@ export function useInboxRenderItem({
+             count={item.collapsed ? (item.count ?? 0) : undefined}
+             collapsed={item.collapsed === true}
+             onPress={() => toggleCollapsed(item.key)}
++            onRename={
++              sharing || !item.sectionId || !renameSection
++                ? undefined
++                : () => {
++                    if (item.sectionId) renameSection({ id: item.sectionId, name: item.title });
++                  }
++            }
+             onDelete={
+               sharing || !item.sectionId
+                 ? undefined
+@@ -378,6 +423,11 @@ export function useInboxRenderItem({
            onOrganize={organizeFromMenu}
            onEditSection={editSectionFromMenu}
            onSnooze={snoozeChat}
@@ -63763,7 +64160,12 @@ index 882affd..3c8d893 100644
          />
        );
      },
-@@ -392,6 +413,11 @@ export function useInboxRenderItem({
+@@ -388,10 +438,16 @@ export function useInboxRenderItem({
+       confirmDeleteSpace,
+       createBotInSpace,
+       deleteSection,
++      renameSection,
+       day,
        now,
        editSectionFromMenu,
        groupAction,
@@ -64467,7 +64869,7 @@ index adf731c..82abf47 100644
      width,
      height,
 diff --git a/apps/mobile/components/message-context-menu.tsx b/apps/mobile/components/message-context-menu.tsx
-index 139a327..9aefbba 100644
+index 139a327..56c9ec6 100644
 --- a/apps/mobile/components/message-context-menu.tsx
 +++ b/apps/mobile/components/message-context-menu.tsx
 @@ -1,21 +1,8 @@
@@ -64494,14 +64896,14 @@ index 139a327..9aefbba 100644
  
  const tapPoint = (event: GestureResponderEvent) => ({
    x: event.nativeEvent.pageX,
-@@ -23,22 +10,21 @@ const tapPoint = (event: GestureResponderEvent) => ({
+@@ -23,79 +10,50 @@ const tapPoint = (event: GestureResponderEvent) => ({
    time: event.nativeEvent.timestamp,
  });
  
 +/**
-+ * The surface a message bubble sits in: a hold opens its reaction and action menu, and a double
-+ * tap reacts with a thumbs up. Both platforms open the same sheet, so the menu reads the same
-+ * wherever the app runs, and the bubble keeps its place in the chat instead of lifting away.
++ * The surface a message bubble sits in: a hold opens its reaction and action menu, every short tap
++ * answers with the lightest tap of its own, and a double tap opens the message's text for the
++ * system's own selection — the blue handles a person drags, not a copy button.
 + */
  export function MessageContextMenu({
 -  actions,
@@ -64511,6 +64913,7 @@ index 139a327..9aefbba 100644
    fullWidth = false,
 -  onAction,
    onLongPress,
++  onTap,
    onDoubleTap,
  }: {
 -  actions: readonly MessageMenuEntry[];
@@ -64520,11 +64923,21 @@ index 139a327..9aefbba 100644
    fullWidth?: boolean;
 -  onAction: (id: string) => void;
    onLongPress?: (event: GestureResponderEvent) => void;
-   /** Double tapping the message, used to react with a thumbs up. */
+-  /** Double tapping the message, used to react with a thumbs up. */
++  /** Each short tap on the bubble, before a second one makes it a double tap. */
++  onTap?: () => void;
++  /** Double tapping the message. */
    onDoubleTap?: () => void;
-@@ -49,53 +35,19 @@ export function MessageContextMenu({
+ }) {
+   const detector = useMemo(() => createDoubleTapDetector(), [onDoubleTap]);
++  const ticks = Boolean(onTap || onDoubleTap);
+   // Touches reach these handlers only when no inner link, image or control claimed them,
+   // so inner taps stay immediate and never count toward a double tap.
    const release = (event: GestureResponderEvent) => {
-     if (detector.end(tapPoint(event))) onDoubleTap?.();
+-    if (detector.end(tapPoint(event))) onDoubleTap?.();
++    const paired = detector.end(tapPoint(event));
++    onTap?.();
++    if (paired) onDoubleTap?.();
    };
 -  if (Platform.OS !== "ios") {
 -    return (
@@ -64554,11 +64967,11 @@ index 139a327..9aefbba 100644
 +      accessible={false}
 +      delayLongPress={320}
 +      onLongPress={onLongPress}
-+      onPressIn={onDoubleTap ? (event) => detector.start(tapPoint(event)) : undefined}
++      onPressIn={ticks ? (event) => detector.start(tapPoint(event)) : undefined}
 +      // A touch that slides is not a tap, so movement and cancellation end it here.
-+      onTouchMove={onDoubleTap ? (event) => detector.move(tapPoint(event)) : undefined}
-+      onTouchCancel={onDoubleTap ? () => detector.cancel() : undefined}
-+      onPress={onDoubleTap ? release : undefined}
++      onTouchMove={ticks ? (event) => detector.move(tapPoint(event)) : undefined}
++      onTouchCancel={ticks ? () => detector.cancel() : undefined}
++      onPress={ticks ? release : undefined}
 +      style={{ maxWidth: "100%", width: fullWidth ? maxWidth : undefined, flexShrink: 1 }}
      >
 -      {/* The SwiftUI bridge measures its trigger without a horizontal constraint. */}
@@ -66640,6 +67053,69 @@ index 0000000..a7b3fb4
 +    },
 +  });
 +}
+diff --git a/apps/mobile/components/select-text-sheet.tsx b/apps/mobile/components/select-text-sheet.tsx
+index a180dac..1c0fded 100644
+--- a/apps/mobile/components/select-text-sheet.tsx
++++ b/apps/mobile/components/select-text-sheet.tsx
+@@ -1,16 +1,37 @@
+ import { useLingui } from "@lingui/react/macro";
+ import { typeScale } from "@rakazo/ui-tokens";
++import { useEffect, useState } from "react";
+ import { Modal, Platform, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+ import { useSafeAreaInsets } from "react-native-safe-area-context";
+ import { mobileTokens } from "../lib/appearance";
+ import { useThemedStyles } from "../lib/native";
+ import { NativeActionButton } from "./native-action-button";
+ 
+-/** A message as one block of plain text, so a selection can span paragraphs. */
+-export function SelectTextSheet({ text, onClose }: { text: string | null; onClose: () => void }) {
++/**
++ * A message as one block of plain text, so a selection can span paragraphs. Opened from a double
++ * tap, the text is already selected: the system's own selection with its blue handles is in the
++ * person's hands on the first frame, and dragging re-aims it.
++ */
++export function SelectTextSheet({
++  text,
++  onClose,
++  selectAll = false,
++}: {
++  text: string | null;
++  onClose: () => void;
++  /** Start with the whole message selected, as a double tap on the bubble asks for. */
++  selectAll?: boolean;
++}) {
+   const { t } = useLingui();
+   const styles = useThemedStyles(createStyles);
+   const insets = useSafeAreaInsets();
++  const [selection, setSelection] = useState<{ start: number; end: number } | undefined>();
++  const length = text?.length ?? 0;
++  useEffect(() => {
++    // The sheet's content never changes while it is open, so one selection set when it appears
++    // is enough; afterwards the system's own drag handles own it.
++    setSelection(selectAll ? { start: 0, end: length } : undefined);
++  }, [selectAll, length]);
+   return (
+     <Modal
+       visible={text !== null}
+@@ -32,7 +53,7 @@ export function SelectTextSheet({ text, onClose }: { text: string | null; onClos
+         <View style={styles.header}>
+           <NativeActionButton fill={false} label={t`Done`} onPress={onClose} prominence="primary" />
+         </View>
+-        <ScrollView contentContainerStyle={styles.content}>
++        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="always">
+           {Platform.OS === "ios" ? (
+             // iOS selectable Text only copies the whole message; a read-only text
+             // view gets the native handles and edit menu. The sheet scrolls, not
+@@ -42,6 +63,9 @@ export function SelectTextSheet({ text, onClose }: { text: string | null; onClos
+               editable={false}
+               multiline
+               scrollEnabled={false}
++              // Focused and selected on the way in, so the handles are already out.
++              autoFocus={selectAll}
++              selection={selection}
+               style={[styles.text, styles.iosTextInput]}
+             />
+           ) : (
 diff --git a/apps/mobile/components/send-progress-bar.tsx b/apps/mobile/components/send-progress-bar.tsx
 new file mode 100644
 index 0000000..5a58441
@@ -67975,6 +68451,25 @@ index 0ffda09..dbdd4aa 100644
 +    </MenuView>
 +  );
 +}
+diff --git a/apps/mobile/components/thread-header-styles.ts b/apps/mobile/components/thread-header-styles.ts
+index 714c6a3..1d8ec01 100644
+--- a/apps/mobile/components/thread-header-styles.ts
++++ b/apps/mobile/components/thread-header-styles.ts
+@@ -25,6 +25,14 @@ export function createThreadHeaderStyles() {
+       ...typeScale.cardTitle,
+       color: tokens.foreground,
+     },
++    // The ledger's own mark on the pill: small enough to read as a state, not a badge.
++    ledgerDot: {
++      width: 6,
++      height: 6,
++      borderRadius: 3,
++      marginStart: -2,
++      marginEnd: 2,
++    },
+     headerActions: {
+       flexDirection: "row",
+       alignItems: "center",
 diff --git a/apps/mobile/components/thread/composer-reply-bar.tsx b/apps/mobile/components/thread/composer-reply-bar.tsx
 new file mode 100644
 index 0000000..2b62f98
@@ -68763,7 +69258,7 @@ index aa623d6..66cc65d 100644
 +  );
 +}
 diff --git a/apps/mobile/components/thread/message-row.tsx b/apps/mobile/components/thread/message-row.tsx
-index db15142..d0746dc 100644
+index db15142..66324f3 100644
 --- a/apps/mobile/components/thread/message-row.tsx
 +++ b/apps/mobile/components/thread/message-row.tsx
 @@ -6,7 +6,7 @@ import type {
@@ -68791,7 +69286,8 @@ index db15142..d0746dc 100644
 +  withSpring,
 +} from "react-native-reanimated";
  import type { MobileArtifactTarget } from "../../lib/artifact-open";
- import { canDoubleTapReact } from "../../lib/double-tap";
+-import { canDoubleTapReact } from "../../lib/double-tap";
++import { canDoubleTapReact, doubleTapIntent } from "../../lib/double-tap";
  import { useUiLocale } from "../../lib/i18n";
 +import { firstMessageLink } from "../../lib/link-preview";
  import { presentMessageActionSheet } from "../../lib/message-action-sheet";
@@ -68800,7 +69296,7 @@ index db15142..d0746dc 100644
  import { messageRowLayout } from "../../lib/message-row-layout";
  import type { MobileBot, MobileMessage, MobileSnapshot } from "../../lib/mobile-types";
  import { blockText } from "../../lib/mobile-types";
-+import { hapticImpact } from "../../lib/haptics";
++import { hapticImpact, hapticSelection } from "../../lib/haptics";
  import { useMobileTokens, useResolvedAppearance } from "../../lib/native";
  import { selectableTextFromMarkdown } from "../../lib/selectable-text";
  import { ThreadReadOnlyContext } from "../../lib/thread-read-only";
@@ -68822,7 +69318,16 @@ index db15142..d0746dc 100644
  
  export type MessageRowActions = {
    helperToggle: (
-@@ -112,6 +123,20 @@ type MessageRowProps = {
+@@ -52,6 +63,8 @@ export type MessageRowActions = {
+   reply: (message: MobileMessage) => void;
+   quote: (message: MobileMessage) => void;
+   select: (text: string) => void;
++  /** Opens the text with the whole message already selected, as a double tap asks. */
++  selectAll: (text: string) => void;
+   speak: (message: MobileMessage) => void;
+   react: (message: MobileMessage, reaction: MessageReaction) => Promise<boolean>;
+   markUnread: (message: MobileMessage) => void;
+@@ -112,6 +125,20 @@ type MessageRowProps = {
    index: number;
  };
  
@@ -68843,7 +69348,7 @@ index db15142..d0746dc 100644
  export const MessageRow = memo(function MessageRow({
    message,
    actions,
-@@ -171,17 +196,23 @@ export const MessageRow = memo(function MessageRow({
+@@ -171,18 +198,25 @@ export const MessageRow = memo(function MessageRow({
    );
    const [optimisticLike, setOptimisticLike] = useState(false);
    const likeInFlight = useRef(false);
@@ -68864,14 +69369,16 @@ index db15142..d0746dc 100644
    const displayedReactions = new Map(messageReactions);
    if (optimisticLike && !hasLike) displayedReactions.set("👍", 1);
 -  const { actionProps, menu, onMenuAction, likeMessage } = useMemo<{
-+  const { actionProps, likeMessage } = useMemo<{
++  const { actionProps, doubleTap } = useMemo<{
      actionProps: MessageActionProps;
 -    menu: ReturnType<typeof buildMessageContextMenu>;
 -    onMenuAction: (id: string) => void;
      likeMessage?: () => void;
++    doubleTap?: () => void;
    }>(() => {
      const messageText = selectableMessageText(message);
-@@ -192,6 +223,8 @@ export const MessageRow = memo(function MessageRow({
+     const includeQuote =
+@@ -192,16 +226,18 @@ export const MessageRow = memo(function MessageRow({
      const includeReact = !readOnly && canReactToThreadMessage(message);
      // The call already reads replies aloud; a second voice would talk over it.
      const includeSpeak = message.role === "bot" && !onCall && Boolean(blockText(message));
@@ -68880,7 +69387,21 @@ index db15142..d0746dc 100644
      const includeSelect = messageText.trim().length > 0;
      // Any sent message can be marked unread; the next open starts New at the first reply from it.
      const includeUnread = !readOnly && !markedUnread && canMarkMessageUnread(message);
-@@ -236,38 +269,32 @@ export const MessageRow = memo(function MessageRow({
+     const reply = () => actions.reply(message);
+     const quote = () => actions.quote(message);
+     const speakMessage = () => actions.speak(message);
+-    const select = () =>
+-      actions.select(
+-        message.role === "user" ? messageText : selectableTextFromMarkdown(messageText),
+-      );
++    // A bot's Markdown carries its emphasis and rules; a person's own words are taken as written.
++    const selectableText =
++      message.role === "user" ? messageText : selectableTextFromMarkdown(messageText);
++    const select = () => actions.select(selectableText);
+     const copy = () => {
+       const text = copyableMessageText(message);
+       if (text) void Clipboard.setStringAsync(text).catch(() => undefined);
+@@ -236,38 +272,32 @@ export const MessageRow = memo(function MessageRow({
            ]
          : []),
        ...(includeSpeak ? [{ name: "speak", text: t`Speak message`, onPress: speakMessage }] : []),
@@ -68933,7 +69454,7 @@ index db15142..d0746dc 100644
          groups: [
            [
              ...(!readOnly
-@@ -276,6 +303,7 @@ export const MessageRow = memo(function MessageRow({
+@@ -276,6 +306,7 @@ export const MessageRow = memo(function MessageRow({
                      name: "reply",
                      text: t`Reply`,
                      icon: "arrow-undo-outline" as const,
@@ -68941,7 +69462,7 @@ index db15142..d0746dc 100644
                      onPress: reply,
                    },
                  ]
-@@ -286,48 +314,62 @@ export const MessageRow = memo(function MessageRow({
+@@ -286,77 +317,88 @@ export const MessageRow = memo(function MessageRow({
                      name: "unread",
                      text: t`Mark as unread`,
                      icon: "mail-unread-outline" as const,
@@ -69013,21 +69534,40 @@ index db15142..d0746dc 100644
            ],
          ],
        });
-     return {
+-    return {
 -      menu,
-       likeMessage: canDoubleTapReact(includeReact, message.blocks, waitingForUser)
-         ? () => {
-             if (hasLike || optimisticLike || likeInFlight.current) return;
-@@ -342,21 +384,8 @@ export const MessageRow = memo(function MessageRow({
-               });
-           }
-         : undefined,
+-      likeMessage: canDoubleTapReact(includeReact, message.blocks, waitingForUser)
+-        ? () => {
+-            if (hasLike || optimisticLike || likeInFlight.current) return;
+-            likeInFlight.current = true;
+-            setOptimisticLike(true);
+-            void react("👍")
+-              .then((success) => {
+-                if (!success) setOptimisticLike(false);
+-              })
+-              .finally(() => {
+-                likeInFlight.current = false;
+-              });
+-          }
+-        : undefined,
 -      onMenuAction: (id) => {
 -        const reaction = messageMenuReaction(id);
 -        if (reaction && (MESSAGE_REACTIONS as readonly string[]).includes(reaction)) {
 -          react(reaction as MessageReaction);
 -          return;
--        }
++    const like = canDoubleTapReact(includeReact, message.blocks, waitingForUser)
++      ? () => {
++          if (hasLike || optimisticLike || likeInFlight.current) return;
++          likeInFlight.current = true;
++          setOptimisticLike(true);
++          void react("👍")
++            .then((success) => {
++              if (!success) setOptimisticLike(false);
++            })
++            .finally(() => {
++              likeInFlight.current = false;
++            });
+         }
 -        if (id === "reply") reply();
 -        if (id === "copy") copy();
 -        if (id === "quote") quote();
@@ -69035,13 +69575,25 @@ index db15142..d0746dc 100644
 -        if (id === "select") select();
 -        if (id === "unread") markUnread();
 -      },
++      : undefined;
++    const intent = doubleTapIntent({
++      hasSelectableText: includeSelect,
++      inlineControls: messageHasInlineControls(message.blocks),
++      canLike: Boolean(like),
++    });
++    return {
++      likeMessage: like,
++      // Words open for selection, already selected; a picture has nothing to select and keeps the
++      // quiet like; a bubble holding its own controls takes the double tap for neither.
++      doubleTap:
++        intent === "select" ? () => actions.selectAll(selectableText) : intent === "like" ? like : undefined,
        actionProps: {
 -        onLongPress: Platform.OS === "ios" ? undefined : openSheet,
 +        onLongPress: openSheet,
          accessibilityActions: menuActions.map((action) => ({
            name: action.name,
            label: action.text,
-@@ -380,6 +409,54 @@ export const MessageRow = memo(function MessageRow({
+@@ -380,6 +422,54 @@ export const MessageRow = memo(function MessageRow({
      optimisticLike,
    ]);
    const layout = messageRowLayout(message.blocks, { activityBotId, inGroup, columnWidth });
@@ -69096,7 +69648,7 @@ index db15142..d0746dc 100644
    return (
      <View
        key={message.id}
-@@ -392,15 +469,59 @@ export const MessageRow = memo(function MessageRow({
+@@ -392,15 +482,59 @@ export const MessageRow = memo(function MessageRow({
      >
        {separator ? <TimeSeparator createdAt={message.createdAt} /> : null}
        {unreadDivider ? <UnreadDivider afterSeparator={separator} /> : null}
@@ -69165,7 +69717,7 @@ index db15142..d0746dc 100644
          {activityBotId ? (
            <View style={{ paddingTop: 22 }}>
              <BotAvatar
-@@ -415,13 +536,19 @@ export const MessageRow = memo(function MessageRow({
+@@ -415,13 +549,19 @@ export const MessageRow = memo(function MessageRow({
              />
            </View>
          ) : null}
@@ -69192,7 +69744,7 @@ index db15142..d0746dc 100644
          >
            {isPeerReceiptBlocks(message.blocks) ? null : (
              <ReplyLine
-@@ -435,11 +562,8 @@ export const MessageRow = memo(function MessageRow({
+@@ -435,13 +575,12 @@ export const MessageRow = memo(function MessageRow({
              />
            )}
            <MessageContextMenu
@@ -69202,9 +69754,21 @@ index db15142..d0746dc 100644
 -            colorScheme={colorScheme}
 -            onAction={onMenuAction}
              onLongPress={actionProps.onLongPress}
-             onDoubleTap={messageHasInlineControls(message.blocks) ? undefined : likeMessage}
+-            onDoubleTap={messageHasInlineControls(message.blocks) ? undefined : likeMessage}
++            // Every short tap is felt; the second one opens the text for selection.
++            onTap={hapticSelection}
++            onDoubleTap={doubleTap}
            >
-@@ -472,41 +596,30 @@ export const MessageRow = memo(function MessageRow({
+             <ThreadReadOnlyContext.Provider value={readOnly}>
+               <MessageBubble
+@@ -466,47 +605,36 @@ export const MessageRow = memo(function MessageRow({
+                 peerExchange={peerExchange}
+                 onOpenPeerChat={actions.openPeerChat}
+                 actionProps={actionProps}
+-                doubleTapSurface={Boolean(likeMessage)}
++                doubleTapSurface={Boolean(doubleTap)}
+                 onHelperToggle={actions.helperToggle}
+                 userBubble={userBubble}
                />
              </ThreadReadOnlyContext.Provider>
            </MessageContextMenu>
@@ -69767,8 +70331,20 @@ index eeb3608..e2774c2 100644
 +    </MessageSwipeContext.Provider>
    );
  }
+diff --git a/apps/mobile/components/thread/thread-rows.tsx b/apps/mobile/components/thread/thread-rows.tsx
+index 722969f..2360c7e 100644
+--- a/apps/mobile/components/thread/thread-rows.tsx
++++ b/apps/mobile/components/thread/thread-rows.tsx
+@@ -43,6 +43,7 @@ export function useLatestRowActions(current: MessageRowActions): MessageRowActio
+       reply: (message) => rowActionsRef.current.reply(message),
+       quote: (message) => rowActionsRef.current.quote(message),
+       select: (text) => rowActionsRef.current.select(text),
++      selectAll: (text) => rowActionsRef.current.selectAll(text),
+       speak: (message) => rowActionsRef.current.speak(message),
+       react: (message, reaction) => rowActionsRef.current.react(message, reaction),
+       markUnread: (message) => rowActionsRef.current.markUnread(message),
 diff --git a/apps/mobile/components/thread/thread-screen.tsx b/apps/mobile/components/thread/thread-screen.tsx
-index c3c0cfd..54ee172 100644
+index c3c0cfd..6340cf3 100644
 --- a/apps/mobile/components/thread/thread-screen.tsx
 +++ b/apps/mobile/components/thread/thread-screen.tsx
 @@ -3,7 +3,6 @@ import { useLingui } from "@lingui/react/macro";
@@ -69788,7 +70364,8 @@ index c3c0cfd..54ee172 100644
    displayName as safeDisplayName,
    workingRoutineName,
  } from "@rakazo/core";
- import { useFocusEffect, useIsFocused, useLocalSearchParams, useRouter } from "expo-router";
+-import { useFocusEffect, useIsFocused, useLocalSearchParams, useRouter } from "expo-router";
++import { useFocusEffect, useIsFocused, useLocalSearchParams, useRoute, useRouter } from "expo-router";
  import { useHeaderHeight } from "expo-router/react-navigation";
  import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 -import { I18nManager, Platform, View } from "react-native";
@@ -69800,11 +70377,14 @@ index c3c0cfd..54ee172 100644
  import { useSafeAreaInsets } from "react-native-safe-area-context";
  import { readableGutters } from "../../lib/adaptive-layout";
  import { rpc } from "../../lib/api";
-@@ -44,13 +45,13 @@ import {
+@@ -44,13 +45,16 @@ import {
    threadHeaderClearance,
    threadHeaderFloats,
  } from "../../lib/thread-edges";
 +import { hapticArrival, hapticImpact } from "../../lib/haptics";
++import type { LedgerTask } from "../../lib/ledger-tasks";
++import { ledgerTasks } from "../../lib/ledger-tasks";
++import { clearLedger, publishLedgerTasks, setLedgerOpen, useLedger } from "../../lib/ledger-store";
  import { useThreadFeedback } from "../../lib/thread-feedback";
  import { useThreadFocus } from "../../lib/thread-focus";
  import { useThreadSnapshot } from "../../lib/thread-history";
@@ -69816,7 +70396,7 @@ index c3c0cfd..54ee172 100644
  import { useThreadPaging } from "../../lib/thread-paging";
  import { useThreadRead } from "../../lib/thread-read";
  import {
-@@ -59,6 +60,7 @@ import {
+@@ -59,6 +63,7 @@ import {
    latestThreadRowKey,
  } from "../../lib/thread-scroll";
  import { useThreadSend } from "../../lib/thread-send";
@@ -69824,7 +70404,11 @@ index c3c0cfd..54ee172 100644
  import { threadGroupMembers } from "../../lib/thread-snapshot";
  import { useThreadSync } from "../../lib/thread-sync";
  import { useThreadTranscript } from "../../lib/thread-transcript";
-@@ -71,9 +73,10 @@ import { SelectTextSheet } from "../select-text-sheet";
+@@ -68,12 +73,14 @@ import { FailedSendBubble } from "../failed-send-bubble";
+ import { NewestPageCards } from "../pages/page-card";
+ import { RunErrorSheet } from "../run-error-sheet";
+ import { SelectTextSheet } from "../select-text-sheet";
++import { LedgerPanel } from "./ledger-panel";
  import { ThreadComposer } from "../thread-composer";
  import { ThreadErrorNotice, ThreadFetchErrorNotice } from "../thread-error-notice";
  import { createThreadHeaderStyles } from "../thread-header-styles";
@@ -69836,7 +70420,7 @@ index c3c0cfd..54ee172 100644
  import { useThreadHeader } from "./thread-header";
  import { LoadEarlierButton, ThreadWorkingFooter } from "./thread-list-controls";
  import { ThreadMessageList } from "./thread-message-list";
-@@ -133,6 +136,13 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -133,6 +140,13 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
    const inGroup = Boolean(groupId);
    const call = useCallSession();
    const rootAvoidsKeyboard = useContext(CallKeyboardContext);
@@ -69850,8 +70434,45 @@ index c3c0cfd..54ee172 100644
    const contentBottomInset = useContentBottomInset();
    const onCall = Boolean(botId) && call?.botId === botId;
    // The composer floats over the list, which scrolls underneath; this keeps the newest message
-@@ -224,6 +234,16 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -218,12 +232,52 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+   );
+   const feedback = useThreadFeedback(threadKey, newClientId, echoed);
+   const { error, setError } = feedback;
+-  const [selectableText, setSelectableText] = useState<string | null>(null);
++  const [selectableText, setSelectableText] = useState<{
++    text: string;
++    selectAll: boolean;
++  } | null>(null);
+   const transcript = useThreadTranscript(snap?.messages, inGroup);
+   const { reactionView, peerTranscript, setExpandedPeerMarkers } = transcript;
    const visibleMessages = transcript.visibleMessages;
++  // The ledger of work running behind this chat: the title capsule opens it, this screen fills it.
++  const route = useRoute();
++  const ledger = useLedger(route.key);
++  const runningTasks = useMemo(
++    () => ledgerTasks(visibleMessages, snap?.activeRuns),
++    [visibleMessages, snap?.activeRuns],
++  );
++  // Publishes only when the work itself moved, so the native title is not rebuilt on every event.
++  useEffect(() => {
++    publishLedgerTasks(route.key, runningTasks);
++  }, [route.key, runningTasks]);
++  // A chat that goes away takes its ledger with it.
++  useEffect(() => () => clearLedger(route.key), [route.key]);
++  const [stoppingLedger, setStoppingLedger] = useState<ReadonlySet<string>>(() => new Set());
++  const stopLedgerTask = useCallback((task: LedgerTask) => {
++    const stop = task.stop;
++    if (!stop) return;
++    setStoppingLedger((current) => new Set(current).add(task.id));
++    // The card settles from the chat's own events once the helper stops.
++    void rpc("threads/stopHelper", stop).catch(() =>
++      setStoppingLedger((current) => {
++        const next = new Set(current);
++        next.delete(task.id);
++        return next;
++      }),
++    );
++  }, []);
    const newestPages = useMemo(() => newestPageCards(visibleMessages), [visibleMessages]);
    const latestMessage = latestArrivalMessage(reactionView.visibleMessages, peerTranscript.markerOf);
 +  // A reply that lands while this chat is on screen is felt, once, at the softest weight: it is
@@ -69867,7 +70488,7 @@ index c3c0cfd..54ee172 100644
    const composerMentionTargets = useMemo(
      () =>
        buildComposerMentionOptions({
-@@ -263,6 +283,14 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -263,6 +317,14 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
      snap && (!showingSaved || error)
        ? snap.run?.status
        : (titleBot?.threadStatus ?? snap?.run?.status);
@@ -69882,7 +70503,7 @@ index c3c0cfd..54ee172 100644
    // The group's members in its order, once the chat or its group list has loaded them; the
    // title seats the inbox's copy until then.
    const groupMembers = threadGroupMembers(groupId, snap, mentionGroups);
-@@ -271,6 +299,8 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -271,6 +333,8 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
      (message) => message.id.startsWith("progress:") && liveMessageComposing(message.blocks),
    );
    const activityLine = liveActivityLine(snap?.messages ?? []);
@@ -69891,7 +70512,17 @@ index c3c0cfd..54ee172 100644
    const workingRoutine = workingRoutineName(snap?.activeRuns ?? (snap?.run ? [snap.run] : []));
    const userBubble = useMemo(
      () =>
-@@ -527,6 +557,14 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -447,7 +511,8 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+       setReplyQuote(null);
+     },
+     quote: setQuoteTarget,
+-    select: setSelectableText,
++    select: (text) => setSelectableText({ text, selectAll: false }),
++    selectAll: (text) => setSelectableText({ text, selectAll: true }),
+     speak,
+     react: composer.react,
+     markUnread: markUnreadFrom,
+@@ -527,6 +592,14 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
              status: bot.status,
            }))
          : [];
@@ -69906,7 +70537,7 @@ index c3c0cfd..54ee172 100644
    const workingFooter = (
      <ThreadWorkingFooter
        bots={workingBots.map((bot) => ({
-@@ -535,7 +573,8 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -535,7 +608,8 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
        }))}
        atBottom={!scroll.state.detached}
        label={
@@ -69916,7 +70547,7 @@ index c3c0cfd..54ee172 100644
        }
      />
    );
-@@ -572,23 +611,20 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -572,23 +646,20 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
    );
  
    return (
@@ -69953,7 +70584,7 @@ index c3c0cfd..54ee172 100644
          <View style={{ flex: 1 }}>
            <NewestPageCards.Provider value={newestPages}>
              <ThreadMessageList
-@@ -610,35 +646,12 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -610,35 +681,12 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
                showLatest={showLatest}
              />
            </NewestPageCards.Provider>
@@ -69990,7 +70621,7 @@ index c3c0cfd..54ee172 100644
              attachmentNotice={attachments.attachmentNotice}
              attachments={attachments.activePendingAttachments}
              onRemoveAttachment={(id) =>
-@@ -650,6 +663,10 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -650,6 +698,10 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
              <ThreadComposer
                key={threadKey}
                ref={composer.composerRef}
@@ -70001,7 +70632,7 @@ index c3c0cfd..54ee172 100644
                draftScope={draftScope}
                agentSkills={agentSkills}
                composerMentionTargets={composerMentionTargets}
-@@ -657,9 +674,25 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -657,9 +709,25 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
                composerPrompt={composerPrompt}
                replyTargetId={replyTarget?.id}
                replyQuote={replyQuote}
@@ -70027,7 +70658,7 @@ index c3c0cfd..54ee172 100644
                botId={botId}
                onCall={onCall}
                sending={attachments.shareImporting}
-@@ -673,27 +706,32 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -673,27 +741,46 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
              />
            </ThreadComposerDock>
          </View>
@@ -70045,8 +70676,22 @@ index c3c0cfd..54ee172 100644
 +        // message scrolled up dissolves under the title instead of crossing it.
 +        <ThreadHeaderPaper height={headerHeight + THREAD_HEADER_PILL_BOTTOM_INSET + 6} />
 +      ) : null}
++      {botId && !inGroup ? (
++        <LedgerPanel
++          open={ledger.open}
++          tasks={ledger.tasks}
++          topInset={headerHeight + THREAD_HEADER_PILL_BOTTOM_INSET + 6}
++          stopping={stoppingLedger}
++          onStop={stopLedgerTask}
++          onClose={() => setLedgerOpen(route.key, false)}
++        />
++      ) : null}
 +      {selectableText !== null ? (
-+        <SelectTextSheet text={selectableText} onClose={() => setSelectableText(null)} />
++        <SelectTextSheet
++          text={selectableText.text}
++          selectAll={selectableText.selectAll}
++          onClose={() => setSelectableText(null)}
++        />
 +      ) : null}
 +      <RunErrorSheet
 +        details={detailsOpen ? runError : null}
@@ -71996,6 +72641,112 @@ index 0000000..3bb01ff
 +    enumerable: true,
 +    configurable: true,
 +  });
++}
+diff --git a/apps/mobile/lib/app-foreground.test.ts b/apps/mobile/lib/app-foreground.test.ts
+index 7ab8c46..a4982a9 100644
+--- a/apps/mobile/lib/app-foreground.test.ts
++++ b/apps/mobile/lib/app-foreground.test.ts
+@@ -1,5 +1,5 @@
+ import { describe, expect, it, vi } from "vitest";
+-import { isForegroundState } from "./app-foreground";
++import { createResumeTracker, isForegroundState } from "./app-foreground";
+ 
+ vi.mock("react-native", () => ({
+   AppState: { currentState: "active", addEventListener: vi.fn() },
+@@ -13,3 +13,35 @@ describe("isForegroundState", () => {
+     expect(isForegroundState("background")).toBe(false);
+   });
+ });
++
++describe("createResumeTracker", () => {
++  it("counts the return from the background once, through the inactive step iOS reports", () => {
++    const tracker = createResumeTracker("active");
++    expect(tracker.next("inactive")).toBe(false);
++    expect(tracker.next("background")).toBe(false);
++    expect(tracker.next("inactive")).toBe(false);
++    expect(tracker.next("active")).toBe(true);
++    // Already back: the next state change is not another return.
++    expect(tracker.next("active")).toBe(false);
++  });
++
++  it("does not treat a system overlay as a return", () => {
++    const tracker = createResumeTracker("active");
++    expect(tracker.next("inactive")).toBe(false);
++    expect(tracker.next("active")).toBe(false);
++  });
++
++  it("is away from the first frame when the app opens in the background", () => {
++    const tracker = createResumeTracker("background");
++    expect(tracker.next("active")).toBe(true);
++  });
++
++  it("returns again after a second trip to the background", () => {
++    const tracker = createResumeTracker("active");
++    tracker.next("background");
++    expect(tracker.next("active")).toBe(true);
++    tracker.next("background");
++    tracker.next("inactive");
++    expect(tracker.next("active")).toBe(true);
++  });
++});
+diff --git a/apps/mobile/lib/app-foreground.ts b/apps/mobile/lib/app-foreground.ts
+index e70af4f..dcf0667 100644
+--- a/apps/mobile/lib/app-foreground.ts
++++ b/apps/mobile/lib/app-foreground.ts
+@@ -1,4 +1,5 @@
+ import { useSyncExternalStore } from "react";
++import { useEffect, useRef } from "react";
+ import { AppState } from "react-native";
+ 
+ /** iOS passes through "inactive" for system overlays; only a real background pauses work. */
+@@ -6,6 +7,28 @@ export function isForegroundState(state: string | null | undefined): boolean {
+   return state !== "background";
+ }
+ 
++/**
++ * Watches the app's state for the return from the background. iOS reports background → inactive →
++ * active on the way back, so the return is remembered as "was away" rather than read off the state
++ * just before; a drop to inactive alone (the app switcher, a control-centre pull) is not away.
++ */
++export function createResumeTracker(initial: string | null | undefined): {
++  next(state: string | null | undefined): boolean;
++} {
++  let away = initial === "background";
++  return {
++    next(state) {
++      if (state === "background") {
++        away = true;
++        return false;
++      }
++      if (state !== "active" || !away) return false;
++      away = false;
++      return true;
++    },
++  };
++}
++
+ function subscribe(listener: () => void) {
+   const subscription = AppState.addEventListener("change", listener);
+   return () => subscription.remove();
+@@ -17,3 +40,19 @@ const currentForeground = () => isForegroundState(AppState.currentState);
+ export function useAppForeground(): boolean {
+   return useSyncExternalStore(subscribe, currentForeground, currentForeground);
+ }
++
++/**
++ * Runs `resume` when the app comes back from the background, which is when a connection the
++ * system put to sleep has to be picked up again.
++ */
++export function useAppResume(resume: () => unknown): void {
++  const latest = useRef(resume);
++  latest.current = resume;
++  useEffect(() => {
++    const tracker = createResumeTracker(AppState.currentState);
++    const subscription = AppState.addEventListener("change", (state) => {
++      if (tracker.next(state)) void latest.current();
++    });
++    return () => subscription.remove();
++  }, []);
 +}
 diff --git a/apps/mobile/lib/approval-settings.test.tsx b/apps/mobile/lib/approval-settings.test.tsx
 index 4e7a309..66e7d82 100644
@@ -74594,6 +75345,29 @@ index 0000000..ba9ef39
 +    }
 +  }
 +  return { attachments, skipped };
++}
+diff --git a/apps/mobile/lib/double-tap.ts b/apps/mobile/lib/double-tap.ts
+index 9085f80..086159b 100644
+--- a/apps/mobile/lib/double-tap.ts
++++ b/apps/mobile/lib/double-tap.ts
+@@ -62,3 +62,18 @@ export function canDoubleTapReact(
+     blocks.every((block) => ["text", "image", "file", "chart", "page"].includes(block.kind))
+   );
+ }
++
++/**
++ * What a double tap on a bubble does. Words open for selection — the blue handles are what a
++ * person reaches for twice — and a bubble with nothing to select keeps the quiet like it had.
++ * A bubble that holds controls of its own takes the double tap for neither.
++ */
++export function doubleTapIntent(input: {
++  hasSelectableText: boolean;
++  inlineControls: boolean;
++  canLike: boolean;
++}): "select" | "like" | undefined {
++  if (input.hasSelectableText) return "select";
++  if (input.inlineControls) return undefined;
++  return input.canLike ? "like" : undefined;
 +}
 diff --git a/apps/mobile/lib/emoji-catalog.ts b/apps/mobile/lib/emoji-catalog.ts
 new file mode 100644
@@ -84583,7 +85357,7 @@ index db33cb4..61045dd 100644
      const info = typeof node.sourceInfo === "string" ? node.sourceInfo : "";
      const source = node.content.replace(/\n$/, "");
 diff --git a/packages/chat-ui/src/native/styles.ts b/packages/chat-ui/src/native/styles.ts
-index 8471949..9d9fba7 100644
+index 8471949..6de4bdb 100644
 --- a/packages/chat-ui/src/native/styles.ts
 +++ b/packages/chat-ui/src/native/styles.ts
 @@ -2,11 +2,14 @@ import type { ColorTokens } from "@rakazo/ui-tokens";
@@ -84592,9 +85366,9 @@ index 8471949..9d9fba7 100644
  
 -const BLOCK_GAP = 8;
 +// Paragraphs and blocks are set apart as the reference app sets them: a clear line between one
-+// thought and the next, and more between the items of a list.
-+const BLOCK_GAP = 12;
-+const LIST_GAP = 14;
++// thought and the next, and the items of a list gathered into one block rather than strung out.
++const BLOCK_GAP = 14;
++const LIST_GAP = 10;
  const BODY_FONT_SIZE = typeScale.body.fontSize;
  // "ui-monospace" is iOS's own monospaced system font, SF Mono.
  const MONO_FONT = Platform.select({ ios: "ui-monospace", default: "monospace" });

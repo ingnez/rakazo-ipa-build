@@ -75079,7 +75079,7 @@ index 2a5da46..bb1a407 100644
      const { rpc } = await import("./api");
      const { subscribeThread } = await import("./api-live");
 diff --git a/apps/mobile/lib/call-session.ts b/apps/mobile/lib/call-session.ts
-index bdc1f57..9f107f3 100644
+index bdc1f57..096d2d1 100644
 --- a/apps/mobile/lib/call-session.ts
 +++ b/apps/mobile/lib/call-session.ts
 @@ -1,5 +1,5 @@
@@ -75456,7 +75456,7 @@ index bdc1f57..9f107f3 100644
    turn?.abort();
    turn = null;
    micOpen = false;
-@@ -720,17 +839,38 @@ function heardInterim(text: string): void {
+@@ -720,17 +839,42 @@ function heardInterim(text: string): void {
      set({ heard: text });
      return;
    }
@@ -75488,18 +75488,22 @@ index bdc1f57..9f107f3 100644
 + */
 +function speakMoreOfReply(messageId: string, text: string): void {
 +  if (!state || messageId !== spokenMessageId) return;
++  // The caller talked over this reply: it was cut and their turn is on its way. The rest of it
++  // belongs on screen, never back in their ear.
++  if (bargedIn) return;
 +  const growth = text.slice(streamSpoken);
 +  if (!growth.trim()) return;
 +  streamSpoken = text.length;
 +  spokenMemory.remember(growth.trim());
-+  set({
-+    exchanges: [...state.exchanges.slice(0, -1), { role: "bot", text: text.trim() }],
-+  });
++  // The call's transcript follows what the bot has got to, so it matches what was heard.
++  if (state.exchanges.at(-1)?.role === "bot") {
++    set({ exchanges: [...state.exchanges.slice(0, -1), { role: "bot", text: text.trim() }] });
++  }
 +  if (!consentBlocked) deps.speakMore(state.botId, growth.trim());
  }
  
  /** Keeps the thread current, and the microphone shut while the bot waits on a typed code. */
-@@ -760,7 +900,6 @@ function onThread(next: MobileSnapshot): void {
+@@ -760,7 +904,6 @@ function onThread(next: MobileSnapshot): void {
  async function switchCall(target: CallSwitch, heard: string): Promise<void> {
    if (!state || switching) return;
    switching = true;
@@ -75507,7 +75511,7 @@ index bdc1f57..9f107f3 100644
    const { botId } = state;
    const switchingCallId = callId;
    const notice = t`OK, switching to ${ph({ name: target.name })}.`;
-@@ -792,9 +931,8 @@ async function switchCall(target: CallSwitch, heard: string): Promise<void> {
+@@ -792,9 +935,8 @@ async function switchCall(target: CallSwitch, heard: string): Promise<void> {
    target.ring();
  }
  
@@ -75518,7 +75522,7 @@ index bdc1f57..9f107f3 100644
    const { botId } = state;
    const speakingCallId = callId;
    // Bump before anything else: this attempt supersedes all older ones, even if it then
-@@ -814,16 +952,15 @@ function speakAndListen(text: string): void {
+@@ -814,16 +956,15 @@ function speakAndListen(text: string): void {
      return;
    }
    spokenMemory.remember(text);
@@ -75539,7 +75543,7 @@ index bdc1f57..9f107f3 100644
    void deps
      .speak(botId, text)
      .catch((error: unknown) => {
-@@ -845,11 +982,16 @@ function speakAndListen(text: string): void {
+@@ -845,11 +986,16 @@ function speakAndListen(text: string): void {
        if (blockedByConsent) return;
        // The caller cut in: the microphone is already theirs and their turn is on its way.
        if (bargedIn) return;
@@ -75559,7 +75563,7 @@ index bdc1f57..9f107f3 100644
      });
  }
  
-@@ -919,6 +1061,10 @@ function productionDeps(requestContext?: ApiRequestContext): CallDeps {
+@@ -919,6 +1065,10 @@ function productionDeps(requestContext?: ApiRequestContext): CallDeps {
        ),
      endCall: async (botId, id) => closeCall(botId, id, await callContext()),
      speak: (botId, text) => speakReply(botId, text, speechOwner, requestContext),
@@ -75570,7 +75574,7 @@ index bdc1f57..9f107f3 100644
      stopSpeaking: () => stopSpeaking(speechOwner),
      audio: setCallAudio,
      cue: playCallCue,
-@@ -952,6 +1098,8 @@ let recordingTurn: AbortSignal | undefined;
+@@ -952,6 +1102,8 @@ let recordingTurn: AbortSignal | undefined;
  export async function recordClip(
    signal: AbortSignal,
    until?: AbortSignal,
@@ -75579,7 +75583,7 @@ index bdc1f57..9f107f3 100644
  ): Promise<CallClip | null> {
    const { AudioModule, RecordingPresets } = await import("expo-audio");
    if (signal.aborted) return null;
-@@ -992,6 +1140,7 @@ export async function recordClip(
+@@ -992,6 +1144,7 @@ export async function recordClip(
        // has reported a level, or never does, nothing is left to endpoint on, so stop.
        // A dictated clip has `until` to end it, so it keeps recording.
        const level = recorder.getStatus().metering;
@@ -75587,7 +75591,7 @@ index bdc1f57..9f107f3 100644
        if (level === undefined) {
          if (until) continue;
          if (metered || elapsed + METER_POLL_MS >= METER_START_MS) break;
-@@ -1087,7 +1236,11 @@ async function speakReply(
+@@ -1087,7 +1240,11 @@ async function speakReply(
  /** Live feed for the bot on the call, independent of whichever thread is on screen. */
  function watchReplies(
    botId: string,
@@ -75600,7 +75604,7 @@ index bdc1f57..9f107f3 100644
    onEnded: (ended: CallEnded) => void,
    onThread: (thread: MobileSnapshot) => void,
    requestContext?: ApiRequestContext,
-@@ -1097,6 +1250,8 @@ function watchReplies(
+@@ -1097,6 +1254,8 @@ function watchReplies(
    void (async () => {
      let snapshot: MobileSnapshot | null = null;
      let lastSeen: string | null = null;
@@ -75609,7 +75613,7 @@ index bdc1f57..9f107f3 100644
      let cursor = 0;
      let retry = FEED_RETRY_MIN_MS;
      let failure: unknown;
-@@ -1134,19 +1289,31 @@ function watchReplies(
+@@ -1134,19 +1293,31 @@ function watchReplies(
              if (!snapshot) return;
              if (snapshot !== previous) onThread(snapshot);
              const message = latestSpokenCallReply(snapshot.messages, watchedCallId);

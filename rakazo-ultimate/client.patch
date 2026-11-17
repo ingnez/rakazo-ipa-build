@@ -80074,6 +80074,25 @@ index bd89a5109..e9d5a0c88 100644
      const items: InboxSpaceItem[] = [];
      if (spaces.length > 1 || !space.isDefault || allChats.length === 0) {
        items.push({ type: "heading", key: space.id, title: space.name, space });
+diff --git a/apps/mobile/lib/integrations-screen.test.tsx b/apps/mobile/lib/integrations-screen.test.tsx
+index 4e801f2b7..31a53c853 100644
+--- a/apps/mobile/lib/integrations-screen.test.tsx
++++ b/apps/mobile/lib/integrations-screen.test.tsx
+@@ -21,6 +21,14 @@ const state = vi.hoisted(() => ({
+   focused: true,
+   appStateChange: null as null | ((state: string) => void),
+ }));
++// The phone connector section is its own component with its own tests; this page's test only
++// needs it not to reach the native runtime.
++vi.mock("expo-modules-core", () => ({ requireOptionalNativeModule: () => null }));
++vi.mock("../components/iphone-connector-group", () => ({ IphoneConnectorGroup: () => null }));
++vi.mock("./phone-connector-socket", () => ({
++  phoneConnectorSocket: () => ({ refresh: async () => undefined }),
++  resumePhoneConnectorSocket: async () => undefined,
++}));
+ vi.mock("./side-insets", () => ({ useSideInsets: () => ({}) }));
+ vi.mock("expo-router", () => ({
+   useRouter: () => ({ push: state.push, setParams: vi.fn() }),
 diff --git a/apps/mobile/lib/iphone-connector-group.test.tsx b/apps/mobile/lib/iphone-connector-group.test.tsx
 new file mode 100644
 index 000000000..3d19869ad
@@ -82389,10 +82408,10 @@ index 000000000..33abb07c9
 +});
 diff --git a/apps/mobile/lib/phone-connectors.ts b/apps/mobile/lib/phone-connectors.ts
 new file mode 100644
-index 000000000..f7c1899aa
+index 000000000..f25818965
 --- /dev/null
 +++ b/apps/mobile/lib/phone-connectors.ts
-@@ -0,0 +1,361 @@
+@@ -0,0 +1,363 @@
 +import type {
 +  PhoneConnectorKind,
 +  PhoneConnectorState,
@@ -82646,7 +82665,9 @@ index 000000000..f7c1899aa
 +  run?: (method: string, argsJson: string) => Promise<string>;
 +};
 +
-+/** The native module, or null in a build (or a test) that has no phone connectors. */
++/**
++ * The native module, or null in a build (or a test, or the web) that has no phone connectors.
++ */
 +export function phoneConnectorsNative(): NativePhoneConnectors | null {
 +  const module = requireOptionalNativeModule<NativeModule>("RakazoConnectors");
 +  if (!module?.run) return null;
@@ -86086,7 +86107,7 @@ index 000000000..649832f8f
 +}
 diff --git a/apps/mobile/modules/rakazo-connectors/ios/PhoneAlarmKit.swift b/apps/mobile/modules/rakazo-connectors/ios/PhoneAlarmKit.swift
 new file mode 100644
-index 000000000..5cdadc657
+index 000000000..831afe9db
 --- /dev/null
 +++ b/apps/mobile/modules/rakazo-connectors/ios/PhoneAlarmKit.swift
 @@ -0,0 +1,131 @@
@@ -86134,14 +86155,14 @@ index 000000000..5cdadc657
 +    // the system's localizable one.
 +    let alert = AlarmPresentation.Alert(
 +      title: "\(shownTitle)",
-+      stopButton: .stopButton
++      stopButton: AlarmButton(text: "停止", textColor: .white, systemImageName: "stop.circle")
 +    )
 +    let attributes = AlarmAttributes(
 +      presentation: AlarmPresentation(alert: alert),
 +      metadata: PhoneAlarmMetadata(title: title),
 +      tintColor: .blue
 +    )
-+    let configuration = AlarmManager.AlarmConfiguration<PhoneAlarmMetadata>.alarm(
++    let configuration: AlarmManager.AlarmConfiguration<PhoneAlarmMetadata> = .alarm(
 +      schedule: schedule,
 +      attributes: attributes,
 +      sound: .default
@@ -86343,7 +86364,7 @@ index 000000000..4d4ab13a6
 +}
 diff --git a/apps/mobile/modules/rakazo-connectors/ios/PhoneConnectorRunner.swift b/apps/mobile/modules/rakazo-connectors/ios/PhoneConnectorRunner.swift
 new file mode 100644
-index 000000000..b68752f33
+index 000000000..2ab04ba0d
 --- /dev/null
 +++ b/apps/mobile/modules/rakazo-connectors/ios/PhoneConnectorRunner.swift
 @@ -0,0 +1,56 @@
@@ -86383,7 +86404,7 @@ index 000000000..b68752f33
 +    case "phoneAlarmCancel":
 +      return try PhoneAlarmConnector.cancel(args)
 +    case "phoneCalendarList":
-+      return try PhoneCalendarConnector.list(args)
++      return try await PhoneCalendarConnector.list(args)
 +    case "phoneCalendarCreate":
 +      return try await PhoneCalendarConnector.create(args)
 +    case "phoneCalendarUpdate":
@@ -86984,10 +87005,10 @@ index 000000000..2e8ae0c0b
 +end
 diff --git a/apps/mobile/modules/rakazo-connectors/ios/RakazoConnectorsModule.swift b/apps/mobile/modules/rakazo-connectors/ios/RakazoConnectorsModule.swift
 new file mode 100644
-index 000000000..853dc8dc1
+index 000000000..1616ee91e
 --- /dev/null
 +++ b/apps/mobile/modules/rakazo-connectors/ios/RakazoConnectorsModule.swift
-@@ -0,0 +1,33 @@
+@@ -0,0 +1,35 @@
 +import ExpoModulesCore
 +import Foundation
 +
@@ -87003,7 +87024,9 @@ index 000000000..853dc8dc1
 +
 +    /// What iOS answers right now, without asking the person anything.
 +    AsyncFunction("permission") { (kind: String, promise: Promise) in
-+      promise.resolve(PhonePermissions.state(kind))
++      Task { @MainActor in
++        promise.resolve(PhonePermissions.state(kind))
++      }
 +    }
 +
 +    /// The system's own question, shown once per permission.

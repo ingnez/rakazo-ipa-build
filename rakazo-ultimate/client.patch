@@ -327,19 +327,30 @@ index d0e8069..b5ca36f 100644
    }
  }
 diff --git a/apps/mobile/app/(settings)/_layout.tsx b/apps/mobile/app/(settings)/_layout.tsx
-index 59a5262..4465c33 100644
+index 59a5262..8483d3c 100644
 --- a/apps/mobile/app/(settings)/_layout.tsx
 +++ b/apps/mobile/app/(settings)/_layout.tsx
-@@ -137,7 +137,7 @@ export default function SettingsLayout() {
+@@ -109,7 +109,8 @@ export default function SettingsLayout() {
+       <Stack.Screen
+         name="vault"
+         options={{
+-          ...glassHeaderOptions(t`Vault`),
++          // Back arrow and the + menu only: no title pill, like the connections page.
++          ...glassHeaderOptions(""),
+           contentStyle: { backgroundColor: native.groupedPage },
+         }}
+       />
+@@ -137,7 +138,8 @@ export default function SettingsLayout() {
          }}
        />
        <Stack.Screen name="team-conversation" />
 -      <Stack.Screen name="integrations" options={glassHeaderOptions(t`Integrations`)} />
-+      <Stack.Screen name="integrations" options={glassHeaderOptions(t`Connect apps`)} />
++      {/* The header carries only the back arrow and the + menu: no title pill. */}
++      <Stack.Screen name="integrations" options={glassHeaderOptions("")} />
        <Stack.Screen name="skills" options={glassHeaderOptions(t`Skills`)} />
        <Stack.Screen name="bot-templates" options={glassHeaderOptions(t`Bot templates`)} />
        {/* The template's name heads the page itself. */}
-@@ -159,6 +159,13 @@ export default function SettingsLayout() {
+@@ -159,6 +161,13 @@ export default function SettingsLayout() {
        />
        {/* Titled by the screen once the note loads. */}
        <Stack.Screen name="memory-note" options={glassHeaderOptions("")} />
@@ -1088,7 +1099,7 @@ index 0000000..7e57db0
 +  });
 +}
 diff --git a/apps/mobile/app/(settings)/integrations.tsx b/apps/mobile/app/(settings)/integrations.tsx
-index 283b574..2243d64 100644
+index 283b574..ce9fb18 100644
 --- a/apps/mobile/app/(settings)/integrations.tsx
 +++ b/apps/mobile/app/(settings)/integrations.tsx
 @@ -10,7 +10,6 @@ import type {
@@ -1206,26 +1217,23 @@ index 283b574..2243d64 100644
    const [catalog, setCatalog] = useState<ConnectionCatalogItem[]>([]);
    const [connections, setConnections] = useState<Connection[]>([]);
    const [query, setQuery] = useState("");
-@@ -115,7 +122,12 @@ export default function Integrations() {
+@@ -115,7 +122,10 @@ export default function Integrations() {
    const [pluginInstalls, setPluginInstalls] = useState<CapabilityInstall[]>([]);
    const [pluginEntries, setPluginEntries] = useState<PluginMarketplaceEntry[]>([]);
    const [pluginsState, setPluginsState] = useState<"loading" | "ready" | "partial">("loading");
 -  const [category, setCategory] = useState("");
 +  const [tab, setTab] = useState<Tab>("all");
-+  // The header's 「已连接 N 个」 pill: the list narrowed to what is already connected.
-+  const [onlyConnected, setOnlyConnected] = useState(false);
 +  // How many of this iPhone's own connectors the person has turned on, read from its storage.
 +  const [phoneOn, setPhoneOn] = useState(0);
 +  const [phoneTick, setPhoneTick] = useState(0);
    const [pluginCount, setPluginCount] = useState(PLUGIN_PAGE_SIZE);
    const [gitUrl, setGitUrl] = useState("");
    const [sourceKind, setSourceKind] = useState<SourceKind | null>(null);
-@@ -218,39 +230,54 @@ export default function Integrations() {
+@@ -218,39 +228,50 @@ export default function Integrations() {
      pluginsLoaded: pluginsState !== "loading",
      pluginsUnavailable: pluginsState === "partial",
    });
 -  const featuredTiles = useMemo(() => buildFeaturedConnectorTiles(catalog), [catalog]);
--  const showFeatured = !query.trim();
 +  // Only the featured apps this catalog actually has: a shelf of missing ones teaches nothing.
 +  const featuredRows = useMemo(
 +    () =>
@@ -1234,7 +1242,7 @@ index 283b574..2243d64 100644
 +      ),
 +    [catalog],
 +  );
-+  const showFeatured = !query.trim() && !onlyConnected;
+   const showFeatured = !query.trim();
    const catalogApps = useMemo(() => filterConnectionCatalogItems(catalog, query), [catalog, query]);
 -  const renderedApps = catalogApps.slice(0, visibleCount);
    const { plugins, pluginForApp } = useMemo(
@@ -1285,11 +1293,7 @@ index 283b574..2243d64 100644
 +    () => filterPlugins(tabPlugins, query, null, (name) => name),
 +    [tabPlugins, query],
 +  );
-+  const connectedApps = catalog.filter((item) => itemConnected(item));
-+  // What the header's pill counts: the apps this account can already reach.
-+  const connectedCount = connectedApps.length + standaloneServers.length + sources.length;
-+  // 「已连接 N 个」keeps only those rows; a shelf keeps only its own.
-+  const listedApps = onlyConnected ? connectedApps : tabApps;
++  const listedApps = tabApps;
 +  const renderedApps = listedApps.slice(0, visibleCount);
 +  // A saved MCP server is searched like a cloud app, so the list holds only the matches.
 +  const matchedServers = query.trim()
@@ -1300,7 +1304,7 @@ index 283b574..2243d64 100644
  
    const detailItem = useMemo(() => {
      if (!detailKey) return null;
-@@ -461,6 +488,17 @@ export default function Integrations() {
+@@ -461,6 +482,17 @@ export default function Integrations() {
      return () => subscription.remove();
    }, []);
  
@@ -1318,7 +1322,7 @@ index 283b574..2243d64 100644
    useEffect(() => {
      if (!detailKey) {
        setTools([]);
-@@ -531,14 +569,14 @@ export default function Integrations() {
+@@ -531,14 +563,14 @@ export default function Integrations() {
          accessibilityRole="button"
          accessibilityLabel={params.name}
          onPress={() => openPlugin(params)}
@@ -1336,7 +1340,7 @@ index 283b574..2243d64 100644
              {summary}
            </Text>
          </View>
-@@ -576,9 +614,9 @@ export default function Integrations() {
+@@ -576,9 +608,9 @@ export default function Integrations() {
              ? { ios: "exclamationmark.circle", android: "alert-circle-outline" as const }
              : null;
      return (
@@ -1348,7 +1352,7 @@ index 283b574..2243d64 100644
            {server.name}
          </Text>
          <View style={styles.connectionStatus}>
-@@ -591,7 +629,7 @@ export default function Integrations() {
+@@ -591,7 +623,7 @@ export default function Integrations() {
                <NativeSymbol {...symbol} size={14} color={color} />
              </View>
            ) : null}
@@ -1357,7 +1361,7 @@ index 283b574..2243d64 100644
          </View>
          {server.enabled &&
          state !== "connected" &&
-@@ -610,12 +648,12 @@ export default function Integrations() {
+@@ -610,12 +642,12 @@ export default function Integrations() {
    }
  
    function renderConnected() {
@@ -1372,7 +1376,7 @@ index 283b574..2243d64 100644
              {mcpError ? (
                <View>
                  <Text style={styles.error}>{mcpError}</Text>
-@@ -637,15 +675,15 @@ export default function Integrations() {
+@@ -637,15 +669,15 @@ export default function Integrations() {
                  servers.some(mcpServerNeedsSignIn),
                );
              })}
@@ -1392,7 +1396,7 @@ index 283b574..2243d64 100644
                      {source.kind === "api"
                        ? "OpenAPI"
                        : source.kind === "graphql"
-@@ -915,67 +953,56 @@ export default function Integrations() {
+@@ -915,67 +947,56 @@ export default function Integrations() {
      }
    }
  
@@ -1434,7 +1438,7 @@ index 283b574..2243d64 100644
 +        key={key}
 +        busy={pending === key}
 +        connected={connected}
-+        icon={<ConnectorIcon logo={item.logo} name={label} size={LOGO_SIZE} />}
++        icon={<ConnectorIcon logo={item.logo} name={label} plate size={LOGO_SIZE} />}
 +        onPress={() => {
 +          // Not connected yet: the row connects it. Connected: it opens what manages it.
 +          if (!connected) return void connect(item);
@@ -1502,88 +1506,33 @@ index 283b574..2243d64 100644
      );
    }
  
-@@ -1002,29 +1029,62 @@ export default function Integrations() {
+@@ -1002,6 +1023,9 @@ export default function Integrations() {
      } else beginSource(option.kind, option.preset);
    }
  
-+  // 「已连接 N 个」sits in the header; the + menu stays beside it so custom MCP sources, OpenAPI,
-+  // GraphQL and GitHub imports keep their way in.
-+  const connectedLabel = t`${ph({ count: connectedCount })} connected`;
++  // The header is the + menu alone, at the far right: the reference app's connections page has
++  // no title pill and no connected count up there. Everything the menu offers (custom MCP
++  // servers, OpenAPI, GraphQL, GitHub imports and the presets) stays exactly as it was.
    useLayoutEffect(() => {
--    if (!iosAtLeast(26)) return;
--    navigation.setOptions({
--      unstable_headerRightItems: () => [
--        {
--          type: "menu" as const,
--          label: t`Add custom`,
--          accessibilityLabel: t`Add custom`,
--          icon: { type: "sfSymbol" as const, name: "plus" },
--          menu: {
--            items: addOptions.map((option) => ({
--              type: "action" as const,
--              label: option.label,
--              onPress: () => startAdding(option),
--            })),
-+    const toggleConnected = () => {
-+      setTab("all");
-+      setOnlyConnected((on) => !on);
-+    };
-+    if (iosAtLeast(26)) {
-+      navigation.setOptions({
-+        unstable_headerRightItems: () => [
-+          {
-+            type: "menu" as const,
-+            label: t`Add custom`,
-+            accessibilityLabel: t`Add custom`,
-+            icon: { type: "sfSymbol" as const, name: "plus" },
-+            menu: {
-+              items: addOptions.map((option) => ({
-+                type: "action" as const,
-+                label: option.label,
-+                onPress: () => startAdding(option),
-+              })),
-+            },
-+          },
-+          {
-+            type: "button" as const,
-+            label: connectedLabel,
-+            onPress: toggleConnected,
-           },
--        },
--      ],
-+        ],
-+      } satisfies NativeStackNavigationOptions);
-+      return;
-+    }
-+    // Before Liquid Glass there are no native header items, so the pill is a plain header view.
-+    navigation.setOptions({
-+      headerRight: () => (
-+        <Pressable
-+          accessibilityLabel={connectedLabel}
-+          accessibilityRole="button"
-+          onPress={toggleConnected}
-+          style={[styles.pill, styles.headerPill]}
-+        >
-+          <Text style={styles.pillLabel}>{connectedLabel}</Text>
-+        </Pressable>
-+      ),
+     if (!iosAtLeast(26)) return;
+     navigation.setOptions({
+@@ -1023,8 +1047,14 @@ export default function Integrations() {
      } satisfies NativeStackNavigationOptions);
--  }, [navigation, sourcePresets, t]);
-+  }, [connectedCount, connectedLabel, navigation, sourcePresets, t]);
-+
+   }, [navigation, sourcePresets, t]);
+ 
 +  const empty =
 +    catalogsReady &&
 +    listedApps.length === 0 &&
 +    pluginMatches.length === 0 &&
 +    matchedServers.length === 0;
- 
++
    return (
 -    <SafeAreaView edges={["bottom"]} style={styles.screen}>
 +    <View style={styles.screen}>
        <ScrollView
          style={sideInsets}
          contentContainerStyle={styles.content}
-@@ -1054,63 +1114,115 @@ export default function Integrations() {
+@@ -1054,63 +1084,112 @@ export default function Integrations() {
              onAdd={() => void addSource()}
              onClose={closeAdding}
            />
@@ -1665,16 +1614,13 @@ index 283b574..2243d64 100644
 +              style={styles.chipsBar}
 +            >
 +              {TAB_ORDER.map((key) => {
-+                const selected = !onlyConnected && tab === key;
++                const selected = tab === key;
 +                return (
 +                  <Pressable
 +                    key={key}
 +                    accessibilityRole="button"
 +                    accessibilityState={{ selected }}
-+                    onPress={() => {
-+                      setOnlyConnected(false);
-+                      setTab(key);
-+                    }}
++                    onPress={() => setTab(key)}
 +                    style={[styles.chip, selected && styles.chipSelected]}
 +                  >
 +                    <Text style={[styles.chipLabel, selected && styles.chipLabelSelected]}>
@@ -1688,7 +1634,7 @@ index 283b574..2243d64 100644
 -            {!detailItem && !filtering ? renderConnected() : null}
 -            {!detailItem && !filtering ? (
 +            {/* 全部 keeps the iPhone switches one tap away instead of stacking them on top. */}
-+            {tab === "all" && !onlyConnected ? (
++            {tab === "all" ? (
                <Pressable
 -                testID="open-bot-templates"
 +                accessibilityLabel={`iPhone ${t`${ph({ count: phoneOn })} on`}`}
@@ -1745,7 +1691,7 @@ index 283b574..2243d64 100644
              ) : null}
  
              {catalogError ? (
-@@ -1125,147 +1237,139 @@ export default function Integrations() {
+@@ -1125,147 +1204,137 @@ export default function Integrations() {
                </View>
              ) : null}
  
@@ -1873,7 +1819,7 @@ index 283b574..2243d64 100644
 +            ) : null}
  
 -                {!category && renderedApps.length < catalogApps.length ? (
-+            {!onlyConnected && pluginMatches.length ? (
++            {pluginMatches.length ? (
 +              <View testID="plugin-results" style={styles.catalogStack}>
 +                {!showFeatured ? (
 +                  <Text style={styles.sectionTitle}>{t`Skills and plugins`}</Text>
@@ -1926,7 +1872,7 @@ index 283b574..2243d64 100644
 -                ) : null}
 -              </>
 -            )}
-+            {!onlyConnected && renderedApps.length < listedApps.length ? (
++            {renderedApps.length < listedApps.length ? (
 +              <NativeActionButton
 +                label={t`Show more`}
 +                onPress={() => setVisibleCount((count) => count + CONNECTION_CATALOG_PAGE_SIZE)}
@@ -1936,11 +1882,9 @@ index 283b574..2243d64 100644
 +
 +            {empty && !query.trim() ? (
 +              <Text style={styles.secondary}>
-+                {onlyConnected
-+                  ? t`No apps connected yet.`
-+                  : tab === "all"
-+                    ? t`Configure a plugin catalog on the server to connect apps.`
-+                    : t`Nothing on this shelf yet.`}
++                {tab === "all"
++                  ? t`Configure a plugin catalog on the server to connect apps.`
++                  : t`Nothing on this shelf yet.`}
 +              </Text>
 +            ) : null}
 +
@@ -1948,7 +1892,7 @@ index 283b574..2243d64 100644
 +              <Text style={styles.secondary}>{t`No apps match your search.`}</Text>
 +            ) : null}
 +
-+            {tab === "all" && !onlyConnected ? (
++            {tab === "all" ? (
 +              <Pressable
 +                testID="open-bot-templates"
 +                accessibilityRole="button"
@@ -1961,7 +1905,7 @@ index 283b574..2243d64 100644
 +              </Pressable>
 +            ) : null}
 +
-+            {pluginsState !== "loading" && tab === "all" && !onlyConnected ? (
++            {pluginsState !== "loading" && tab === "all" ? (
 +              <NativeActionButton
 +                fill={false}
 +                label={t`Submit a plugin`}
@@ -1980,7 +1924,7 @@ index 283b574..2243d64 100644
 -    </SafeAreaView>
 +      {!adding && !detailItem ? (
 +        <>
-+          <BottomFade height={insets.bottom + 84} id="integrations-bottom-fade" />
++          <BottomFade height={insets.bottom + 96} id="integrations-bottom-fade" />
 +          <View
 +            pointerEvents="box-none"
 +            style={[styles.searchDock, { paddingBottom: insets.bottom + 10 }]}
@@ -2743,7 +2687,7 @@ index 5353060..37aeab1 100644
              {/* Connections are the account's in every Space, so a Space's override lists only its models. */}
              {target.scope === "account" ? (
 diff --git a/apps/mobile/app/(settings)/vault.tsx b/apps/mobile/app/(settings)/vault.tsx
-index c938f4e..edb1992 100644
+index c938f4e..725c94c 100644
 --- a/apps/mobile/app/(settings)/vault.tsx
 +++ b/apps/mobile/app/(settings)/vault.tsx
 @@ -31,14 +31,14 @@ import * as Clipboard from "expo-clipboard";
@@ -2935,7 +2879,7 @@ index c938f4e..edb1992 100644
 +      {/* The vault's search floats over the end of the list, as the reference app keeps it. */}
 +      {searchable ? (
 +        <>
-+          <BottomFade height={insets.bottom + 84} id="vault-bottom-fade" />
++          <BottomFade height={insets.bottom + 96} id="vault-bottom-fade" />
 +          <View
 +            pointerEvents="box-none"
 +            style={[styles.searchDock, { paddingBottom: insets.bottom + 10 }]}
@@ -62536,54 +62480,53 @@ index e29608b..59ba82a 100644
              <NativeSymbol
                android="chevron-expand"
 diff --git a/apps/mobile/components/bot-avatar.tsx b/apps/mobile/components/bot-avatar.tsx
-index a589810..6e6e014 100644
+index a589810..cf14b31 100644
 --- a/apps/mobile/components/bot-avatar.tsx
 +++ b/apps/mobile/components/bot-avatar.tsx
-@@ -1,10 +1,18 @@
+@@ -1,48 +1,90 @@
  import { useLingui } from "@lingui/react/macro";
  import type { BotAvatarSet } from "@rakazo/contracts";
 -import type { AvatarEyes, AvatarMotionMode, LogoAvatarActivity } from "@rakazo/core";
-+import type { BabygrokBody, AvatarEyes, AvatarMotionMode, LogoAvatarActivity } from "@rakazo/core";
++import type { AvatarMotionMode, BabygrokBody, LogoAvatarActivity } from "@rakazo/core";
  import {
 +  AVATAR_EYE_REACH,
    AVATAR_LID_CLOSE,
    AVATAR_MOTION_UNITS,
    AVATAR_TYPING_DOTS,
-+  BABYGROK_BODIES,
-+  BABYGROK_DRAW_MARGIN,
-+  BABYGROK_DRAW_VIEWBOX,
-+  BABYGROK_VIEWBOX,
-+  babygrokBodyPath,
-+  babygrokEyeLoops,
-+  babygrokEyes,
    avatarClip,
    avatarClock,
    avatarFrame,
-@@ -16,33 +24,82 @@ import {
+-  avatarIdentitySeed,
+   avatarLifeState,
+   avatarPokeFrame,
+   avatarRestingBlink,
+   avatarSchedulePose,
    avatarThinkingDot,
    avatarWorkingDot,
++  BABYGROK_BODIES,
++  BABYGROK_DRAW_MARGIN,
++  BABYGROK_DRAW_VIEWBOX,
++  babygrokBodyPath,
++  babygrokEyeLoops,
    botAvatarActivity,
 +  botAvatarFill,
-+  botEyeCutout,
    botEyeInk,
    isRunWorking,
-+  motionBodyGradient,
-+  motionFaceEyes,
-+  motionFaceSpec,
-+  motionShapeScale,
-   ORGANIC_AVATAR_EYES,
-   ORGANIC_AVATAR_VIEWBOX,
-   organicAvatarEyeTilt,
-   organicAvatarPath,
+-  ORGANIC_AVATAR_EYES,
+-  ORGANIC_AVATAR_VIEWBOX,
+-  organicAvatarEyeTilt,
+-  organicAvatarPath,
 -  SHIPPED_BOT_AVATAR_EYES,
 -  SHIPPED_BOT_AVATAR_VIEWBOX,
 -  usesLogoAvatar,
++  motionFaceSpec,
++  motionShapeScale,
  } from "@rakazo/core";
 -import { memo, useSyncExternalStore } from "react";
-+import { memo, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
++import { memo, useEffect, useRef, useState, useSyncExternalStore } from "react";
  import { Image, Pressable, View } from "react-native";
++import type { SharedValue } from "react-native-reanimated";
  import Animated, {
-+  type SharedValue,
    useAnimatedProps,
    useAnimatedStyle,
    useReducedMotion,
@@ -62593,7 +62536,7 @@ index a589810..6e6e014 100644
 +  withTiming,
  } from "react-native-reanimated";
 -import Svg, { G, Path, Rect } from "react-native-svg";
-+import Svg, { Defs, G, LinearGradient, Path, Rect, Stop } from "react-native-svg";
++import Svg, { G, Path } from "react-native-svg";
  import type { AvatarLife } from "../lib/avatar-life";
  import { useAvatarOnScreen, useLife, usePoke, useSettling } from "../lib/avatar-life";
  import { mobileBotAvatarPresentation } from "../lib/bot-avatar";
@@ -62603,7 +62546,7 @@ index a589810..6e6e014 100644
  import { LogoAvatar } from "./logo-avatar";
  import { NativeSymbol } from "./native-symbol";
  
- const AnimatedRect = Animated.createAnimatedComponent(Rect);
+-const AnimatedRect = Animated.createAnimatedComponent(Rect);
 +const AnimatedPath = Animated.createAnimatedComponent(Path);
 +
 +/**
@@ -62616,14 +62559,10 @@ index a589810..6e6e014 100644
 +/** How long a pleased face stays pleased before it relaxes. */
 +const MOOD_HOLD_MS = 420;
 +/**
-+ * A live face smiles by itself, the way the reference app's does: every 6–9 seconds it rises
-+ * into the pleased arch, leans a hair, and lets go. Without this an idle avatar only blinked.
++ * How far the head leans when a look changes in front of you. The idle face itself stays upright:
++ * the reference app's bots blink, glance and breathe, but they do not arch their eyes into a smile
++ * on their own.
 + */
-+const SMILE_FIRST_MS = 2_400;
-+const SMILE_MIN_MS = 6_000;
-+const SMILE_SPAN_MS = 3_000;
-+/** How long a self-raised smile is held, and how far the head leans into it. */
-+const SMILE_HOLD_MS = 900;
 +const SMILE_LEAN_DEG = 3.2;
 +/** A body arriving in a sheet: it pops out of a dot with a small satellite dot behind it. */
 +const ENTRANCE_SPRING = { damping: 12, stiffness: 170, mass: 0.85 } as const;
@@ -62648,7 +62587,19 @@ index a589810..6e6e014 100644
  
  /** How far (0–1) the face has turned into the typing dots, for a morph of 0–1. */
  function morphGrow(morph: number): number {
-@@ -90,18 +147,42 @@ function liveFrame(life: AvatarLife) {
+@@ -52,11 +94,6 @@ function morphGrow(morph: number): number {
+ }
+ /** The face shrinks until it is the size of the middle typing dot. */
+ const MORPH_SHRINK = 1 - (2 * AVATAR_TYPING_DOTS.radius) / AVATAR_MOTION_UNITS;
+-/** How many units wide a view box is. */
+-function viewBoxUnits(viewBox: string): number {
+-  return Number(viewBox.split(" ")[2]);
+-}
+-
+ /** The avatar's flat frame right now, a tap poke included; a worklet. */
+ function liveFrame(life: AvatarLife) {
+   "worklet";
+@@ -90,28 +127,82 @@ function liveFrame(life: AvatarLife) {
    return { frame, grow };
  }
  
@@ -62698,20 +62649,10 @@ index a589810..6e6e014 100644
        ],
      };
    });
-@@ -111,7 +192,50 @@ function useBodyStyle(life: AvatarLife, size: number) {
- function eyeState(life: AvatarLife) {
-   "worklet";
-   const { frame, grow } = liveFrame(life);
--  return { x: frame.eyeX, y: frame.eyeY, lid: frame.lid, hidden: grow >= 0.5 };
-+  const face = motionFaceEyes(frame.face);
-+  return {
-+    x: frame.eyeX,
-+    y: frame.eyeY,
-+    lid: frame.lid * face.open,
-+    hidden: grow >= 0.5,
-+  };
-+}
-+
+ }
+ 
+-/** An eye's offset (motion units), its height and whether it shows. */
+-function eyeState(life: AvatarLife) {
 +/**
 + * Both eyes as one closed path, right now: the reference app's own lid curves for the face the
 + * clip is wearing, shut by the lid and bent into the pleased arc by `mood`. A worklet.
@@ -62726,7 +62667,9 @@ index a589810..6e6e014 100644
 +  morph: number,
 +  mood: number,
 +): string {
-+  "worklet";
+   "worklet";
+-  const { frame, grow } = liveFrame(life);
+-  return { x: frame.eyeX, y: frame.eyeY, lid: frame.lid, hidden: grow >= 0.5 };
 +  const { frame } = liveFrame(life);
 +  const spec = motionFaceSpec(frame.face);
 +  return babygrokEyeLoops({
@@ -62750,7 +62693,7 @@ index a589810..6e6e014 100644
  }
  
  export interface BotAvatarProps {
-@@ -125,13 +249,19 @@ export interface BotAvatarProps {
+@@ -125,13 +216,19 @@ export interface BotAvatarProps {
    motion?: AvatarMotionMode;
    composing?: boolean;
    pokeable?: boolean;
@@ -62773,7 +62716,7 @@ index a589810..6e6e014 100644
    return <LegacyBotAvatar {...props} />;
  });
  
-@@ -143,7 +273,7 @@ function RakazoBotAvatar({
+@@ -143,7 +240,7 @@ function RakazoBotAvatar({
    activity,
    composing = false,
    muted = false,
@@ -62782,7 +62725,7 @@ index a589810..6e6e014 100644
    pokeable = false,
  }: BotAvatarProps) {
    const liveActivity = useSyncExternalStore(
-@@ -160,7 +290,7 @@ function RakazoBotAvatar({
+@@ -160,7 +257,7 @@ function RakazoBotAvatar({
    );
    const working = isRunWorking(status) && resolved !== "writing" && motion !== "running";
    return (
@@ -62791,7 +62734,7 @@ index a589810..6e6e014 100644
        <LogoAvatar
          color={color}
          identity={identity}
-@@ -247,9 +377,11 @@ function LegacyBotAvatar({
+@@ -247,9 +344,11 @@ function LegacyBotAvatar({
    status,
    identity,
    muted = false,
@@ -62804,7 +62747,7 @@ index a589810..6e6e014 100644
  }: {
    color: string;
    size?: number;
-@@ -269,6 +401,10 @@ function LegacyBotAvatar({
+@@ -269,6 +368,10 @@ function LegacyBotAvatar({
    composing?: boolean;
    /** A tap plays a little reaction (the activity mark). */
    pokeable?: boolean;
@@ -62815,20 +62758,18 @@ index a589810..6e6e014 100644
  }) {
    const tokens = useMobileTokens();
    const state = avatarLifeState(status, composing);
-@@ -276,7 +412,11 @@ function LegacyBotAvatar({
+@@ -276,7 +379,9 @@ function LegacyBotAvatar({
    // itself that sign, so it carries none.
    const isWorking = isRunWorking(status) && !composing && motion !== "running";
    const parsed = mobileBotAvatarPresentation(color);
 -  const fillColor = parsed.kind === "shape" || parsed.kind === "color" ? parsed.color : color;
 +  const dark = useResolvedAppearance() === "dark";
 +  const fillColor =
-+    parsed.kind === "shape" || parsed.kind === "color"
-+      ? botAvatarFill(parsed.color, dark)
-+      : color;
++    parsed.kind === "shape" || parsed.kind === "color" ? botAvatarFill(parsed.color, dark) : color;
    const eyeColor = botEyeInk(fillColor, tokens);
    const onScreen = useAvatarOnScreen();
    const reducedMotion = useReducedMotion();
-@@ -291,8 +431,113 @@ function LegacyBotAvatar({
+@@ -291,8 +396,92 @@ function LegacyBotAvatar({
      reducedMotion,
    });
    const life = useLife(state, clock, size, motion);
@@ -62838,6 +62779,9 @@ index a589810..6e6e014 100644
 +  // Picking another body morphs it into the new one, vertex by vertex, on a soft spring;
 +  // the face squints with pleasure while it lands, as the reference app's does.
 +  const bodyKey = parsed.kind === "shape" ? parsed.bodyKey : null;
++  // A bot with no studio shape (a colour-only avatar, or one saved before the shapes existed)
++  // wears the reference app's first body, so every screen draws an official face.
++  const faceBody = bodyKey ?? "blob";
 +  const [morphFrom, setMorphFrom] = useState<string | null>(null);
 +  const settledShape = useRef(bodyKey);
 +  const shapeMorph = useSharedValue(1);
@@ -62862,39 +62806,15 @@ index a589810..6e6e014 100644
 +    tilt.value = withSequence(withSpring(direction, TILT_SPRING), withSpring(0, TILT_SPRING));
 +    hop.value = withSequence(withTiming(1, { duration: 130 }), withSpring(0, HOP_SPRING));
 +  };
-+  useEffect(() => () => {
-+    if (pleasure.current) clearTimeout(pleasure.current);
-+  }, []);
-+  // A face that is allowed to live also smiles on its own: a pleased arch every few seconds,
-+  // with a small lean into it, so an avatar at rest is not just a blinking picture.
-+  useEffect(() => {
-+    if (!bodyKey) return;
-+    if (clock !== "running" && clock !== "parked") return;
-+    if (!onScreen || reducedMotion) return;
-+    let timer: ReturnType<typeof setTimeout> | undefined;
-+    let hold: ReturnType<typeof setTimeout> | undefined;
-+    const relax = () => {
-+      mood.value = withSpring(0, MOOD_SPRING);
-+      lean.value = withSpring(0, MOOD_SPRING);
-+    };
-+    const smile = () => {
-+      mood.value = withSpring(1, MOOD_SPRING);
-+      lean.value = withSpring(Math.random() > 0.5 ? 1 : -1, MOOD_SPRING);
-+      hold = setTimeout(relax, SMILE_HOLD_MS);
-+      schedule();
-+    };
-+    const schedule = () => {
-+      timer = setTimeout(smile, SMILE_MIN_MS + Math.random() * SMILE_SPAN_MS);
-+    };
-+    timer = setTimeout(smile, SMILE_FIRST_MS + Math.random() * SMILE_SPAN_MS);
-+    return () => {
-+      if (timer) clearTimeout(timer);
-+      if (hold) clearTimeout(hold);
-+    };
-+    // Shared values and timers only: the loop restarts when the clock or the body changes.
-+    // eslint-disable-next-line react-hooks/exhaustive-deps
-+  }, [bodyKey, clock, onScreen, reducedMotion]);
-+
++  useEffect(
++    () => () => {
++      if (pleasure.current) clearTimeout(pleasure.current);
++    },
++    [],
++  );
++  // The official face at rest is neutral: two dark upright pills that blink and glance about on
++  // the clock, never a drawn smile. A pleased arch is kept for a deliberate reaction (a tap, a
++  // body or a colour being picked), which is the only time the reference app shows it.
 +  const bodyStyle = useBodyStyle(life, size, lean, hop, tilt, travel);
 +  useEffect(() => {
 +    const previous = settledShape.current;
@@ -62944,17 +62864,31 @@ index a589810..6e6e014 100644
    const picture =
      parsed.kind === "image" && parsed.imageUrl ? (
        <View
-@@ -309,12 +554,18 @@ function LegacyBotAvatar({
+@@ -307,27 +496,29 @@ function LegacyBotAvatar({
+       >
+         <Image source={{ uri: parsed.imageUrl }} style={{ width: size, height: size }} />
        </View>
-     ) : parsed.kind === "shape" ? (
-       <ShippedShapeAvatar
+-    ) : parsed.kind === "shape" ? (
+-      <ShippedShapeAvatar
 -        color={parsed.color}
-+        color={fillColor}
-+        gradient={motionBodyGradient(fillColor, dark)}
-         eyeColor={eyeColor}
+-        eyeColor={eyeColor}
 -        shapePath={parsed.shapePath}
-+        body={BABYGROK_BODIES[parsed.bodyKey] ?? BABYGROK_BODIES.hex!}
-+        bodyScale={motionShapeScale(parsed.bodyKey)}
+-        size={size}
+-        life={life}
+-        bodyStyle={bodyStyle}
+-      />
+     ) : (
+-      <OrganicAvatar
++      // Every bot wears one of the reference app's thirteen bodies, in one flat colour: a
++      // bot saved with only a colour, or with a body the reference picker does not offer,
++      // is drawn as the official body that stands in for it (`bodyKey`), never as an older
++      // organic blob.
++      <ShippedShapeAvatar
+         color={fillColor}
+         eyeColor={eyeColor}
+-        identity={identity}
++        body={BABYGROK_BODIES[faceBody] ?? BABYGROK_BODIES.hex!}
++        bodyScale={motionShapeScale(faceBody)}
 +        previous={morphFrom ? (BABYGROK_BODIES[morphFrom] ?? null) : null}
 +        morph={shapeMorph}
 +        mood={mood}
@@ -62962,10 +62896,6 @@ index a589810..6e6e014 100644
          life={life}
          bodyStyle={bodyStyle}
 +        entrance={entrance}
-       />
-     ) : (
-       <OrganicAvatar
-@@ -327,7 +578,9 @@ function LegacyBotAvatar({
        />
      );
    const avatar = (
@@ -62976,13 +62906,60 @@ index a589810..6e6e014 100644
        {picture}
        {parsed.kind !== "image" && clock !== "still" ? (
          <ThinkingDots color={fillColor} size={size} life={life} />
-@@ -404,30 +657,127 @@ function useBarEyes(eyes: AvatarEyes, viewBox: string, life: AvatarLife) {
+@@ -386,86 +577,105 @@ function Dot({
  
+ type BodyStyle = ReturnType<typeof useAnimatedStyle>;
+ 
+-/** Bar eyes' live props: motion offsets scaled to the view box, closing about their centre. */
+-function useBarEyes(eyes: AvatarEyes, viewBox: string, life: AvatarLife) {
+-  const scale = viewBoxUnits(viewBox) / AVATAR_MOTION_UNITS;
+-  const eyeProps = (cx: number) => () => {
+-    "worklet";
+-    const state = eyeState(life);
+-    const height = state.hidden ? 0 : eyes.height * state.lid;
+-    return {
+-      x: cx - eyes.width / 2 + state.x * scale,
+-      y: eyes.cy - height / 2 + state.y * scale,
+-      height,
+-    };
+-  };
+-  return [useAnimatedProps(eyeProps(eyes.leftCx)), useAnimatedProps(eyeProps(eyes.rightCx))];
+-}
+-
  function ShippedShapeAvatar({
    color,
-+  gradient,
    eyeColor,
 -  shapePath,
+-  size,
+-  life,
+-  bodyStyle,
+-}: {
+-  color: string;
+-  eyeColor: string;
+-  shapePath: string;
+-  size: number;
+-  life: AvatarLife;
+-  bodyStyle: BodyStyle;
+-}) {
+-  const eyes = SHIPPED_BOT_AVATAR_EYES;
+-  const [leftEye, rightEye] = useBarEyes(eyes, SHIPPED_BOT_AVATAR_VIEWBOX, life);
+-  return (
+-    <Animated.View style={[{ width: size, height: size }, bodyStyle]}>
+-      <Svg width={size} height={size} viewBox={SHIPPED_BOT_AVATAR_VIEWBOX}>
+-        <Path d={shapePath} fill={color} />
+-        <G fill={eyeColor}>
+-          <AnimatedRect animatedProps={leftEye} width={eyes.width} rx={eyes.width / 2} />
+-          <AnimatedRect animatedProps={rightEye} width={eyes.width} rx={eyes.width / 2} />
+-        </G>
+-      </Svg>
+-    </Animated.View>
+-  );
+-}
+-
+-function OrganicAvatar({
+-  color,
+-  eyeColor,
+-  identity,
 +  body,
 +  bodyScale,
 +  previous,
@@ -62994,10 +62971,8 @@ index a589810..6e6e014 100644
 +  entrance,
  }: {
    color: string;
-+  /** The body's four-stop gradient, when it wears one (a palette color does). */
-+  gradient: { from: string; to: string } | null;
    eyeColor: string;
--  shapePath: string;
+-  identity?: string;
 +  body: BabygrokBody;
 +  /** The body's own zoom from the official shape table, 1 for the base size. */
 +  bodyScale: number;
@@ -63012,20 +62987,15 @@ index a589810..6e6e014 100644
    bodyStyle: BodyStyle;
 +  entrance: boolean;
  }) {
--  const eyes = SHIPPED_BOT_AVATAR_EYES;
--  const [leftEye, rightEye] = useBarEyes(eyes, SHIPPED_BOT_AVATAR_VIEWBOX, life);
-+  // SVG resolves `url(#id)` against the document, so every body needs its own id.
-+  const gradientId = `bot-body-${useId().replace(/:/g, "")}`;
-+  // The reference app cuts the eyes out of a pale body and paints them on a dark one; either way
-+  // the path is the same one, joined onto the body for the cut.
-+  const tokens = useMobileTokens();
-+  const cutout = botEyeCutout(color, tokens.background);
-+  const bodyProps = useAnimatedProps(() => {
-+    // The spring overshoots past 1, and the body follows it past the new shape: that stretch
-+    // is the jelly.
-+    const d = babygrokBodyPath(previous?.ring ?? body.ring, body.ring, morph.value);
-+    return { d: cutout ? d + liveEyeLoops(life, body, previous, morph.value, mood.value) : d };
-+  });
+-  const seed = avatarIdentitySeed(identity || color || "#8B5CF6");
+-  const eyes = ORGANIC_AVATAR_EYES;
+-  const [leftEye, rightEye] = useBarEyes(eyes, ORGANIC_AVATAR_VIEWBOX, life);
++  // The reference app's bodies are one flat colour: no gradient, no shading, no shadow, so the
++  // face reads as a clean geometric pill pair on a solid silhouette. The eyes are the same ink
++  // path on every body, drawn on top of it.
++  const bodyProps = useAnimatedProps(() => ({
++    d: babygrokBodyPath(previous?.ring ?? body.ring, body.ring, morph.value),
++  }));
 +  const eyeProps = useAnimatedProps(() => ({
 +    d: liveEyeLoops(life, body, previous, morph.value, mood.value),
 +  }));
@@ -63050,11 +63020,18 @@ index a589810..6e6e014 100644
 +  });
    return (
 -    <Animated.View style={[{ width: size, height: size }, bodyStyle]}>
--      <Svg width={size} height={size} viewBox={SHIPPED_BOT_AVATAR_VIEWBOX}>
--        <Path d={shapePath} fill={color} />
--        <G fill={eyeColor}>
--          <AnimatedRect animatedProps={leftEye} width={eyes.width} rx={eyes.width / 2} />
--          <AnimatedRect animatedProps={rightEye} width={eyes.width} rx={eyes.width / 2} />
+-      <Svg width={size} height={size} viewBox={ORGANIC_AVATAR_VIEWBOX}>
+-        <Path d={organicAvatarPath(seed)} fill={color} />
+-        <G transform={`rotate(${organicAvatarEyeTilt(seed)})`}>
+-          {[leftEye, rightEye].map((props, index) => (
+-            <AnimatedRect
+-              key={index}
+-              animatedProps={props}
+-              width={eyes.width}
+-              rx={eyes.width / 2}
+-              fill={eyeColor}
+-            />
+-          ))}
 -        </G>
 -      </Svg>
 +    // The arrival scales the whole thing; the body's own motion turns it inside that, so a
@@ -63072,27 +63049,12 @@ index a589810..6e6e014 100644
 +            overflow: "visible",
 +          }}
 +        >
-+          {gradient ? (
-+            <Defs>
-+              {/* The official body is shaded along a 135° line: light at the top left. */}
-+              <LinearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
-+                <Stop offset="0" stopColor={gradient.from} />
-+                <Stop offset="1" stopColor={gradient.to} />
-+              </LinearGradient>
-+            </Defs>
-+          ) : null}
 +          {/* The body's own zoom from the official table, about the box's centre — which is the
 +              head's centre here (0,0), not the older shipped art's 114.27 offset: scaling about
 +              that offset pushed a zoomed body a twelfth of its width off its own middle. */}
 +          <G transform={`scale(${bodyScale})`}>
-+            <AnimatedPath
-+              animatedProps={bodyProps}
-+              // A cut-out face is one path: the body with the eyes taken out of it, so the page
-+              // shows through the holes.
-+              fillRule={cutout ? "evenodd" : "nonzero"}
-+              fill={gradient ? `url(#${gradientId})` : color}
-+            />
-+            {cutout ? null : <AnimatedPath animatedProps={eyeProps} fill={eyeColor} />}
++            <AnimatedPath animatedProps={bodyProps} fill={color} />
++            <AnimatedPath animatedProps={eyeProps} fill={eyeColor} />
 +          </G>
 +        </Svg>
 +      </Animated.View>
@@ -63116,15 +63078,6 @@ index a589810..6e6e014 100644
      </Animated.View>
    );
  }
-@@ -451,7 +801,7 @@ function OrganicAvatar({
-   const eyes = ORGANIC_AVATAR_EYES;
-   const [leftEye, rightEye] = useBarEyes(eyes, ORGANIC_AVATAR_VIEWBOX, life);
-   return (
--    <Animated.View style={[{ width: size, height: size }, bodyStyle]}>
-+    <Animated.View style={[{ width: size, height: size, overflow: "visible" }, bodyStyle]}>
-       <Svg width={size} height={size} viewBox={ORGANIC_AVATAR_VIEWBOX}>
-         <Path d={organicAvatarPath(seed)} fill={color} />
-         <G transform={`rotate(${organicAvatarEyeTilt(seed)})`}>
 diff --git a/apps/mobile/components/bot-email.tsx b/apps/mobile/components/bot-email.tsx
 index ded60c8..81f662f 100644
 --- a/apps/mobile/components/bot-email.tsx
@@ -63178,10 +63131,10 @@ index ded60c8..81f662f 100644
          />
        ))}
 diff --git a/apps/mobile/components/bot-look-picker.tsx b/apps/mobile/components/bot-look-picker.tsx
-index dc2c99b..6979171 100644
+index dc2c99b..79e21e0 100644
 --- a/apps/mobile/components/bot-look-picker.tsx
 +++ b/apps/mobile/components/bot-look-picker.tsx
-@@ -1,27 +1,77 @@
+@@ -1,27 +1,78 @@
  import { ph } from "@lingui/core/macro";
  import { useLingui } from "@lingui/react/macro";
  import type { BotAvatarSet } from "@rakazo/contracts";
@@ -63200,6 +63153,7 @@ index dc2c99b..6979171 100644
  import { Pressable, Text, View } from "react-native";
 -import { useMobileTokens } from "../lib/native";
 +import Svg, { G, Path } from "react-native-svg";
++import { shippedBodyKey } from "../lib/bot-avatar";
 +import { hapticSelection } from "../lib/haptics";
 +import { useMobileTokens, useResolvedAppearance } from "../lib/native";
  import { BotAvatar } from "./bot-avatar";
@@ -63264,7 +63218,7 @@ index dc2c99b..6979171 100644
    avatarSet,
    disabled = false,
    onChange,
-@@ -29,6 +79,11 @@ export function BotLookPicker({
+@@ -29,6 +80,11 @@ export function BotLookPicker({
    value: string;
    identity?: string;
    organicIdentities?: readonly string[];
@@ -63276,13 +63230,16 @@ index dc2c99b..6979171 100644
    avatarSet: BotAvatarSet;
    /** While the look is being saved, so what is shown stays what is saved. */
    disabled?: boolean;
-@@ -36,119 +91,164 @@ export function BotLookPicker({
+@@ -36,119 +92,172 @@ export function BotLookPicker({
  }) {
    const { t } = useLingui();
    const tokens = useMobileTokens();
 +  const dark = useResolvedAppearance() === "dark";
    const { photo, shapeIndex: shape, color, defaultLook } = botLookState(value);
 -  const labeled = !organicIdentities;
++  // A body saved under an older Rakazo shape index is shown as the official body it is drawn as,
++  // so the grid rings that body instead of appearing to have nothing chosen.
++  const shownBody = shape === null ? null : shippedBodyKey(shape);
 +  const labeled = !organicIdentities && !compact;
 +  let numbered = 0;
  
@@ -63310,7 +63267,7 @@ index dc2c99b..6979171 100644
 +                      bodyKey={key}
 +                      disabled={disabled}
 +                      label={t`Shape ${ph({ number: numbered })}`}
-+                      selected={!defaultLook && shape === index}
++                      selected={!defaultLook && shownBody === key}
 +                      onPress={() => {
 +                        hapticSelection();
 +                        onChange(botLookWithShape(color, index));
@@ -63420,7 +63377,7 @@ index dc2c99b..6979171 100644
 -          })}
 +        <View accessibilityRole="radiogroup" style={{ gap: 10 }}>
 +          {COLOR_ROWS.map((row) => (
-+            <View key={row.join(",")} style={rowStyles.row}>
++            <View key={row.join(",")} style={rowStyles.colors}>
 +              {row.map((option) => {
 +                const selected = !photo && color.toLowerCase() === option.toLowerCase();
 +                // The reference's black is black on the light page and pure white on the dark
@@ -63478,7 +63435,13 @@ index dc2c99b..6979171 100644
 +    flexDirection: "row",
 +    flexWrap: "wrap",
 +    justifyContent: "center",
-+    gap: 8,
++    gap: 10,
++  },
++  colors: {
++    flexDirection: "row",
++    flexWrap: "wrap",
++    justifyContent: "center",
++    gap: 14,
 +  },
  } as const;
  
@@ -63508,14 +63471,14 @@ index dc2c99b..6979171 100644
 +  bodyKey?: string;
    children: ReactNode;
  }) {
-   const tokens = useMobileTokens();
+-  const tokens = useMobileTokens();
 +  const dark = useResolvedAppearance() === "dark";
 +  const size = SHAPE_TILE + (RING + RING_GAP) * 2;
 +  const contoured = Boolean(bodyKey && BABYGROK_BODIES[bodyKey as keyof typeof BABYGROK_BODIES]);
    return (
      <Pressable
        accessibilityRole="radio"
-@@ -157,13 +257,69 @@ function Choice({
+@@ -157,13 +266,69 @@ function Choice({
        disabled={disabled}
        onPress={onPress}
        style={{
@@ -64442,10 +64405,10 @@ index 0000000..3d4c071
 +});
 diff --git a/apps/mobile/components/bottom-fade.tsx b/apps/mobile/components/bottom-fade.tsx
 new file mode 100644
-index 0000000..929a7e1
+index 0000000..6b4c669
 --- /dev/null
 +++ b/apps/mobile/components/bottom-fade.tsx
-@@ -0,0 +1,34 @@
+@@ -0,0 +1,38 @@
 +import { StyleSheet, View } from "react-native";
 +import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 +import { native } from "../lib/native";
@@ -64469,9 +64432,13 @@ index 0000000..929a7e1
 +    <View pointerEvents="none" style={[StyleSheet.absoluteFill, { top: undefined, height }]}>
 +      <Svg width="100%" height="100%">
 +        <Defs>
++          {/* The reference app's band is opaque well before the bar: a row's own words never
++              show through the glass pill above it, and the top of the band still melts into the
++              page. By the time the band reaches the search field it is solid page colour. */}
 +          <LinearGradient id={id} x1="0" y1="0" x2="0" y2="1">
 +            <Stop offset="0" stopColor={fill} stopOpacity={0} />
-+            <Stop offset="0.72" stopColor={fill} stopOpacity={0.92} />
++            <Stop offset="0.38" stopColor={fill} stopOpacity={0.92} />
++            <Stop offset="0.62" stopColor={fill} stopOpacity={1} />
 +            <Stop offset="1" stopColor={fill} stopOpacity={1} />
 +          </LinearGradient>
 +        </Defs>
@@ -65288,10 +65255,10 @@ index c2757a4..6381b11 100644
        }
 diff --git a/apps/mobile/components/connect-app-row.tsx b/apps/mobile/components/connect-app-row.tsx
 new file mode 100644
-index 0000000..c02642b
+index 0000000..d4e095f
 --- /dev/null
 +++ b/apps/mobile/components/connect-app-row.tsx
-@@ -0,0 +1,66 @@
+@@ -0,0 +1,72 @@
 +import { useLingui } from "@lingui/react/macro";
 +import type { ReactNode } from "react";
 +import { Pressable, Text, View } from "react-native";
@@ -65330,6 +65297,12 @@ index 0000000..c02642b
 +  const styles = useThemedStyles(createIntegrationsStyles);
 +  const { t } = useLingui();
 +  const resting = connected ? (connectedLabel ?? t`Connected`) : (connectLabel ?? t`Connect`);
++  // A catalog that hands the title back as its account name ("Gmail" under "Gmail") gets one
++  // line, not the same word twice: the reference app's rows are one line of type each.
++  const detail =
++    subtitle?.trim() && subtitle.trim().toLowerCase() !== title.trim().toLowerCase()
++      ? subtitle
++      : undefined;
 +  const label = busy ? t`Working…` : resting;
 +  return (
 +    <Pressable
@@ -65346,9 +65319,9 @@ index 0000000..c02642b
 +        <Text numberOfLines={1} style={styles.appTitle}>
 +          {title}
 +        </Text>
-+        {subtitle ? (
++        {detail ? (
 +          <Text numberOfLines={1} style={styles.appSubtitle}>
-+            {subtitle}
++            {detail}
 +          </Text>
 +        ) : null}
 +      </View>
@@ -65358,6 +65331,45 @@ index 0000000..c02642b
 +    </Pressable>
 +  );
 +}
+diff --git a/apps/mobile/components/connector-icon.tsx b/apps/mobile/components/connector-icon.tsx
+index 15e00d7..4179f9d 100644
+--- a/apps/mobile/components/connector-icon.tsx
++++ b/apps/mobile/components/connector-icon.tsx
+@@ -9,10 +9,17 @@ export function ConnectorIcon({
+   name,
+   logo,
+   size = 36,
++  plate = false,
+ }: {
+   name: string;
+   logo?: string | null;
+   size?: number;
++  /**
++   * Draw the mark on a white plate. A dark mark (GitHub's own cat, a black glyph) otherwise sits
++   * on the row's dark tile and reads as one dark blob; the reference app shows every logo on its
++   * own light square, which is what this is.
++   */
++  plate?: boolean;
+ }) {
+   const styles = useThemedStyles(createStyles);
+   // Catalogs often serve SVG from extensionless URLs, which Image cannot decode,
+@@ -27,7 +34,7 @@ export function ConnectorIcon({
+     <View
+       accessibilityElementsHidden
+       importantForAccessibility="no-hide-descendants"
+-      style={[styles.frame, { width: size, height: size }]}
++      style={[styles.frame, plate && styles.plate, { width: size, height: size }]}
+     >
+       {uri ? (
+         svg ? (
+@@ -86,6 +93,7 @@ function createStyles() {
+       justifyContent: "center",
+       overflow: "hidden",
+     },
++    plate: { backgroundColor: "#FFFFFF" },
+     letter: { color: native.label, fontSize: 16, fontWeight: "600" },
+   });
+ }
 diff --git a/apps/mobile/components/failed-send-bubble.tsx b/apps/mobile/components/failed-send-bubble.tsx
 index 99090c5..4721a99 100644
 --- a/apps/mobile/components/failed-send-bubble.tsx
@@ -65628,10 +65640,10 @@ index 689e635..0d18f41 100644
                <Rect key={rect.x} {...rect} />
 diff --git a/apps/mobile/components/home-bottom-bar.tsx b/apps/mobile/components/home-bottom-bar.tsx
 new file mode 100644
-index 0000000..d1ab918
+index 0000000..6ce9c75
 --- /dev/null
 +++ b/apps/mobile/components/home-bottom-bar.tsx
-@@ -0,0 +1,177 @@
+@@ -0,0 +1,176 @@
 +import { StyleSheet, Text, View } from "react-native";
 +import Animated, { FadeInUp } from "react-native-reanimated";
 +import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -65668,12 +65680,8 @@ index 0000000..d1ab918
 +  const insets = useSafeAreaInsets();
 +  const padBottom = Math.max(insets.bottom, BAND.bottom);
 +  return (
-+    <Animated.View
-+      entering={FadeInUp.duration(240)}
-+      pointerEvents="box-none"
-+      style={styles.dock}
-+    >
-+      <HomeBottomBarBand height={BAND.top + BAR_SIZE + padBottom} />
++    <Animated.View entering={FadeInUp.duration(240)} pointerEvents="box-none" style={styles.dock}>
++      <HomeBottomBarBand height={BAND.top + BAR_SIZE + padBottom + 10} />
 +      <View
 +        pointerEvents="box-none"
 +        style={[
@@ -65727,9 +65735,12 @@ index 0000000..d1ab918
 +      <Svg width="100%" height="100%">
 +        <Defs>
 +          <LinearGradient id="home-bottom-band" x1="0" y1="0" x2="0" y2="1">
++            {/* Solid well before the bar, so no row's words read through the glass search
++                field; the top of the band still fades into the page. */}
 +            <Stop offset="0" stopColor={color} stopOpacity={0} />
-+            <Stop offset="0.65" stopColor={color} stopOpacity={0.86} />
-+            <Stop offset="1" stopColor={color} stopOpacity={0.96} />
++            <Stop offset="0.32" stopColor={color} stopOpacity={0.94} />
++            <Stop offset="0.55" stopColor={color} stopOpacity={1} />
++            <Stop offset="1" stopColor={color} stopOpacity={1} />
 +          </LinearGradient>
 +        </Defs>
 +        <Rect width="100%" height="100%" fill="url(#home-bottom-band)" />
@@ -65811,10 +65822,10 @@ index 0000000..d1ab918
 +}
 diff --git a/apps/mobile/components/home-hero-body.tsx b/apps/mobile/components/home-hero-body.tsx
 new file mode 100644
-index 0000000..d65db38
+index 0000000..7f95425
 --- /dev/null
 +++ b/apps/mobile/components/home-hero-body.tsx
-@@ -0,0 +1,279 @@
+@@ -0,0 +1,278 @@
 +import type { I18n } from "@lingui/core";
 +import { msg } from "@lingui/core/macro";
 +import type { SpaceBot } from "@rakazo/contracts";
@@ -65827,8 +65838,8 @@ index 0000000..d65db38
 +import { BotAvatar } from "./bot-avatar";
 +import { UNREAD_DOT_SIZE } from "./home-styles";
 +import { FALLBACK_COLOR } from "./inbox-rows";
-+import { NativeSymbol } from "./native-symbol";
 +import type { NativeRowMenu, NativeRowMenuItem } from "./native-row";
++import { NativeSymbol } from "./native-symbol";
 +
 +/**
 + * What the home screen's long press on the main bot offers: the same choices its list rows give.
@@ -66061,19 +66072,18 @@ index 0000000..d65db38
 +      // this must not crop that back to 88 points.
 +      overflow: "visible",
 +    },
-+    // A filled orange star at the avatar's bottom-right, ringed in white so it reads on any colour.
++    // A filled orange star at the avatar's bottom-right, with no ring: the reference app's badge
++    // simply sits over the body, so the body's edge stops at it instead of being outlined.
 +    mainBadge: {
 +      position: "absolute",
-+      end: -1,
-+      bottom: -1,
-+      width: 24,
-+      height: 24,
-+      borderRadius: 12,
++      end: -2,
++      bottom: -2,
++      width: 22,
++      height: 22,
++      borderRadius: 11,
 +      alignItems: "center",
 +      justifyContent: "center",
 +      backgroundColor: "#FF9500",
-+      borderWidth: 2.5,
-+      borderColor: "#FFFFFF",
 +    },
 +    nameRow: {
 +      flexDirection: "row",
@@ -77289,7 +77299,7 @@ index 085ed88..c6d6734 100644
    });
  
 diff --git a/apps/mobile/lib/bot-avatar-render.test.tsx b/apps/mobile/lib/bot-avatar-render.test.tsx
-index 33a7172..f0169db 100644
+index 33a7172..46abc76 100644
 --- a/apps/mobile/lib/bot-avatar-render.test.tsx
 +++ b/apps/mobile/lib/bot-avatar-render.test.tsx
 @@ -2,12 +2,13 @@
@@ -77335,7 +77345,27 @@ index 33a7172..f0169db 100644
  
    it("preserves the shared native tap reactions on the Rakazo set", () => {
      nativeMotion.reduced = false;
-@@ -306,12 +321,36 @@ describe("BotAvatar", () => {
+@@ -287,14 +302,12 @@ describe("BotAvatar", () => {
+     expect(nativeMotion.timings.filter((ms) => ms > 0 && ms < 1000)).toEqual([]);
+   });
+ 
+-  it("draws a plain-colour bot with the organic body for its identity", () => {
++  it("draws a plain-colour bot with an official body, never an organic blob", () => {
+     const view = render("#3EC5A8");
+-    expect(bodies(view)).toEqual([organicAvatarPath(avatarIdentitySeed("bot-1"))]);
+-    // A pale body keeps dark eyes on a light page, the same as a group title's still faces.
+-    expect(Array.from(view.querySelectorAll("rect"), (eye) => eye.dataset.fill)).toEqual([
+-      "#141414",
+-      "#141414",
+-    ]);
++    // A bot with no studio shape wears the reference app's first body in its colour.
++    expect(bodies(view)).not.toContain(organicAvatarPath(avatarIdentitySeed("bot-1")));
++    // The body and its two eyes are drawn as paths; nothing is a raster picture.
++    expect(view.querySelectorAll("path").length).toBeGreaterThanOrEqual(2);
+     expect(view.querySelector("img")).toBeNull();
+     expect(view.querySelector("ellipse")).toBeNull();
+   });
+@@ -306,12 +319,36 @@ describe("BotAvatar", () => {
    });
  
    it("keeps a shape picked in Avatar Studio", () => {
@@ -77377,7 +77407,7 @@ index 33a7172..f0169db 100644
    it("draws the explicitly selected Rakazo set as paths and gradients without a raster image", () => {
      const view = render("#3EC5A8", "rakazo");
      expect(bodies(view)).toContain(LOGO_BODY_PATH);
-@@ -328,8 +367,8 @@ describe("BotAvatar", () => {
+@@ -328,8 +365,8 @@ describe("BotAvatar", () => {
    });
  
    it("keeps an explicitly selected original shape when the stored set is Rakazo", () => {
@@ -77389,10 +77419,10 @@ index 33a7172..f0169db 100644
    it("updates native SVG hosts with finite six-value matrices and numeric eye props", () => {
      render("#3EC5A8", "rakazo");
 diff --git a/apps/mobile/lib/bot-avatar.test.ts b/apps/mobile/lib/bot-avatar.test.ts
-index 180908e..214678d 100644
+index 180908e..e262502 100644
 --- a/apps/mobile/lib/bot-avatar.test.ts
 +++ b/apps/mobile/lib/bot-avatar.test.ts
-@@ -1,19 +1,23 @@
+@@ -1,19 +1,37 @@
 -import { shippedBotAvatarShapePath } from "@rakazo/core";
  import { describe, expect, it } from "vitest";
 -import { mobileBotAvatarPresentation } from "./bot-avatar.js";
@@ -77415,23 +77445,41 @@ index 180908e..214678d 100644
 +    expect(presented.kind === "shape" && presented.bodyKey).not.toBe(shippedBodyKey(0));
 +  });
 +
-+  it("keeps the picker's own order, so a stored index keeps its body", () => {
++  it("keeps the picker's own order for the thirteen official bodies", () => {
 +    expect(shippedBodyKey(0)).toBe("hex");
 +    expect(shippedBodyKey(3)).toBe("tablet");
++    expect(shippedBodyKey(5)).toBe("blob");
 +    expect(shippedBodyKey(26)).toBe("hex");
-+    expect(shippedBodyKey(-1)).toBe("pumpkin");
++  });
++
++  it("draws an older Rakazo body as the official one that stands in for it", () => {
++    // Index 9 is the egg, 12 the gem, 25 the pumpkin: none of them is in the reference picker,
++    // so each is drawn as an official body instead of an old silhouette.
++    expect(shippedBodyKey(9)).toBe("teardrop");
++    expect(shippedBodyKey(12)).toBe("hex");
++    expect(shippedBodyKey(-1)).toBe("blob");
++    for (let index = 0; index < 26; index += 1) {
++      expect(
++        ["blob", "cloud", "square", "sparkle", "clover", "heart", "flower", "teardrop", "tablet", "wedge", "house", "star", "hex"],
++        String(index),
++      ).toContain(shippedBodyKey(index));
++    }
    });
  
    it("draws a color saved as its earlier value as the current one", () => {
 diff --git a/apps/mobile/lib/bot-avatar.ts b/apps/mobile/lib/bot-avatar.ts
-index 9970e53..f46bfcd 100644
+index 9970e53..5a45e0b 100644
 --- a/apps/mobile/lib/bot-avatar.ts
 +++ b/apps/mobile/lib/bot-avatar.ts
-@@ -1,12 +1,21 @@
+@@ -1,12 +1,31 @@
  import type { ParsedBotAvatar } from "@rakazo/contracts";
  import { parseBotAvatarValue } from "@rakazo/contracts";
 -import { resolvePersonaColorDef, shippedBotAvatarShapePath } from "@rakazo/core";
-+import { resolvePersonaColorDef, SHIPPED_BOT_AVATAR_SHAPE_KEYS } from "@rakazo/core";
++import {
++  officialFaceBodyKey,
++  resolvePersonaColorDef,
++  SHIPPED_BOT_AVATAR_SHAPE_KEYS,
++} from "@rakazo/core";
  
  export type MobileBotAvatarPresentation =
    | Exclude<ParsedBotAvatar, { kind: "shape" }>
@@ -77439,20 +77487,26 @@ index 9970e53..f46bfcd 100644
 +  | { kind: "shape"; color: string; shapeIndex: number; bodyKey: string };
  
 -/** Resolve a stored `bots.color` value for native rendering, including shape paths. */
-+/** The body a stored shape index wears, clamped to the bodies this build draws. */
++/**
++ * The body a stored shape index wears, in the reference app's thirteen bodies.
++ *
++ * A bot saved before this build may hold the index of a body the reference picker does not offer
++ * (an egg, a gem, a pumpkin). It keeps its index; the silhouette it is drawn as is the official
++ * body that stands in for it, so no screen shows an old Rakazo shape.
++ */
 +export function shippedBodyKey(shapeIndex: number): string {
 +  const count = SHIPPED_BOT_AVATAR_SHAPE_KEYS.length;
 +  const normalized = Number.isFinite(shapeIndex)
 +    ? ((Math.trunc(shapeIndex) % count) + count) % count
 +    : 0;
-+  return SHIPPED_BOT_AVATAR_SHAPE_KEYS[normalized] ?? "hex";
++  return officialFaceBodyKey(SHIPPED_BOT_AVATAR_SHAPE_KEYS[normalized] ?? "blob");
 +}
 +
 +/** Resolve a stored `bots.color` value for native rendering, including its body. */
  export function mobileBotAvatarPresentation(color: string): MobileBotAvatarPresentation {
    const parsed = parseBotAvatarValue(color);
    if (parsed.kind === "color") {
-@@ -21,6 +30,6 @@ export function mobileBotAvatarPresentation(color: string): MobileBotAvatarPrese
+@@ -21,6 +40,6 @@ export function mobileBotAvatarPresentation(color: string): MobileBotAvatarPrese
    return {
      ...parsed,
      color: colorDef.hex,
@@ -81159,6 +81213,26 @@ index bd89a51..e9d5a0c 100644
      const items: InboxSpaceItem[] = [];
      if (spaces.length > 1 || !space.isDefault || allChats.length === 0) {
        items.push({ type: "heading", key: space.id, title: space.name, space });
+diff --git a/apps/mobile/lib/inbox.ts b/apps/mobile/lib/inbox.ts
+index 3e96580..73d3c33 100644
+--- a/apps/mobile/lib/inbox.ts
++++ b/apps/mobile/lib/inbox.ts
+@@ -1,3 +1,5 @@
++import { i18n } from "@lingui/core";
++import { msg } from "@lingui/core/macro";
+ import { snoozeWakeDay } from "@rakazo/core";
+ import { dateLocaleForUi } from "./i18n";
+ 
+@@ -23,6 +25,9 @@ export function formatThreadTime(iso: string, now = new Date()) {
+   if (dayDiff <= 0) {
+     return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+   }
++  // One calendar day back is 「昨天」, as the reference app's list says it; the weekday only starts
++  // after that.
++  if (dayDiff === 1) return i18n._(msg`Yesterday`);
+   if (dayDiff < 7) {
+     return date.toLocaleDateString(dateLocaleForUi(), { weekday: "long" });
+   }
 diff --git a/apps/mobile/lib/integration-categories.test.ts b/apps/mobile/lib/integration-categories.test.ts
 new file mode 100644
 index 0000000..e3abc43
@@ -81417,7 +81491,7 @@ index 0000000..92434c9
 +  }
 +}
 diff --git a/apps/mobile/lib/integrations-screen.test.tsx b/apps/mobile/lib/integrations-screen.test.tsx
-index 4e801f2..7238712 100644
+index 4e801f2..c1e914b 100644
 --- a/apps/mobile/lib/integrations-screen.test.tsx
 +++ b/apps/mobile/lib/integrations-screen.test.tsx
 @@ -20,12 +20,26 @@ const state = vi.hoisted(() => ({
@@ -81758,7 +81832,7 @@ index 4e801f2..7238712 100644
    },
  );
  
-@@ -1101,3 +1144,70 @@ it("registers an OAuth MCP server and starts the existing browser callback flow"
+@@ -1101,3 +1144,65 @@ it("registers an OAuth MCP server and starts the existing browser callback flow"
    ).toBeGreaterThan(initialReads);
    expect(row()?.textContent).toBe("TTestConnected");
  });
@@ -81772,23 +81846,18 @@ index 4e801f2..7238712 100644
 +    ?.headerRight?.();
 +}
 +
-+it("counts the connected apps in the header and narrows the list to them", async () => {
++it("keeps the header free of a title pill and a connected count", async () => {
 +  const other = { ...item, slug: "other", name: "Other app", connected: false };
 +  state.read.mockReturnValue({
 +    catalog: [{ ...item, connected: true }, other],
 +    connections: [account],
 +  });
 +  await render();
-+  const header = document.createElement("div");
-+  document.body.append(header);
-+  const headerRoot = createRoot(header);
-+  await act(async () => headerRoot.render(headerRight()));
-+  expect(header.textContent).toBe("1 connected");
-+  await act(async () => header.querySelector("button")?.click());
++  // The header is the back arrow and the + menu alone: no pill and no count view up there.
++  expect(headerRight()).toBeUndefined();
++  // The list is not narrowed to what is connected, so both apps are offered.
 +  expect(container.textContent).toContain("Example app");
-+  expect(container.textContent).not.toContain("Other app");
-+  await act(async () => headerRoot.unmount());
-+  header.remove();
++  expect(container.textContent).toContain("Other app");
 +});
 +
 +it("keeps the iPhone switches on their own shelf and the vault inside Password managers", async () => {
@@ -98747,14 +98816,15 @@ index 0000000..adc0969
 +export const BABYGROK_DRAW_MARGIN = 1.28;
 +export const BABYGROK_DRAW_VIEWBOX = "-128 -128 256 256";
 diff --git a/packages/core/src/bot-avatar-colors.test.ts b/packages/core/src/bot-avatar-colors.test.ts
-index be9defc..25db10d 100644
+index be9defc..08eac51 100644
 --- a/packages/core/src/bot-avatar-colors.test.ts
 +++ b/packages/core/src/bot-avatar-colors.test.ts
-@@ -1,6 +1,13 @@
+@@ -1,6 +1,14 @@
  import { BOT_COLOR_LIST } from "@rakazo/contracts";
  import { describe, expect, it } from "vitest";
 -import { botEyeInk, botEyeTone, chatUserBubbleColors, contrastRatio } from "./bot-avatar-colors.js";
 +import {
++  BOT_EYE_INK,
 +  botEyeCutout,
 +  botEyeInk,
 +  botEyeTone,
@@ -98765,29 +98835,26 @@ index be9defc..25db10d 100644
  
  describe("botEyeTone", () => {
    it("cuts eyes in the page color unless the body is nearly white or black", () => {
-@@ -57,10 +64,38 @@ describe("chatUserBubbleColors", () => {
+@@ -57,10 +65,35 @@ describe("chatUserBubbleColors", () => {
    });
  });
  
 -it("cuts bot eyes in the page color unless the body is nearly white", () => {
-+it("picks the marker ink the reference app picks: white unless white fails 3:1 on the body", () => {
++it("picks the marker ink the reference app draws: near-black on every body, white on a black one", () => {
    const dark = { background: "#121212", foreground: "#F5F5F5" };
    const light = { background: "#FFFFFF", foreground: "#1C1C1C" };
 -  expect(botEyeInk("#FF5EB1", dark)).toBe("#121212");
 -  expect(botEyeInk("#FF5EB1", light)).toBe("#FFFFFF");
 -  expect(botEyeInk("#FFFFFF", light)).toBe("#1C1C1C");
-+  // Deep bodies keep white eyes in either appearance.
++  // Every coloured body wears the same near-black pills, in either appearance.
++  for (const body of ["#2A92FE", "#804EE0", "#00C972", "#1CC3B0", "#FF5EB1", "#FFAF38"]) {
++    expect(botEyeInk(body, light), body).toBe(BOT_EYE_INK);
++    expect(botEyeInk(body, dark), body).toBe(BOT_EYE_INK);
++  }
++  expect(botEyeInk("#FFFFFF", light)).toBe(BOT_EYE_INK);
++  expect(botEyeInk("#FFFFFF", dark)).toBe(BOT_EYE_INK);
++  // A body as dark as the ink keeps white eyes instead, or the face would vanish into it.
 +  expect(botEyeInk("#000000", dark)).toBe("#FFFFFF");
-+  expect(botEyeInk("#2A92FE", light)).toBe("#FFFFFF");
-+  expect(botEyeInk("#804EE0", light)).toBe("#FFFFFF");
-+  // Amber, emerald, cyan, magenta and red fail 3:1 against white, so the official app gives
-+  // them black eyes — the earlier 1.5:1 threshold here drew them white.
-+  expect(botEyeInk("#FFAF38", light)).toBe("#000000");
-+  expect(botEyeInk("#00C972", light)).toBe("#000000");
-+  expect(botEyeInk("#1CC3B0", light)).toBe("#000000");
-+  expect(botEyeInk("#FF5EB1", dark)).toBe("#000000");
-+  expect(botEyeInk("#FFFFFF", light)).toBe("#000000");
-+  expect(botEyeInk("#FFFFFF", dark)).toBe("#000000");
  });
 +
 +describe("legibleOn", () => {
@@ -98809,10 +98876,10 @@ index be9defc..25db10d 100644
 +});
 +
 diff --git a/packages/core/src/bot-avatar-colors.ts b/packages/core/src/bot-avatar-colors.ts
-index 7916fec..6e7e36c 100644
+index 7916fec..c8cb9f2 100644
 --- a/packages/core/src/bot-avatar-colors.ts
 +++ b/packages/core/src/bot-avatar-colors.ts
-@@ -122,15 +122,50 @@ export function botEyeTone(bodyHex: string): "page" | "dark" | "light" {
+@@ -122,15 +122,54 @@ export function botEyeTone(bodyHex: string): "page" | "dark" | "light" {
    return "page";
  }
  
@@ -98826,13 +98893,15 @@ index 7916fec..6e7e36c 100644
 -      : [page.foreground, page.background];
 -  return tone === "dark" ? darker : lighter;
 +/**
-+ * Which ink a bot's eyes take. The reference app cuts them in white on every colored body, in
-+ * either appearance, and white stays unless it fails the 3:1 rule below; amber and other pale
-+ * colors then take black, which is what the official app draws.
++ * Which ink a bot's eyes take: the near-black the reference app draws on every body, coloured
++ * ones included, so the face reads as two dark pills rather than a pair of white shapes. A body
++ * too dark for it (the black body of a light page) keeps the white ink below, chosen by contrast.
 + */
-+export const BOT_EYE_INK = "#FFFFFF";
++export const BOT_EYE_INK = "#111113";
 +/** The ink of a white body's eyes, which the body itself would otherwise hide. */
 +export const BOT_EYE_INK_ON_WHITE = "#000000";
++/** The light ink a body too dark for `BOT_EYE_INK` falls back to. */
++const BOT_EYE_INK_ON_DARK = "#FFFFFF";
 +
 +/** How much contrast an ink needs before it is legible on a body, per the reference app. */
 +export const MIN_INK_CONTRAST = 3;
@@ -98845,8 +98914,10 @@ index 7916fec..6e7e36c 100644
 + */
 +export function legibleOn(ink: string, background: string): string {
 +  if (contrastRatio(ink, background) >= MIN_INK_CONTRAST) return ink;
-+  return contrastRatio(BOT_EYE_INK, background) >= contrastRatio(BOT_EYE_INK_ON_WHITE, background)
-+    ? BOT_EYE_INK
++  // The ink cannot be read on this body: take whichever of white and black reads best on it.
++  return contrastRatio(BOT_EYE_INK_ON_DARK, background) >=
++    contrastRatio(BOT_EYE_INK_ON_WHITE, background)
++    ? BOT_EYE_INK_ON_DARK
 +    : BOT_EYE_INK_ON_WHITE;
 +}
 +
@@ -98874,12 +98945,12 @@ index 7916fec..6e7e36c 100644
  /** WCAG contrast ratio between two hex colors. */
 diff --git a/packages/core/src/bot-avatar-palette.test.ts b/packages/core/src/bot-avatar-palette.test.ts
 new file mode 100644
-index 0000000..1137241
+index 0000000..36ad745
 --- /dev/null
 +++ b/packages/core/src/bot-avatar-palette.test.ts
-@@ -0,0 +1,40 @@
+@@ -0,0 +1,41 @@
 +import { describe, expect, it } from "vitest";
-+import { botEyeInk } from "./bot-avatar-colors.js";
++import { BOT_EYE_INK, botEyeInk } from "./bot-avatar-colors.js";
 +import {
 +  BOT_AVATAR_DARK_FILLS,
 +  botAvatarFill,
@@ -98890,15 +98961,16 @@ index 0000000..1137241
 +describe("the body a bot is drawn with", () => {
 +  it("keeps a black body black on a light page, and its eyes white", () => {
 +    expect(botAvatarFill("#000000", false)).toBe("#000000");
++    // A body too dark for the near-black ink keeps white eyes, by contrast.
 +    expect(botEyeInk(botAvatarFill("#000000", false))).toBe("#FFFFFF");
 +  });
 +
 +  it("turns a black body white on the dark page, so it is still a face", () => {
 +    const fill = botAvatarFill("#000000", true);
 +    expect(fill).toBe(FLIPPED_BODY_DARK_FILL);
-+    // The eyes are what makes the flip readable: black cuts in the white body, as the reference's
-+    // `小猪包` wears them.
-+    expect(botEyeInk(fill)).toBe("#000000");
++    // The eyes are what makes the flip readable: the near-black ink on the white body, as the
++    // reference's `小猪包` wears them.
++    expect(botEyeInk(fill)).toBe(BOT_EYE_INK);
 +    expect(botAvatarFill("#000000", false)).not.toBe(fill);
 +  });
 +
@@ -98915,7 +98987,7 @@ index 0000000..1137241
 +  it("keeps a white body off a white page, and takes a dark ink there", () => {
 +    const fill = botAvatarFill("#FFFFFF", false);
 +    expect(fill).toBe(PALE_BODY_LIGHT_FILL);
-+    expect(botEyeInk(fill)).toBe("#000000");
++    expect(botEyeInk(fill)).toBe(BOT_EYE_INK);
 +  });
 +});
 diff --git a/packages/core/src/bot-avatar-palette.ts b/packages/core/src/bot-avatar-palette.ts
@@ -99003,7 +99075,7 @@ index 5bbda30..d93ab56 100644
  
    it("emits path geometry only", () => {
 diff --git a/packages/core/src/bot-avatar-shapes.ts b/packages/core/src/bot-avatar-shapes.ts
-index 0607200..eb1dc66 100644
+index 0607200..9f102a2 100644
 --- a/packages/core/src/bot-avatar-shapes.ts
 +++ b/packages/core/src/bot-avatar-shapes.ts
 @@ -5,13 +5,18 @@ export const SHIPPED_BOT_AVATAR_CENTER = 114.2705;
@@ -99029,30 +99101,24 @@ index 0607200..eb1dc66 100644
  export const SHIPPED_BOT_AVATAR_SHAPES: Record<string, string> = {
    blob: "M228.541 114.228C228.541 130.133 225.184 145.994 218.738 160.534C212.674 174.217 203.904 186.669 193.065 196.988C155.933 232.34 99.497 238.596 55.5255 212.24C45.097 205.99 35.6851 198.072 27.7451 188.866C19.1926 178.953 12.3686 167.569 7.65781 155.351C2.60712 142.264 0 128.257 0 114.228C0 98.3219 3.35751 82.4611 9.80315 67.9215C15.8672 54.2382 24.6377 41.7862 35.4767 31.4668C72.6081 -3.88483 129.044 -10.1413 173.016 16.2153C183.444 22.4653 192.856 30.3829 200.796 39.5896C209.349 49.5018 216.173 60.8859 220.883 73.1037C225.934 86.1906 228.541 100.198 228.541 114.228Z",
    pebble:
-@@ -27,6 +32,42 @@ export const SHIPPED_BOT_AVATAR_SHAPES: Record<string, string> = {
+@@ -27,6 +32,35 @@ export const SHIPPED_BOT_AVATAR_SHAPES: Record<string, string> = {
      "M221.98 112.32C222.74 113.71 223.45 115.15 224.08 116.59C224.71 118.05 225.28 119.52 225.79 121.02C226.29 122.51 226.72 124.03 227.08 125.56C227.44 127.08 227.73 128.62 227.96 130.17C228.18 131.72 228.33 133.28 228.41 134.83C228.5 136.38 228.51 137.94 228.46 139.5C228.41 141.05 228.29 142.6 228.1 144.14C227.91 145.69 227.65 147.22 227.32 148.73C227 150.25 226.61 151.76 226.15 153.23C225.7 154.72 225.17 156.18 224.59 157.61C224 159.04 223.36 160.46 222.65 161.83C221.94 163.21 221.17 164.56 220.34 165.87C219.51 167.17 218.62 168.45 217.69 169.68C216.74 170.91 215.74 172.11 214.7 173.26C213.64 174.41 212.54 175.51 211.4 176.56C210.25 177.62 209.05 178.62 207.81 179.57C206.57 180.52 205.29 181.42 203.96 182.26C202.63 183.09 201.27 183.88 199.87 184.59C198.47 185.31 197.03 185.97 195.56 186.56C194.1 187.16 192.6 187.68 191.08 188.15C189.56 188.61 188.01 189 186.44 189.32C184.86 189.66 183.27 189.91 181.67 190.09C180.06 190.27 178.44 190.38 176.81 190.41C175.18 190.44 173.53 190.4 171.89 190.27C170.24 190.15 168.58 189.95 166.93 189.68C165.28 189.39 163.49 188.79 161.98 188.58C160.48 188.38 159 188.07 157.89 188.47C156.78 188.86 156.18 190.11 155.28 190.91C154.4 191.69 153.48 192.46 152.53 193.19C151.59 193.93 150.62 194.64 149.63 195.33C148.65 196.01 147.63 196.67 146.6 197.29C145.56 197.92 144.51 198.51 143.43 199.08C142.37 199.63 141.28 200.17 140.16 200.67C139.06 201.17 137.94 201.63 136.79 202.07C135.66 202.5 134.5 202.9 133.34 203.27C132.18 203.64 131 203.97 129.81 204.26C128.62 204.55 127.42 204.82 126.22 205.03C125.02 205.26 123.81 205.44 122.59 205.59C121.37 205.73 120.15 205.85 118.93 205.93C117.7 206 116.48 206.04 115.25 206.04C114.02 206.04 112.8 206 111.57 205.93C110.35 205.85 109.13 205.73 107.91 205.59C106.7 205.44 105.48 205.26 104.28 205.03C103.07 204.82 101.87 204.55 100.68 204.26C99.5 203.97 98.32 203.64 97.16 203.27C96 202.9 94.84 202.5 93.7 202.07C92.56 201.63 91.44 201.17 90.33 200.67C89.22 200.17 88.13 199.63 87.06 199.08C85.99 198.51 84.94 197.92 83.9 197.29C82.87 196.67 81.86 196.01 80.87 195.33C79.88 194.64 78.91 193.93 77.97 193.19C77.02 192.46 76.21 191.5 75.21 190.91C74.21 190.3 73.34 189.57 71.98 189.58C70.62 189.59 68.7 190.57 67.06 190.96C65.41 191.35 63.75 191.65 62.09 191.87C60.44 192.1 58.77 192.24 57.12 192.32C55.47 192.39 53.82 192.39 52.18 192.31C50.55 192.23 48.92 192.09 47.31 191.86C45.7 191.65 44.1 191.35 42.53 190.99C40.95 190.63 39.39 190.2 37.86 189.7C36.33 189.21 34.83 188.65 33.35 188.03C31.88 187.4 30.43 186.71 29.03 185.96C27.62 185.2 26.24 184.39 24.92 183.54C23.59 182.67 22.29 181.74 21.04 180.76C19.79 179.79 18.59 178.75 17.43 177.68C16.28 176.6 15.16 175.47 14.11 174.3C13.06 173.13 12.04 171.91 11.09 170.65C10.15 169.39 9.25 168.09 8.41 166.75C7.58 165.43 6.8 164.05 6.08 162.64C5.36 161.25 4.7 159.81 4.1 158.36C3.51 156.9 2.98 155.41 2.51 153.91C2.04 152.4 1.64 150.88 1.3 149.34C0.97 147.8 0.7 146.24 0.5 144.68C0.3 143.12 0.17 141.54 0.1 139.97C0.03 138.38 0.03 136.8 0.11 135.22C0.18 133.64 0.33 132.06 0.53 130.49C0.74 128.91 1.02 127.35 1.36 125.8C1.71 124.25 2.12 122.71 2.61 121.18C3.09 119.66 3.64 118.16 4.26 116.68C4.87 115.2 5.56 113.74 6.3 112.32C7.05 110.89 7.86 109.5 8.74 108.13C9.61 106.77 10.56 105.45 11.55 104.16C12.55 102.87 13.61 101.62 14.73 100.42C15.86 99.23 17.04 98.06 18.27 96.96C19.51 95.86 20.8 94.79 22.14 93.8C23.49 92.8 24.89 91.86 26.34 90.98C27.8 90.09 30.02 89.5 30.85 88.52C31.68 87.53 31.25 86.24 31.33 85.05C31.4 83.86 31.28 82.59 31.31 81.35C31.35 80.12 31.42 78.88 31.54 77.64C31.64 76.4 31.79 75.16 31.98 73.93C32.17 72.69 32.39 71.46 32.66 70.24C32.92 69.01 33.22 67.79 33.58 66.58C33.92 65.36 34.3 64.16 34.72 62.97C35.14 61.78 35.59 60.59 36.08 59.43C36.58 58.25 37.11 57.1 37.69 55.96C38.25 54.83 38.86 53.7 39.5 52.6C40.14 51.5 40.82 50.41 41.52 49.35C42.24 48.3 42.99 47.25 43.76 46.24C44.54 45.22 45.35 44.22 46.19 43.26C47.03 42.29 47.91 41.35 48.81 40.45C49.71 39.53 50.64 38.65 51.6 37.8C52.56 36.94 53.55 36.12 54.56 35.33C55.57 34.54 56.61 33.79 57.67 33.06C58.72 32.33 59.81 31.65 60.91 31C62.01 30.33 63.14 29.72 64.28 29.13C65.41 28.56 66.57 28.01 67.74 27.49C68.92 26.98 70.11 26.52 71.31 26.09C72.51 25.66 73.73 25.26 74.95 24.91C76.17 24.54 77.41 24.23 78.65 23.96C79.89 23.68 81.14 23.44 82.39 23.25C83.64 23.05 84.9 22.88 86.16 22.77C87.41 22.65 88.68 22.57 89.92 22.53C91.18 22.49 92.44 22.49 93.69 22.53C94.94 22.57 96.19 22.65 97.43 22.77C98.67 22.88 99.91 23.03 101.14 23.23C102.36 23.42 103.58 23.65 104.78 23.91C105.99 24.17 107.18 24.48 108.37 24.81C109.54 25.14 110.71 25.51 111.85 25.92C113 26.32 114.14 26.76 115.25 27.22C116.36 27.69 117.45 28.2 118.54 28.72C119.61 29.25 120.67 29.81 121.7 30.39C122.73 30.98 123.74 31.59 124.73 32.24C125.71 32.87 126.68 33.54 127.62 34.23C128.55 34.91 129.44 35.75 130.36 36.36C131.28 36.96 132.09 37.8 133.12 37.85C134.17 37.89 135.43 36.99 136.6 36.63C137.77 36.26 138.96 35.93 140.16 35.64C141.36 35.36 142.58 35.12 143.8 34.91C145.02 34.72 146.26 34.56 147.5 34.44C148.74 34.33 149.99 34.26 151.25 34.23C152.5 34.21 153.75 34.22 155.01 34.29C156.26 34.35 157.52 34.46 158.77 34.61C160.02 34.77 161.27 34.96 162.5 35.2C163.74 35.45 164.98 35.74 166.2 36.07C167.42 36.41 168.63 36.78 169.82 37.21C171.02 37.63 172.2 38.08 173.37 38.59C174.54 39.1 175.69 39.65 176.81 40.24C177.93 40.83 179.05 41.46 180.13 42.14C181.21 42.8 182.27 43.51 183.3 44.26C184.34 45.02 185.34 45.81 186.32 46.63C187.3 47.45 188.24 48.31 189.15 49.19C190.07 50.09 190.96 51.02 191.8 51.97C192.65 52.92 193.47 53.92 194.24 54.93C195.01 55.95 195.75 56.99 196.45 58.06C197.16 59.13 197.81 60.23 198.43 61.34C199.05 62.46 199.64 63.6 200.17 64.76C200.71 65.92 201.21 67.1 201.66 68.29C202.11 69.48 202.52 70.7 202.88 71.92C203.25 73.14 203.56 74.38 203.83 75.62C204.11 76.87 204.34 78.13 204.52 79.39C204.7 80.65 204.84 81.91 204.93 83.18C205.02 84.45 205.06 85.72 205.06 86.98C205.06 88.25 204.81 89.57 204.93 90.79C205.03 92.01 204.94 93.22 205.73 94.32C206.53 95.42 208.44 96.29 209.71 97.36C210.98 98.43 212.19 99.55 213.33 100.71C214.48 101.87 215.57 103.09 216.59 104.34C217.62 105.59 218.58 106.89 219.48 108.23C220.38 109.56 221.21 110.92 221.98 112.32Z",
    teardrop:
      "M125.97 7.2Q114.27 -7.28 102.57 7.2L43.49 80.31C13.46 117.46 17.28 171.51 52.23 204.08C87.17 236.65 141.37 236.65 176.32 204.08C211.26 171.51 215.08 117.46 185.05 80.31Z",
-+  bean:
-+    "M205.56 115.39C205.78 118.52 206.1 122.93 206.05 126.74C206 130.55 205.75 134.4 205.28 138.23C204.81 142.06 204.28 145.25 203.22 149.73C202.16 154.21 200.15 161.28 198.93 165.11C197.71 168.94 197 170.18 195.9 172.69C194.81 175.2 194.03 177.12 192.36 180.2C190.7 183.28 187.83 188.15 185.91 191.15C183.99 194.15 182.68 195.93 180.86 198.18C179.04 200.43 177.62 202.08 175 204.65C172.38 207.22 167.99 211.22 165.13 213.58C162.27 215.94 159.69 217.55 157.82 218.8C155.95 220.05 155.94 220.06 153.92 221.08C151.9 222.1 148.53 223.8 145.73 224.9C142.93 226 140.03 226.94 137.11 227.69C134.19 228.44 130.45 229.04 128.21 229.4C125.98 229.76 125.96 229.73 123.7 229.85C121.44 229.97 117.66 230.22 114.66 230.12C111.66 230.03 108.63 229.76 105.67 229.28C102.71 228.8 99.08 227.83 96.91 227.25C94.74 226.67 94.72 226.67 92.66 225.81C90.6 224.95 86.53 223.1 84.53 222.11C82.53 221.12 82.52 221.11 80.68 219.87C78.84 218.63 75.78 216.54 73.52 214.69C71.26 212.84 69.12 210.82 67.1 208.78C65.08 206.74 63.16 204.64 61.4 202.45C59.64 200.26 58.01 197.97 56.54 195.63C55.07 193.29 54.22 192.02 52.56 188.44C50.9 184.86 48.19 178.18 46.58 174.15C44.97 170.12 44.41 167.87 42.91 164.24C41.41 160.61 39.65 156.76 37.57 152.37C35.49 147.98 32.78 142.33 30.42 137.88C28.06 133.43 25.83 130.03 23.42 125.66C21.01 121.3 17.74 115.32 15.95 111.69C14.16 108.06 13.46 105.85 12.7 103.86C11.94 101.87 12.1 102.61 11.4 99.75C10.7 96.89 9.14 90.43 8.51 86.73C7.88 83.03 7.72 80.65 7.64 77.58C7.56 74.51 7.86 70.63 8.04 68.32C8.22 66.01 8.22 65.99 8.72 63.71C9.22 61.43 10.05 57.62 11.03 54.66C12.01 51.7 13.63 48.11 14.6 45.97C15.57 43.83 16.05 43.18 16.84 41.83C17.63 40.48 17.96 39.75 19.36 37.85C20.75 35.95 23.1 32.77 25.21 30.46C27.32 28.14 30.28 25.52 32.05 23.96C33.81 22.4 34.52 21.99 35.8 21.08C37.08 20.16 37.68 19.63 39.73 18.47C41.78 17.31 45.25 15.45 48.09 14.13C50.93 12.82 53.83 11.61 56.75 10.58C59.67 9.55 62.64 8.62 65.64 7.93C68.64 7.24 72.47 6.73 74.75 6.43C77.03 6.13 77.05 6.13 79.33 6.11C81.61 6.09 84.74 6.06 88.46 6.33C92.18 6.6 98.75 7.35 101.67 7.72C104.59 8.09 103.85 8.01 105.95 8.53C108.05 9.05 110.9 9.84 114.26 10.86C117.62 11.88 122.88 13.52 126.1 14.66C129.32 15.8 131.18 16.56 133.61 17.68C136.04 18.8 137.3 19.44 140.7 21.38C144.1 23.32 150.76 27.26 154.02 29.3C157.28 31.34 158.25 32.1 160.26 33.62C162.27 35.14 164.21 36.76 166.06 38.44C167.91 40.12 169.24 41.48 171.37 43.72C173.5 45.96 176.45 49.1 178.86 51.88C181.27 54.66 183.99 57.97 185.84 60.4C187.69 62.83 188.67 64.4 189.95 66.49C191.23 68.58 192.14 70.18 193.51 72.92C194.88 75.66 196.97 80.1 198.18 82.92C199.39 85.74 199.99 87.5 200.74 89.84C201.49 92.19 202.01 93.97 202.68 96.99C203.35 100.01 204.28 104.88 204.76 107.95C205.24 111.02 205.34 112.26 205.56 115.39Z",
-+  egg:
-+    "M18.55 107.12C18.58 102.96 18.78 97.59 19.09 93.52C19.4 89.45 19.83 86.24 20.39 82.69C20.95 79.14 21.55 75.97 22.44 72.24C23.33 68.51 24.64 63.8 25.75 60.29C26.86 56.78 27.5 54.79 29.08 51.18C30.66 47.57 33.28 42.1 35.22 38.61C37.16 35.12 38.81 32.77 40.69 30.21C42.56 27.65 44.42 25.41 46.47 23.24C48.52 21.06 50.9 18.89 52.99 17.16C55.09 15.43 56.91 14.16 59.04 12.85C61.17 11.54 63.27 10.36 65.76 9.28C68.25 8.2 71.26 7.11 73.99 6.35C76.72 5.59 79.09 5.08 82.16 4.7C85.23 4.32 89.07 4.08 92.39 4.09C95.71 4.1 98.75 4.34 102.1 4.77C105.45 5.2 108.76 5.78 112.51 6.69C116.26 7.6 120.16 8.65 124.58 10.25C129 11.85 134.57 14.12 139.06 16.26C143.55 18.4 147.59 20.7 151.53 23.08C155.47 25.46 159.33 28.14 162.67 30.54C166.01 32.94 168.25 34.59 171.57 37.47C174.89 40.35 179.53 44.68 182.62 47.83C185.72 50.98 187.5 53.07 190.14 56.37C192.78 59.67 196.12 64.12 198.48 67.61C200.84 71.1 202.53 73.99 204.32 77.29C206.1 80.59 207.62 83.55 209.19 87.39C210.76 91.23 212.55 96.4 213.75 100.32C214.95 104.24 215.71 107.37 216.4 110.92C217.09 114.47 217.59 118.06 217.9 121.62C218.21 125.18 218.22 129.51 218.25 132.3C218.28 135.09 218.2 136.22 218.05 138.39C217.91 140.56 217.81 142.47 217.38 145.31C216.95 148.16 216.21 152.28 215.46 155.46C214.72 158.64 213.94 161.36 212.91 164.39C211.88 167.41 210.56 170.75 209.28 173.61C208 176.47 206.99 178.6 205.26 181.57C203.53 184.54 200.81 188.7 198.88 191.42C196.95 194.14 195.43 195.86 193.66 197.87C191.89 199.88 190.34 201.54 188.25 203.51C186.16 205.48 183.51 207.8 181.1 209.68C178.69 211.56 176.5 213.11 173.79 214.79C171.07 216.47 167.88 218.27 164.81 219.75C161.74 221.23 158.35 222.58 155.34 223.65C152.33 224.72 149.73 225.45 146.76 226.15C143.78 226.85 140.33 227.47 137.49 227.87C134.65 228.27 132.41 228.44 129.73 228.56C127.05 228.68 124.24 228.72 121.43 228.6C118.62 228.48 116.25 228.38 112.85 227.87C109.45 227.37 104.55 226.45 101.01 225.57C97.47 224.69 94.6 223.7 91.6 222.61C88.59 221.52 85.93 220.45 82.98 219.04C80.03 217.63 76.74 215.86 73.91 214.16C71.08 212.46 68.25 210.46 66 208.85C63.75 207.24 62.63 206.46 60.39 204.52C58.15 202.58 55.04 199.81 52.55 197.23C50.06 194.65 47.62 191.75 45.46 189.05C43.3 186.35 41.5 183.95 39.56 181.03C37.62 178.11 35.34 174.24 33.84 171.54C32.34 168.84 31.79 167.71 30.55 164.85C29.31 161.99 27.59 157.73 26.39 154.36C25.2 150.99 24.18 147.48 23.38 144.63C22.58 141.78 22.2 140.37 21.58 137.27C20.96 134.17 20.11 129.17 19.67 126.04C19.23 122.91 19.11 121.62 18.92 118.47C18.73 115.32 18.52 111.28 18.55 107.12Z",
++  bean: "M205.56 115.39C205.78 118.52 206.1 122.93 206.05 126.74C206 130.55 205.75 134.4 205.28 138.23C204.81 142.06 204.28 145.25 203.22 149.73C202.16 154.21 200.15 161.28 198.93 165.11C197.71 168.94 197 170.18 195.9 172.69C194.81 175.2 194.03 177.12 192.36 180.2C190.7 183.28 187.83 188.15 185.91 191.15C183.99 194.15 182.68 195.93 180.86 198.18C179.04 200.43 177.62 202.08 175 204.65C172.38 207.22 167.99 211.22 165.13 213.58C162.27 215.94 159.69 217.55 157.82 218.8C155.95 220.05 155.94 220.06 153.92 221.08C151.9 222.1 148.53 223.8 145.73 224.9C142.93 226 140.03 226.94 137.11 227.69C134.19 228.44 130.45 229.04 128.21 229.4C125.98 229.76 125.96 229.73 123.7 229.85C121.44 229.97 117.66 230.22 114.66 230.12C111.66 230.03 108.63 229.76 105.67 229.28C102.71 228.8 99.08 227.83 96.91 227.25C94.74 226.67 94.72 226.67 92.66 225.81C90.6 224.95 86.53 223.1 84.53 222.11C82.53 221.12 82.52 221.11 80.68 219.87C78.84 218.63 75.78 216.54 73.52 214.69C71.26 212.84 69.12 210.82 67.1 208.78C65.08 206.74 63.16 204.64 61.4 202.45C59.64 200.26 58.01 197.97 56.54 195.63C55.07 193.29 54.22 192.02 52.56 188.44C50.9 184.86 48.19 178.18 46.58 174.15C44.97 170.12 44.41 167.87 42.91 164.24C41.41 160.61 39.65 156.76 37.57 152.37C35.49 147.98 32.78 142.33 30.42 137.88C28.06 133.43 25.83 130.03 23.42 125.66C21.01 121.3 17.74 115.32 15.95 111.69C14.16 108.06 13.46 105.85 12.7 103.86C11.94 101.87 12.1 102.61 11.4 99.75C10.7 96.89 9.14 90.43 8.51 86.73C7.88 83.03 7.72 80.65 7.64 77.58C7.56 74.51 7.86 70.63 8.04 68.32C8.22 66.01 8.22 65.99 8.72 63.71C9.22 61.43 10.05 57.62 11.03 54.66C12.01 51.7 13.63 48.11 14.6 45.97C15.57 43.83 16.05 43.18 16.84 41.83C17.63 40.48 17.96 39.75 19.36 37.85C20.75 35.95 23.1 32.77 25.21 30.46C27.32 28.14 30.28 25.52 32.05 23.96C33.81 22.4 34.52 21.99 35.8 21.08C37.08 20.16 37.68 19.63 39.73 18.47C41.78 17.31 45.25 15.45 48.09 14.13C50.93 12.82 53.83 11.61 56.75 10.58C59.67 9.55 62.64 8.62 65.64 7.93C68.64 7.24 72.47 6.73 74.75 6.43C77.03 6.13 77.05 6.13 79.33 6.11C81.61 6.09 84.74 6.06 88.46 6.33C92.18 6.6 98.75 7.35 101.67 7.72C104.59 8.09 103.85 8.01 105.95 8.53C108.05 9.05 110.9 9.84 114.26 10.86C117.62 11.88 122.88 13.52 126.1 14.66C129.32 15.8 131.18 16.56 133.61 17.68C136.04 18.8 137.3 19.44 140.7 21.38C144.1 23.32 150.76 27.26 154.02 29.3C157.28 31.34 158.25 32.1 160.26 33.62C162.27 35.14 164.21 36.76 166.06 38.44C167.91 40.12 169.24 41.48 171.37 43.72C173.5 45.96 176.45 49.1 178.86 51.88C181.27 54.66 183.99 57.97 185.84 60.4C187.69 62.83 188.67 64.4 189.95 66.49C191.23 68.58 192.14 70.18 193.51 72.92C194.88 75.66 196.97 80.1 198.18 82.92C199.39 85.74 199.99 87.5 200.74 89.84C201.49 92.19 202.01 93.97 202.68 96.99C203.35 100.01 204.28 104.88 204.76 107.95C205.24 111.02 205.34 112.26 205.56 115.39Z",
++  egg: "M18.55 107.12C18.58 102.96 18.78 97.59 19.09 93.52C19.4 89.45 19.83 86.24 20.39 82.69C20.95 79.14 21.55 75.97 22.44 72.24C23.33 68.51 24.64 63.8 25.75 60.29C26.86 56.78 27.5 54.79 29.08 51.18C30.66 47.57 33.28 42.1 35.22 38.61C37.16 35.12 38.81 32.77 40.69 30.21C42.56 27.65 44.42 25.41 46.47 23.24C48.52 21.06 50.9 18.89 52.99 17.16C55.09 15.43 56.91 14.16 59.04 12.85C61.17 11.54 63.27 10.36 65.76 9.28C68.25 8.2 71.26 7.11 73.99 6.35C76.72 5.59 79.09 5.08 82.16 4.7C85.23 4.32 89.07 4.08 92.39 4.09C95.71 4.1 98.75 4.34 102.1 4.77C105.45 5.2 108.76 5.78 112.51 6.69C116.26 7.6 120.16 8.65 124.58 10.25C129 11.85 134.57 14.12 139.06 16.26C143.55 18.4 147.59 20.7 151.53 23.08C155.47 25.46 159.33 28.14 162.67 30.54C166.01 32.94 168.25 34.59 171.57 37.47C174.89 40.35 179.53 44.68 182.62 47.83C185.72 50.98 187.5 53.07 190.14 56.37C192.78 59.67 196.12 64.12 198.48 67.61C200.84 71.1 202.53 73.99 204.32 77.29C206.1 80.59 207.62 83.55 209.19 87.39C210.76 91.23 212.55 96.4 213.75 100.32C214.95 104.24 215.71 107.37 216.4 110.92C217.09 114.47 217.59 118.06 217.9 121.62C218.21 125.18 218.22 129.51 218.25 132.3C218.28 135.09 218.2 136.22 218.05 138.39C217.91 140.56 217.81 142.47 217.38 145.31C216.95 148.16 216.21 152.28 215.46 155.46C214.72 158.64 213.94 161.36 212.91 164.39C211.88 167.41 210.56 170.75 209.28 173.61C208 176.47 206.99 178.6 205.26 181.57C203.53 184.54 200.81 188.7 198.88 191.42C196.95 194.14 195.43 195.86 193.66 197.87C191.89 199.88 190.34 201.54 188.25 203.51C186.16 205.48 183.51 207.8 181.1 209.68C178.69 211.56 176.5 213.11 173.79 214.79C171.07 216.47 167.88 218.27 164.81 219.75C161.74 221.23 158.35 222.58 155.34 223.65C152.33 224.72 149.73 225.45 146.76 226.15C143.78 226.85 140.33 227.47 137.49 227.87C134.65 228.27 132.41 228.44 129.73 228.56C127.05 228.68 124.24 228.72 121.43 228.6C118.62 228.48 116.25 228.38 112.85 227.87C109.45 227.37 104.55 226.45 101.01 225.57C97.47 224.69 94.6 223.7 91.6 222.61C88.59 221.52 85.93 220.45 82.98 219.04C80.03 217.63 76.74 215.86 73.91 214.16C71.08 212.46 68.25 210.46 66 208.85C63.75 207.24 62.63 206.46 60.39 204.52C58.15 202.58 55.04 199.81 52.55 197.23C50.06 194.65 47.62 191.75 45.46 189.05C43.3 186.35 41.5 183.95 39.56 181.03C37.62 178.11 35.34 174.24 33.84 171.54C32.34 168.84 31.79 167.71 30.55 164.85C29.31 161.99 27.59 157.73 26.39 154.36C25.2 150.99 24.18 147.48 23.38 144.63C22.58 141.78 22.2 140.37 21.58 137.27C20.96 134.17 20.11 129.17 19.67 126.04C19.23 122.91 19.11 121.62 18.92 118.47C18.73 115.32 18.52 111.28 18.55 107.12Z",
 +  capsule:
 +    "M197.64 114.27C203.93 127.55 201.15 121.69 202.34 124.69C203.53 127.69 204.21 130.35 204.77 132.27C205.33 134.19 205.42 134.89 205.7 136.22C205.97 137.55 206.17 138.2 206.42 140.26C206.67 142.31 207.1 145.75 207.2 148.55C207.3 151.35 207.14 154.91 207.04 157.04C206.94 159.17 206.94 159.19 206.6 161.32C206.25 163.45 205.44 167.72 204.97 169.85C204.5 171.97 204.5 171.99 203.77 174.07C203.05 176.15 201.47 180.29 200.62 182.34C199.77 184.39 199.77 184.4 198.67 186.35C197.57 188.3 195.74 191.57 194.04 194.04C192.34 196.51 189.93 199.43 188.49 201.17C187.05 202.91 187.04 202.92 185.39 204.48C183.74 206.04 180.97 208.66 178.59 210.54C176.21 212.42 173.69 214.16 171.1 215.74C168.5 217.32 165.79 218.76 163.02 220.01C160.25 221.26 156.64 222.51 154.48 223.26C152.32 224.01 152.31 224.01 150.08 224.49C147.86 224.97 144.13 225.77 141.13 226.14C138.13 226.51 134.34 226.63 132.08 226.7C129.82 226.77 129.8 226.76 127.56 226.56C125.32 226.36 120.86 225.83 118.64 225.5C116.42 225.17 116.41 225.17 114.27 224.58C112.13 223.99 108.54 223 105.79 221.98C103.04 220.96 99.74 219.4 97.77 218.46C95.8 217.53 95.79 217.51 93.96 216.37C92.13 215.23 89.08 213.32 86.81 211.62C84.54 209.92 81.92 207.58 80.36 206.18C78.8 204.78 78.37 204.24 77.42 203.24C76.47 202.24 75.94 201.76 74.66 200.18C73.38 198.6 70.93 195.37 69.76 193.74C68.59 192.11 68.59 192.1 67.62 190.4C66.65 188.7 70.6 197.36 63.94 183.54C57.28 169.72 34.19 121.36 27.68 107.46C21.17 93.55 25.7 102.63 24.89 100.11C24.08 97.59 23.3 94.29 22.84 92.32C22.38 90.35 22.37 90.34 22.12 88.28C21.87 86.22 21.44 82.79 21.34 79.99C21.24 77.19 21.29 74.34 21.5 71.5C21.71 68.66 22.29 65.09 22.63 62.95C22.97 60.82 22.97 60.8 23.57 58.69C24.17 56.58 25.17 53.05 26.22 50.3C27.27 47.55 28.49 44.82 29.87 42.19C31.25 39.56 32.8 36.97 34.5 34.5C36.2 32.03 38.61 29.11 40.05 27.37C41.49 25.63 41.5 25.62 43.15 24.06C44.8 22.5 48.21 19.46 49.95 18C51.69 16.54 51.7 16.53 53.61 15.29C55.52 14.05 59.44 11.67 61.42 10.54C63.41 9.41 63.41 9.41 65.52 8.53C67.63 7.65 71.9 6.03 74.06 5.28C76.22 4.53 76.23 4.53 78.46 4.05C80.68 3.57 85.16 2.74 87.41 2.4C89.66 2.06 90.43 2.08 91.94 1.99C93.45 1.9 94.21 1.78 96.46 1.84C98.71 1.91 102.49 2.03 105.46 2.38C108.43 2.73 111.39 3.26 114.27 3.96C117.15 4.66 120 5.54 122.75 6.56C125.5 7.58 128.8 9.14 130.77 10.08C132.74 11.02 132.75 11.03 134.58 12.17C136.41 13.31 139.46 15.22 141.73 16.92C144 18.62 146.62 20.96 148.18 22.36C149.75 23.76 150.17 24.3 151.12 25.3C152.07 26.3 152.6 26.78 153.88 28.36C155.16 29.94 157.61 33.17 158.78 34.8C159.95 36.43 159.95 36.44 160.92 38.14C161.89 39.84 158.48 32.31 164.6 45C170.72 57.69 191.35 100.99 197.64 114.27Z",
 +  cylinder:
 +    "M-7.5 87.58C-7.58 85.07 -7.53 81.55 -7.05 78.48C-6.57 75.41 -5.48 71.74 -4.64 69.17C-3.8 66.6 -2.97 65.08 -2 63.04C-1.03 60.99 -0.33 59.4 1.2 56.9C2.73 54.4 5.03 50.9 7.19 48.04C9.36 45.18 12.14 42.01 14.19 39.73C16.23 37.45 17.66 36.1 19.46 34.36C21.27 32.62 22.54 31.39 25.02 29.31C27.5 27.23 31.86 23.78 34.37 21.87C36.88 19.96 37.77 19.39 40.08 17.87C42.39 16.35 44.63 14.8 48.26 12.73C51.89 10.66 57.44 7.58 61.88 5.43C66.32 3.28 70.27 1.58 74.89 -0.17C79.51 -1.92 84.83 -3.71 89.62 -5.09C94.41 -6.46 100.05 -7.67 103.63 -8.42C107.2 -9.17 108.58 -9.28 111.07 -9.61C113.56 -9.94 115.52 -10.21 118.59 -10.38C121.66 -10.55 125.88 -10.75 129.48 -10.65C133.08 -10.55 136.7 -10.29 140.18 -9.8C143.66 -9.31 147.12 -8.63 150.34 -7.71C153.56 -6.79 157.51 -5.08 159.51 -4.26C161.51 -3.44 161.01 -3.61 162.32 -2.8C163.63 -1.99 165.77 -0.66 167.38 0.58C168.99 1.81 170.61 3.18 171.97 4.61C173.33 6.04 174.67 7.98 175.53 9.18C176.39 10.38 167.51 -8.27 177.13 11.78C186.75 31.83 223.61 108.94 233.27 129.48C242.93 150.01 234.63 133.08 235.09 134.99C235.55 136.9 235.9 138.96 236.04 140.96C236.18 142.96 236.11 144.95 235.93 146.98C235.75 149.01 235.62 150.58 234.96 153.16C234.3 155.74 233.26 159.36 231.99 162.44C230.72 165.52 229.11 168.63 227.34 171.64C225.57 174.65 223.51 177.64 221.35 180.5C219.19 183.36 216.94 186.02 214.35 188.81C211.75 191.6 209.14 194.25 205.78 197.23C202.42 200.21 197.72 204 194.17 206.67C190.62 209.34 188.36 210.87 184.49 213.26C180.62 215.65 175.35 218.7 170.93 220.99C166.51 223.28 161.82 225.35 157.97 226.99C154.12 228.63 151.39 229.63 147.83 230.85C144.27 232.07 140.43 233.27 136.61 234.29C132.79 235.31 128.1 236.32 124.91 236.96C121.72 237.6 119.96 237.82 117.47 238.15C114.98 238.48 113.02 238.75 109.95 238.92C106.88 239.09 102.66 239.29 99.06 239.19C95.46 239.09 91.84 238.83 88.36 238.34C84.88 237.85 81.42 237.17 78.2 236.25C74.98 235.33 71.03 233.62 69.03 232.8C67.03 231.98 67.53 232.15 66.22 231.34C64.91 230.53 62.77 229.19 61.16 227.96C59.55 226.73 57.93 225.36 56.57 223.93C55.21 222.5 53.87 220.56 53.01 219.36C52.15 218.17 60.82 236.34 51.41 216.76C42 197.18 5.91 121.51 -3.45 101.89C-12.81 82.27 -4.21 100.45 -4.73 99.06C-5.25 97.67 -6.09 95.46 -6.55 93.55C-7.01 91.64 -7.42 90.09 -7.5 87.58Z",
-+  gem:
-+    "M4.49 136.82C4.54 133.6 4.74 128.75 4.96 125.52C5.18 122.29 5.47 120.13 5.84 117.43C6.21 114.73 6.67 112.03 7.18 109.34C7.69 106.65 8.14 104.44 8.92 101.3C9.7 98.16 10.74 94.17 11.86 90.47C12.97 86.77 14.25 82.81 15.61 79.09C16.97 75.38 18.56 71.54 20.03 68.18C21.5 64.82 22.83 62.07 24.42 58.94C26.01 55.81 27.61 52.75 29.59 49.42C31.57 46.09 34.23 41.96 36.27 38.98C38.31 36 40.12 33.7 41.84 31.53C43.56 29.36 44.61 28.05 46.6 25.93C48.59 23.81 51.8 20.64 53.78 18.82C55.76 17 56.84 16.2 58.45 15.04C60.06 13.88 61.71 12.78 63.45 11.85C65.19 10.92 66.8 10.17 68.89 9.46C70.98 8.75 73.25 8.12 75.99 7.59C78.73 7.06 82.11 6.58 85.32 6.3C88.53 6.02 91.69 5.88 95.23 5.9C98.77 5.92 102.97 6.14 106.55 6.42C110.13 6.7 112.85 6.98 116.74 7.59C120.63 8.2 125.84 9.18 129.89 10.07C133.94 10.96 137.32 11.85 141.05 12.94C144.78 14.03 148.04 15.07 152.25 16.63C156.46 18.19 162.11 20.44 166.29 22.28C170.47 24.12 173.74 25.75 177.34 27.68C180.94 29.61 184.57 31.76 187.89 33.87C191.21 35.97 194.14 37.97 197.26 40.31C200.38 42.65 204.12 45.72 206.6 47.91C209.08 50.1 210.11 51.09 212.15 53.44C214.19 55.79 217.46 60.01 218.84 62C220.22 63.99 219.86 63.7 220.45 65.39C221.04 67.08 221.93 70.36 222.37 72.11C222.81 73.86 222.83 73.97 223.08 75.9C223.33 77.83 223.74 80.52 223.89 83.7C224.04 86.88 224.09 91.1 223.98 94.99C223.86 98.88 223.52 103.7 223.2 107.06C222.88 110.42 222.68 111.8 222.08 115.16C221.48 118.52 220.71 122.78 219.62 127.24C218.53 131.7 216.88 137.59 215.53 141.9C214.18 146.22 212.98 149.47 211.54 153.13C210.1 156.79 208.7 160.05 206.9 163.87C205.1 167.69 202.86 172.2 200.72 176.03C198.58 179.86 196.41 183.37 194.07 186.87C191.73 190.37 189.2 193.88 186.7 197.01C184.2 200.13 181.49 203.16 179.09 205.62C176.69 208.08 174.57 209.98 172.31 211.79C170.05 213.6 167.63 215.25 165.52 216.46C163.41 217.68 162.13 218.27 159.65 219.08C157.17 219.89 153.09 220.81 150.61 221.31C148.13 221.81 146.87 221.88 144.76 222.09C142.65 222.3 141.38 222.53 137.94 222.56C134.5 222.59 127.87 222.47 124.09 222.28C120.31 222.09 117.87 221.75 115.24 221.43C112.61 221.11 111.68 221.02 108.3 220.38C104.92 219.74 99.66 218.79 94.95 217.6C90.24 216.41 84.84 214.85 80.02 213.23C75.2 211.61 70.81 209.95 66.01 207.89C61.21 205.83 54.85 202.71 51.2 200.86C47.55 199.02 46.41 198.22 44.09 196.82C41.77 195.42 39.41 193.87 37.27 192.44C35.14 191.01 33.34 189.76 31.28 188.23C29.22 186.7 27.41 185.44 24.93 183.25C22.45 181.06 18.93 177.88 16.39 175.1C13.85 172.31 11.08 168.53 9.7 166.54C8.32 164.55 8.52 164.22 8.09 163.15C7.66 162.08 7.58 161.85 7.14 160.1C6.7 158.35 5.88 155.18 5.46 152.64C5.04 150.1 4.81 147.48 4.65 144.84C4.49 142.2 4.44 140.04 4.49 136.82Z",
++  gem: "M4.49 136.82C4.54 133.6 4.74 128.75 4.96 125.52C5.18 122.29 5.47 120.13 5.84 117.43C6.21 114.73 6.67 112.03 7.18 109.34C7.69 106.65 8.14 104.44 8.92 101.3C9.7 98.16 10.74 94.17 11.86 90.47C12.97 86.77 14.25 82.81 15.61 79.09C16.97 75.38 18.56 71.54 20.03 68.18C21.5 64.82 22.83 62.07 24.42 58.94C26.01 55.81 27.61 52.75 29.59 49.42C31.57 46.09 34.23 41.96 36.27 38.98C38.31 36 40.12 33.7 41.84 31.53C43.56 29.36 44.61 28.05 46.6 25.93C48.59 23.81 51.8 20.64 53.78 18.82C55.76 17 56.84 16.2 58.45 15.04C60.06 13.88 61.71 12.78 63.45 11.85C65.19 10.92 66.8 10.17 68.89 9.46C70.98 8.75 73.25 8.12 75.99 7.59C78.73 7.06 82.11 6.58 85.32 6.3C88.53 6.02 91.69 5.88 95.23 5.9C98.77 5.92 102.97 6.14 106.55 6.42C110.13 6.7 112.85 6.98 116.74 7.59C120.63 8.2 125.84 9.18 129.89 10.07C133.94 10.96 137.32 11.85 141.05 12.94C144.78 14.03 148.04 15.07 152.25 16.63C156.46 18.19 162.11 20.44 166.29 22.28C170.47 24.12 173.74 25.75 177.34 27.68C180.94 29.61 184.57 31.76 187.89 33.87C191.21 35.97 194.14 37.97 197.26 40.31C200.38 42.65 204.12 45.72 206.6 47.91C209.08 50.1 210.11 51.09 212.15 53.44C214.19 55.79 217.46 60.01 218.84 62C220.22 63.99 219.86 63.7 220.45 65.39C221.04 67.08 221.93 70.36 222.37 72.11C222.81 73.86 222.83 73.97 223.08 75.9C223.33 77.83 223.74 80.52 223.89 83.7C224.04 86.88 224.09 91.1 223.98 94.99C223.86 98.88 223.52 103.7 223.2 107.06C222.88 110.42 222.68 111.8 222.08 115.16C221.48 118.52 220.71 122.78 219.62 127.24C218.53 131.7 216.88 137.59 215.53 141.9C214.18 146.22 212.98 149.47 211.54 153.13C210.1 156.79 208.7 160.05 206.9 163.87C205.1 167.69 202.86 172.2 200.72 176.03C198.58 179.86 196.41 183.37 194.07 186.87C191.73 190.37 189.2 193.88 186.7 197.01C184.2 200.13 181.49 203.16 179.09 205.62C176.69 208.08 174.57 209.98 172.31 211.79C170.05 213.6 167.63 215.25 165.52 216.46C163.41 217.68 162.13 218.27 159.65 219.08C157.17 219.89 153.09 220.81 150.61 221.31C148.13 221.81 146.87 221.88 144.76 222.09C142.65 222.3 141.38 222.53 137.94 222.56C134.5 222.59 127.87 222.47 124.09 222.28C120.31 222.09 117.87 221.75 115.24 221.43C112.61 221.11 111.68 221.02 108.3 220.38C104.92 219.74 99.66 218.79 94.95 217.6C90.24 216.41 84.84 214.85 80.02 213.23C75.2 211.61 70.81 209.95 66.01 207.89C61.21 205.83 54.85 202.71 51.2 200.86C47.55 199.02 46.41 198.22 44.09 196.82C41.77 195.42 39.41 193.87 37.27 192.44C35.14 191.01 33.34 189.76 31.28 188.23C29.22 186.7 27.41 185.44 24.93 183.25C22.45 181.06 18.93 177.88 16.39 175.1C13.85 172.31 11.08 168.53 9.7 166.54C8.32 164.55 8.52 164.22 8.09 163.15C7.66 162.08 7.58 161.85 7.14 160.1C6.7 158.35 5.88 155.18 5.46 152.64C5.04 150.1 4.81 147.48 4.65 144.84C4.49 142.2 4.44 140.04 4.49 136.82Z",
 +  crystal:
 +    "M18.89 74.34C17.93 70.11 18.75 73.66 18.9 72.46C19.05 71.26 15.28 80.17 19.78 67.15C24.29 54.13 40.9 7.41 45.93 -5.65C50.96 -18.71 48.6 -9.88 49.96 -11.21C51.32 -12.55 52.71 -13.06 54.09 -13.66C55.47 -14.26 56.72 -14.67 58.22 -14.79C59.72 -14.91 61.97 -14.53 63.09 -14.38C64.22 -14.23 51.8 -18.22 64.97 -13.89C78.14 -9.56 128.44 6.88 142.13 11.59C155.82 16.3 145.69 13.16 147.09 14.38C148.49 15.6 141.05 -0.5 150.51 18.89C159.97 38.28 193.99 108.16 203.85 130.71C213.71 153.26 208.69 149.97 209.65 154.2C210.62 158.43 209.79 154.88 209.64 156.08C209.49 157.28 213.26 148.37 208.76 161.39C204.25 174.41 187.64 221.13 182.61 234.19C177.58 247.25 179.94 238.41 178.58 239.75C177.22 241.09 175.52 241.65 174.45 242.2C173.38 242.75 172.85 242.83 172.16 243.02C171.47 243.21 171.44 243.35 170.32 243.33C169.2 243.31 166.57 243.07 165.45 242.92C164.32 242.77 176.74 246.76 163.57 242.43C150.4 238.1 100.1 221.66 86.41 216.95C72.72 212.24 82.85 215.38 81.45 214.16C80.05 212.94 87.49 229.04 78.03 209.65C68.57 190.26 34.55 120.38 24.69 97.83C14.83 75.28 19.86 78.57 18.89 74.34Z",
 +  shield:
 +    "M-10.37 79.11C-10.42 77.29 -10.25 74.89 -10.13 73.51C-10.01 72.13 -10.01 72.25 -9.66 70.83C-9.31 69.41 -8.47 66.41 -8.02 64.99C-7.57 63.57 -7.64 63.77 -6.97 62.34C-6.3 60.91 -5.13 58.4 -3.98 56.41C-2.83 54.42 -1.84 52.79 -0.05 50.42C1.74 48.05 4.05 45.07 6.74 42.18C9.43 39.29 12.69 36.06 16.06 33.09C19.43 30.12 23.21 27.15 26.98 24.38C30.75 21.61 33.94 19.36 38.65 16.47C43.36 13.58 50.49 9.57 55.22 7.06C59.95 4.54 62.12 3.5 67.05 1.38C71.98 -0.75 79.61 -3.82 84.82 -5.69C90.03 -7.57 93.8 -8.66 98.33 -9.87C102.86 -11.08 107.57 -12.18 112.03 -12.97C116.49 -13.76 121.64 -14.3 125.09 -14.62C128.54 -14.94 130.26 -14.89 132.75 -14.87C135.24 -14.85 137.19 -14.82 140 -14.48C142.81 -14.14 146.62 -13.62 149.62 -12.81C152.62 -12.01 155.45 -10.94 158.02 -9.65C160.59 -8.36 163.24 -6.46 165.03 -5.07C166.82 -3.68 167.62 -2.67 168.79 -1.31C169.96 0.05 171.27 1.94 172.04 3.07C172.81 4.2 172.34 3.28 173.4 5.45C174.46 7.62 176.27 11.31 178.39 16.08C180.51 20.84 183.57 27.74 186.11 34.04C188.65 40.34 191.3 47.25 193.61 53.9C195.92 60.55 198.16 67.6 199.99 73.94C201.82 80.28 203.36 86.52 204.58 91.94C205.8 97.36 206.63 102.22 207.31 106.44C207.99 110.66 208.32 113.66 208.67 117.24C209.02 120.81 209.28 124 209.39 127.89C209.5 131.78 209.48 136.81 209.34 140.58C209.2 144.36 208.96 147.29 208.57 150.54C208.18 153.79 207.74 156.66 206.98 160.09C206.22 163.53 205.03 167.92 203.99 171.15C202.95 174.38 201.88 176.91 200.75 179.45C199.62 181.99 198.49 184.18 197.21 186.4C195.94 188.62 194.54 190.77 193.1 192.79C191.66 194.81 190.4 196.51 188.59 198.54C186.78 200.57 184.34 203.06 182.22 204.99C180.09 206.93 177.97 208.59 175.84 210.15C173.71 211.71 171.77 212.97 169.41 214.33C167.05 215.69 163.96 217.25 161.68 218.31C159.4 219.37 157.93 219.92 155.72 220.68C153.51 221.44 150.98 222.24 148.4 222.86C145.82 223.49 142.76 224.07 140.26 224.43C137.76 224.79 135.75 224.94 133.38 225.03C131.01 225.12 128.55 225.1 126.07 224.96C123.59 224.82 121.04 224.56 118.5 224.17C115.96 223.78 113.53 223.31 110.84 222.6C108.16 221.89 105.08 220.89 102.39 219.91C99.7 218.93 97.39 218 94.7 216.72C92.01 215.44 88.58 213.58 86.25 212.26C83.92 210.94 82.87 210.22 80.72 208.78C78.57 207.34 75.93 205.55 73.36 203.59C70.79 201.63 67.94 199.35 65.29 197.05C62.64 194.75 60.03 192.32 57.47 189.81C54.91 187.3 52.41 184.66 49.95 181.96C47.5 179.26 45.09 176.46 42.74 173.61C40.39 170.76 38.36 168.18 35.86 164.87C33.36 161.56 30.45 157.66 27.73 153.76C25.01 149.86 22.17 145.55 19.56 141.45C16.95 137.34 14.45 133.19 12.07 129.13C9.69 125.06 8.51 123.22 5.28 117.06C2.05 110.9 -4.78 97.62 -7.3 92.18C-9.82 86.74 -9.31 86.59 -9.82 84.41C-10.33 82.23 -10.32 80.93 -10.37 79.11Z",
-+  dome:
-+    "M22.36 145.73C22.32 142.09 22.4 138.34 22.63 134.69C22.86 131.03 23.2 127.42 23.73 123.8C24.26 120.18 24.98 116.53 25.83 112.97C26.68 109.41 27.67 105.89 28.81 102.46C29.95 99.03 31.25 95.66 32.68 92.41C34.1 89.16 35.67 86.01 37.36 82.99C39.05 79.97 40.92 77.02 42.83 74.27C44.74 71.52 46.77 68.89 48.82 66.46C50.87 64.03 52.73 62 55.14 59.7C57.55 57.4 60.72 54.69 63.27 52.68C65.83 50.67 67.72 49.33 70.47 47.63C73.22 45.93 76.99 43.86 79.78 42.48C82.57 41.09 84.54 40.3 87.19 39.32C89.84 38.34 92.88 37.34 95.7 36.57C98.52 35.8 100.78 35.24 104.09 34.71C107.4 34.18 112.03 33.63 115.55 33.41C119.07 33.19 121.93 33.23 125.23 33.39C128.53 33.55 131.95 33.85 135.35 34.34C138.75 34.83 142.19 35.48 145.61 36.32C149.03 37.16 152.46 38.18 155.86 39.35C159.26 40.52 162.67 41.86 166 43.35C169.33 44.84 173.02 46.75 175.83 48.28C178.64 49.81 179.81 50.5 182.85 52.55C185.89 54.6 190.84 58.08 194.08 60.59C197.32 63.1 199.69 65.21 202.3 67.63C204.91 70.05 207.39 72.57 209.73 75.1C212.07 77.63 213.75 79.51 216.34 82.81C218.93 86.11 222.62 91.01 225.24 94.91C227.86 98.81 229.96 102.36 232.07 106.2C234.18 110.04 236.37 114.63 237.92 117.95C239.47 121.27 240.54 123.89 241.39 126.11C242.24 128.33 242.68 130.05 243 131.27C243.32 132.49 243.31 132.18 243.34 133.41C243.37 134.64 243.43 137.01 243.2 138.64C242.97 140.27 242.53 141.63 241.94 143.19C241.35 144.75 240.6 146.36 239.66 148C238.72 149.64 237.57 151.34 236.29 153.05C235.01 154.76 233.45 156.6 231.99 158.24C230.53 159.88 229.15 161.32 227.53 162.9C225.91 164.48 225.27 165.26 222.29 167.74C219.31 170.22 213.08 175.19 209.67 177.77C206.26 180.36 205.77 180.68 201.82 183.25C197.87 185.82 191.51 189.96 185.98 193.21C180.45 196.46 173.04 200.4 168.64 202.74C164.24 205.08 164.16 205.11 159.6 207.23C155.03 209.34 147.33 212.91 141.25 215.43C135.17 217.95 129.13 220.26 123.1 222.35C117.07 224.44 109.44 226.69 105.07 227.97C100.7 229.25 100.72 229.23 96.88 230.03C93.03 230.83 85.57 232.19 82 232.75C78.43 233.31 77.68 233.24 75.45 233.37C73.22 233.5 70.77 233.58 68.6 233.53C66.43 233.48 64.18 233.29 62.41 233.06C60.64 232.83 59.48 232.6 58 232.17C56.52 231.74 55.12 231.36 53.5 230.5C51.88 229.64 49.72 228.27 48.31 227.02C46.9 225.77 45.92 224.19 45.04 223C44.16 221.81 44.19 222.03 43.02 219.87C41.85 217.71 39.53 213.14 38.04 210.03C36.55 206.92 35.38 204.39 34.09 201.22C32.8 198.05 31.42 194.3 30.31 191C29.2 187.7 28.19 184.23 27.41 181.45C26.63 178.67 26.24 177.19 25.64 174.34C25.04 171.49 24.27 167.3 23.81 164.33C23.35 161.36 23.12 159.6 22.88 156.5C22.64 153.4 22.4 149.36 22.36 145.73Z",
-+  arch:
-+    "M22.92 83.54C22.91 81.12 22.94 78.17 23.21 75.3C23.48 72.43 23.84 69.55 24.57 66.3C25.3 63.05 26.37 59.16 27.61 55.79C28.85 52.41 30.36 49.12 32 46.05C33.64 42.97 35.52 40.04 37.47 37.34C39.42 34.65 41.38 32.31 43.7 29.88C46.02 27.45 48.87 24.83 51.4 22.76C53.93 20.69 56.14 19.14 58.89 17.46C61.64 15.78 64.95 14.01 67.91 12.67C70.87 11.33 73.59 10.33 76.67 9.4C79.75 8.47 83.3 7.66 86.39 7.12C89.48 6.58 92.96 6.34 95.2 6.17C97.44 6 97.81 6.02 99.81 6.08C101.81 6.14 104.72 6.24 107.19 6.52C109.66 6.8 112.02 7.17 114.66 7.75C117.3 8.33 119.92 8.94 123 10.01C126.08 11.08 130.55 13.01 133.12 14.2C135.69 15.39 136.81 16.18 138.4 17.14C139.99 18.1 141.1 18.87 142.64 19.96C144.18 21.05 146.02 22.37 147.63 23.69C149.24 25.01 150.8 26.42 152.3 27.9C153.8 29.38 155.36 31.12 156.62 32.59C157.88 34.06 158.71 35.15 159.88 36.74C161.05 38.33 162.45 40.27 163.62 42.14C164.79 44.01 158.4 30.37 166.89 47.98C175.38 65.59 205.5 128.68 214.54 147.82C223.58 166.96 219.68 159.09 221.16 162.82C222.64 166.54 222.97 168.4 223.44 170.17C223.91 171.94 223.88 172.28 223.97 173.45C224.06 174.62 224.18 175.68 224 177.2C223.82 178.72 223.48 180.78 222.89 182.55C222.3 184.32 221.34 186.27 220.46 187.81C219.59 189.35 218.98 190.15 217.64 191.79C216.29 193.43 214.63 195.49 212.39 197.67C210.15 199.85 207.01 202.61 204.18 204.88C201.35 207.15 199.55 208.59 195.43 211.27C191.31 213.95 183.96 218.39 179.47 220.95C174.98 223.51 172.19 224.83 168.47 226.61C164.75 228.4 161.03 230.06 157.15 231.66C153.27 233.26 148.99 234.91 145.16 236.24C141.33 237.58 137.66 238.71 134.15 239.67C130.65 240.62 126.8 241.43 124.13 241.97C121.46 242.51 120.46 242.68 118.12 242.92C115.78 243.16 112.25 243.36 110.09 243.4C107.93 243.44 106.69 243.34 105.14 243.15C103.59 242.96 102.38 242.77 100.81 242.28C99.24 241.79 97.1 240.89 95.74 240.19C94.38 239.49 93.72 239.01 92.64 238.07C91.56 237.13 90.57 236.2 89.28 234.56C87.99 232.92 86.14 230.22 84.89 228.22C83.64 226.22 90.72 241.09 81.78 222.53C72.84 203.97 40.31 136.02 31.23 116.86C22.15 97.7 28.38 110.48 27.32 107.56C26.26 104.64 25.55 102.26 24.87 99.31C24.19 96.36 23.57 92.47 23.25 89.84C22.93 87.21 22.93 85.96 22.92 83.54Z",
-+  leaf:
-+    "M21.29 109.69C21.23 106.13 21.3 103.24 21.56 99.7C21.82 96.16 22.25 92.17 22.85 88.46C23.45 84.75 24.16 81.37 25.18 77.42C26.2 73.47 27.68 68.53 28.97 64.77C30.26 61.01 31.12 58.77 32.92 54.85C34.72 50.93 37.69 45.02 39.78 41.24C41.87 37.46 43.33 35.25 45.47 32.19C47.61 29.13 50.59 25.31 52.6 22.87C54.62 20.43 56 19.09 57.56 17.57C59.12 16.05 60.67 14.71 61.95 13.72C63.23 12.73 64.1 12.17 65.27 11.61C66.44 11.05 66.94 10.78 68.97 10.36C71 9.94 74.71 9.33 77.46 9.07C80.21 8.81 82.53 8.75 85.45 8.78C88.37 8.81 91.87 8.98 94.98 9.25C98.09 9.52 100.09 9.66 104.09 10.38C108.09 11.1 114.79 12.5 118.96 13.55C123.13 14.61 125.38 15.36 129.11 16.71C132.84 18.06 137.65 19.98 141.36 21.66C145.07 23.34 147.78 24.69 151.37 26.78C154.96 28.87 159.47 31.79 162.88 34.21C166.29 36.63 169 38.78 171.84 41.28C174.68 43.78 177.78 46.93 179.94 49.21C182.1 51.49 183 52.65 184.79 54.96C186.58 57.27 188.77 60.08 190.7 63.05C192.63 66.02 194.67 69.44 196.35 72.79C198.03 76.14 199.4 79.23 200.79 83.15C202.18 87.08 203.8 92.91 204.69 96.34C205.58 99.77 205.7 100.62 206.11 103.74C206.53 106.86 207.04 110.86 207.18 115.04C207.32 119.22 207.23 124.67 206.98 128.84C206.73 133.01 206.29 136.37 205.69 140.08C205.09 143.79 204.19 147.75 203.36 151.12C202.53 154.5 201.79 157.11 200.73 160.33C199.67 163.55 198.37 167.18 197.02 170.45C195.68 173.72 194.04 177.14 192.66 179.95C191.28 182.76 190.36 184.57 188.76 187.3C187.16 190.03 185.2 193.29 183.07 196.35C180.94 199.41 177.96 203.22 175.95 205.66C173.94 208.1 172.38 209.57 170.98 210.97C169.58 212.37 168.82 213.07 167.58 214.04C166.34 215.01 164.78 216.14 163.52 216.81C162.27 217.48 161.37 217.71 160.05 218.06C158.73 218.41 157.47 218.68 155.62 218.94C153.77 219.2 151.46 219.49 148.94 219.62C146.42 219.75 143.07 219.77 140.51 219.71C137.95 219.66 136.24 219.55 133.56 219.29C130.88 219.03 127.89 218.73 124.45 218.16C121.01 217.59 116.55 216.7 112.94 215.84C109.33 214.98 105.97 213.99 102.82 212.98C99.67 211.97 97.19 211.06 94.02 209.78C90.85 208.5 87.14 206.94 83.79 205.28C80.44 203.62 77.46 202.05 73.93 199.85C70.4 197.65 65.47 194.17 62.6 192.07C59.73 189.97 59.03 189.38 56.7 187.26C54.37 185.14 50.76 181.61 48.6 179.33C46.44 177.05 45.54 175.89 43.75 173.58C41.96 171.27 39.48 167.91 37.84 165.49C36.2 163.07 35.39 161.83 33.93 159.07C32.47 156.31 30.62 152.78 29.09 148.91C27.56 145.04 25.75 139.25 24.75 135.85C23.75 132.45 23.54 130.99 23.07 128.52C22.6 126.05 22.24 124.19 21.94 121.05C21.64 117.91 21.35 113.25 21.29 109.69Z",
++  dome: "M22.36 145.73C22.32 142.09 22.4 138.34 22.63 134.69C22.86 131.03 23.2 127.42 23.73 123.8C24.26 120.18 24.98 116.53 25.83 112.97C26.68 109.41 27.67 105.89 28.81 102.46C29.95 99.03 31.25 95.66 32.68 92.41C34.1 89.16 35.67 86.01 37.36 82.99C39.05 79.97 40.92 77.02 42.83 74.27C44.74 71.52 46.77 68.89 48.82 66.46C50.87 64.03 52.73 62 55.14 59.7C57.55 57.4 60.72 54.69 63.27 52.68C65.83 50.67 67.72 49.33 70.47 47.63C73.22 45.93 76.99 43.86 79.78 42.48C82.57 41.09 84.54 40.3 87.19 39.32C89.84 38.34 92.88 37.34 95.7 36.57C98.52 35.8 100.78 35.24 104.09 34.71C107.4 34.18 112.03 33.63 115.55 33.41C119.07 33.19 121.93 33.23 125.23 33.39C128.53 33.55 131.95 33.85 135.35 34.34C138.75 34.83 142.19 35.48 145.61 36.32C149.03 37.16 152.46 38.18 155.86 39.35C159.26 40.52 162.67 41.86 166 43.35C169.33 44.84 173.02 46.75 175.83 48.28C178.64 49.81 179.81 50.5 182.85 52.55C185.89 54.6 190.84 58.08 194.08 60.59C197.32 63.1 199.69 65.21 202.3 67.63C204.91 70.05 207.39 72.57 209.73 75.1C212.07 77.63 213.75 79.51 216.34 82.81C218.93 86.11 222.62 91.01 225.24 94.91C227.86 98.81 229.96 102.36 232.07 106.2C234.18 110.04 236.37 114.63 237.92 117.95C239.47 121.27 240.54 123.89 241.39 126.11C242.24 128.33 242.68 130.05 243 131.27C243.32 132.49 243.31 132.18 243.34 133.41C243.37 134.64 243.43 137.01 243.2 138.64C242.97 140.27 242.53 141.63 241.94 143.19C241.35 144.75 240.6 146.36 239.66 148C238.72 149.64 237.57 151.34 236.29 153.05C235.01 154.76 233.45 156.6 231.99 158.24C230.53 159.88 229.15 161.32 227.53 162.9C225.91 164.48 225.27 165.26 222.29 167.74C219.31 170.22 213.08 175.19 209.67 177.77C206.26 180.36 205.77 180.68 201.82 183.25C197.87 185.82 191.51 189.96 185.98 193.21C180.45 196.46 173.04 200.4 168.64 202.74C164.24 205.08 164.16 205.11 159.6 207.23C155.03 209.34 147.33 212.91 141.25 215.43C135.17 217.95 129.13 220.26 123.1 222.35C117.07 224.44 109.44 226.69 105.07 227.97C100.7 229.25 100.72 229.23 96.88 230.03C93.03 230.83 85.57 232.19 82 232.75C78.43 233.31 77.68 233.24 75.45 233.37C73.22 233.5 70.77 233.58 68.6 233.53C66.43 233.48 64.18 233.29 62.41 233.06C60.64 232.83 59.48 232.6 58 232.17C56.52 231.74 55.12 231.36 53.5 230.5C51.88 229.64 49.72 228.27 48.31 227.02C46.9 225.77 45.92 224.19 45.04 223C44.16 221.81 44.19 222.03 43.02 219.87C41.85 217.71 39.53 213.14 38.04 210.03C36.55 206.92 35.38 204.39 34.09 201.22C32.8 198.05 31.42 194.3 30.31 191C29.2 187.7 28.19 184.23 27.41 181.45C26.63 178.67 26.24 177.19 25.64 174.34C25.04 171.49 24.27 167.3 23.81 164.33C23.35 161.36 23.12 159.6 22.88 156.5C22.64 153.4 22.4 149.36 22.36 145.73Z",
++  arch: "M22.92 83.54C22.91 81.12 22.94 78.17 23.21 75.3C23.48 72.43 23.84 69.55 24.57 66.3C25.3 63.05 26.37 59.16 27.61 55.79C28.85 52.41 30.36 49.12 32 46.05C33.64 42.97 35.52 40.04 37.47 37.34C39.42 34.65 41.38 32.31 43.7 29.88C46.02 27.45 48.87 24.83 51.4 22.76C53.93 20.69 56.14 19.14 58.89 17.46C61.64 15.78 64.95 14.01 67.91 12.67C70.87 11.33 73.59 10.33 76.67 9.4C79.75 8.47 83.3 7.66 86.39 7.12C89.48 6.58 92.96 6.34 95.2 6.17C97.44 6 97.81 6.02 99.81 6.08C101.81 6.14 104.72 6.24 107.19 6.52C109.66 6.8 112.02 7.17 114.66 7.75C117.3 8.33 119.92 8.94 123 10.01C126.08 11.08 130.55 13.01 133.12 14.2C135.69 15.39 136.81 16.18 138.4 17.14C139.99 18.1 141.1 18.87 142.64 19.96C144.18 21.05 146.02 22.37 147.63 23.69C149.24 25.01 150.8 26.42 152.3 27.9C153.8 29.38 155.36 31.12 156.62 32.59C157.88 34.06 158.71 35.15 159.88 36.74C161.05 38.33 162.45 40.27 163.62 42.14C164.79 44.01 158.4 30.37 166.89 47.98C175.38 65.59 205.5 128.68 214.54 147.82C223.58 166.96 219.68 159.09 221.16 162.82C222.64 166.54 222.97 168.4 223.44 170.17C223.91 171.94 223.88 172.28 223.97 173.45C224.06 174.62 224.18 175.68 224 177.2C223.82 178.72 223.48 180.78 222.89 182.55C222.3 184.32 221.34 186.27 220.46 187.81C219.59 189.35 218.98 190.15 217.64 191.79C216.29 193.43 214.63 195.49 212.39 197.67C210.15 199.85 207.01 202.61 204.18 204.88C201.35 207.15 199.55 208.59 195.43 211.27C191.31 213.95 183.96 218.39 179.47 220.95C174.98 223.51 172.19 224.83 168.47 226.61C164.75 228.4 161.03 230.06 157.15 231.66C153.27 233.26 148.99 234.91 145.16 236.24C141.33 237.58 137.66 238.71 134.15 239.67C130.65 240.62 126.8 241.43 124.13 241.97C121.46 242.51 120.46 242.68 118.12 242.92C115.78 243.16 112.25 243.36 110.09 243.4C107.93 243.44 106.69 243.34 105.14 243.15C103.59 242.96 102.38 242.77 100.81 242.28C99.24 241.79 97.1 240.89 95.74 240.19C94.38 239.49 93.72 239.01 92.64 238.07C91.56 237.13 90.57 236.2 89.28 234.56C87.99 232.92 86.14 230.22 84.89 228.22C83.64 226.22 90.72 241.09 81.78 222.53C72.84 203.97 40.31 136.02 31.23 116.86C22.15 97.7 28.38 110.48 27.32 107.56C26.26 104.64 25.55 102.26 24.87 99.31C24.19 96.36 23.57 92.47 23.25 89.84C22.93 87.21 22.93 85.96 22.92 83.54Z",
++  leaf: "M21.29 109.69C21.23 106.13 21.3 103.24 21.56 99.7C21.82 96.16 22.25 92.17 22.85 88.46C23.45 84.75 24.16 81.37 25.18 77.42C26.2 73.47 27.68 68.53 28.97 64.77C30.26 61.01 31.12 58.77 32.92 54.85C34.72 50.93 37.69 45.02 39.78 41.24C41.87 37.46 43.33 35.25 45.47 32.19C47.61 29.13 50.59 25.31 52.6 22.87C54.62 20.43 56 19.09 57.56 17.57C59.12 16.05 60.67 14.71 61.95 13.72C63.23 12.73 64.1 12.17 65.27 11.61C66.44 11.05 66.94 10.78 68.97 10.36C71 9.94 74.71 9.33 77.46 9.07C80.21 8.81 82.53 8.75 85.45 8.78C88.37 8.81 91.87 8.98 94.98 9.25C98.09 9.52 100.09 9.66 104.09 10.38C108.09 11.1 114.79 12.5 118.96 13.55C123.13 14.61 125.38 15.36 129.11 16.71C132.84 18.06 137.65 19.98 141.36 21.66C145.07 23.34 147.78 24.69 151.37 26.78C154.96 28.87 159.47 31.79 162.88 34.21C166.29 36.63 169 38.78 171.84 41.28C174.68 43.78 177.78 46.93 179.94 49.21C182.1 51.49 183 52.65 184.79 54.96C186.58 57.27 188.77 60.08 190.7 63.05C192.63 66.02 194.67 69.44 196.35 72.79C198.03 76.14 199.4 79.23 200.79 83.15C202.18 87.08 203.8 92.91 204.69 96.34C205.58 99.77 205.7 100.62 206.11 103.74C206.53 106.86 207.04 110.86 207.18 115.04C207.32 119.22 207.23 124.67 206.98 128.84C206.73 133.01 206.29 136.37 205.69 140.08C205.09 143.79 204.19 147.75 203.36 151.12C202.53 154.5 201.79 157.11 200.73 160.33C199.67 163.55 198.37 167.18 197.02 170.45C195.68 173.72 194.04 177.14 192.66 179.95C191.28 182.76 190.36 184.57 188.76 187.3C187.16 190.03 185.2 193.29 183.07 196.35C180.94 199.41 177.96 203.22 175.95 205.66C173.94 208.1 172.38 209.57 170.98 210.97C169.58 212.37 168.82 213.07 167.58 214.04C166.34 215.01 164.78 216.14 163.52 216.81C162.27 217.48 161.37 217.71 160.05 218.06C158.73 218.41 157.47 218.68 155.62 218.94C153.77 219.2 151.46 219.49 148.94 219.62C146.42 219.75 143.07 219.77 140.51 219.71C137.95 219.66 136.24 219.55 133.56 219.29C130.88 219.03 127.89 218.73 124.45 218.16C121.01 217.59 116.55 216.7 112.94 215.84C109.33 214.98 105.97 213.99 102.82 212.98C99.67 211.97 97.19 211.06 94.02 209.78C90.85 208.5 87.14 206.94 83.79 205.28C80.44 203.62 77.46 202.05 73.93 199.85C70.4 197.65 65.47 194.17 62.6 192.07C59.73 189.97 59.03 189.38 56.7 187.26C54.37 185.14 50.76 181.61 48.6 179.33C46.44 177.05 45.54 175.89 43.75 173.58C41.96 171.27 39.48 167.91 37.84 165.49C36.2 163.07 35.39 161.83 33.93 159.07C32.47 156.31 30.62 152.78 29.09 148.91C27.56 145.04 25.75 139.25 24.75 135.85C23.75 132.45 23.54 130.99 23.07 128.52C22.6 126.05 22.24 124.19 21.94 121.05C21.64 117.91 21.35 113.25 21.29 109.69Z",
 +  square:
 +    "M-14.73 68.08C-14.74 66.52 -14.5 65.25 -14.16 63.69C-13.82 62.13 -13.23 60.2 -12.69 58.74C-12.15 57.28 -11.43 55.82 -10.91 54.9C-10.39 53.98 -11.99 55.93 -9.56 53.22C-7.13 50.51 0.78 41.52 3.69 38.66C6.6 35.8 5.87 37.13 7.88 36.08C9.89 35.02 -7.29 38.88 15.76 32.33C38.81 25.77 123.54 2.77 146.2 -3.25C168.86 -9.27 150.35 -3.73 151.7 -3.81C153.05 -3.89 153.06 -3.89 154.31 -3.7C155.56 -3.51 158.02 -3.01 159.23 -2.69C160.44 -2.37 160.44 -2.37 161.55 -1.79C162.66 -1.21 164.83 0.07 165.89 0.78C166.95 1.49 166.95 1.49 167.91 2.46C168.87 3.43 170.47 5.05 171.66 6.61C172.85 8.17 163.72 -11.56 175.03 11.8C186.34 35.16 228.37 123.3 239.52 146.79C250.67 170.28 241.39 151.28 241.91 152.72C242.43 154.16 242.43 154.16 242.66 155.45C242.89 156.74 243.27 158.9 243.27 160.46C243.28 162.03 243.15 162.95 242.69 164.84C242.23 166.73 241.25 170.05 240.49 171.8C239.73 173.55 240.71 172.31 238.1 175.32C235.49 178.33 227.76 187.02 224.85 189.88C221.94 192.74 222.66 191.41 220.65 192.46C218.64 193.52 235.83 189.66 212.78 196.21C189.73 202.77 105 225.77 82.34 231.79C59.68 237.81 78.19 232.27 76.84 232.35C75.49 232.43 75.48 232.43 74.23 232.24C72.98 232.05 70.52 231.55 69.31 231.23C68.1 230.91 68.1 230.91 66.99 230.33C65.88 229.75 64.03 228.79 62.65 227.76C61.27 226.73 59.96 225.51 58.71 224.13C57.46 222.75 56.27 221.19 55.15 219.46C54.03 217.73 63 236.7 51.98 213.75C40.96 190.8 -0.27 104.26 -10.99 81.75C-21.71 59.24 -11.81 80.16 -12.33 78.71C-12.85 77.26 -13.72 74.85 -14.12 73.08C-14.52 71.31 -14.72 69.64 -14.73 68.08Z",
 +  sparkle:
@@ -99065,14 +99131,13 @@ index 0607200..eb1dc66 100644
 +    "M209.98 114.27C204.53 127.58 187.6 169 182.61 180.85C177.62 192.7 181.6 182.99 180.02 185.4C178.44 187.81 174.77 193.19 173.16 195.33C171.55 197.47 172.39 196.45 170.36 198.22C168.33 199.99 163.11 204.29 160.97 205.93C158.83 207.57 158.7 207.44 157.51 208.07C156.32 208.7 156.12 208.84 153.81 209.74C151.5 210.64 146 212.69 143.65 213.46C141.3 214.23 141.48 214.13 139.69 214.37C137.9 214.61 135.84 214.87 132.92 214.89C130 214.91 124.61 214.67 122.16 214.51C119.7 214.35 119.5 214.2 118.19 213.93C116.88 213.66 116.18 213.59 114.27 212.91C112.36 212.22 121.22 216.86 106.75 209.82C92.28 202.78 41.77 177.85 27.45 170.65C13.13 163.45 23.18 168.24 20.81 166.61C18.44 164.98 15.47 162.74 13.24 160.85C11.01 158.96 9.43 157.47 7.42 155.29C5.41 153.11 2.96 150.17 1.18 147.77C-0.6 145.37 -1.92 143.25 -3.28 140.87C-4.63 138.49 -5.6 136.53 -6.95 133.47C-8.3 130.41 -10.28 125.71 -11.39 122.51C-12.5 119.31 -13.06 117.05 -13.62 114.27C-14.18 111.49 -14.57 108.65 -14.73 105.82C-14.89 102.99 -14.85 100.7 -14.61 97.3C-14.37 93.9 -13.85 88.77 -13.3 85.4C-12.75 82.03 -12.18 79.78 -11.29 77.08C-10.4 74.38 -9.53 72.21 -7.97 69.17C-6.41 66.13 -3.57 61.5 -1.92 58.85C-0.27 56.2 0.54 55.05 1.94 53.28C3.34 51.51 3.97 50.5 6.48 48.22C8.99 45.94 14.11 41.84 16.98 39.61C19.85 37.38 21.86 36.04 23.71 34.85C25.56 33.66 26.57 33.19 28.06 32.46C29.55 31.73 29.61 31.61 32.64 30.47C35.67 29.33 42.73 26.75 46.26 25.64C49.79 24.53 51.28 24.27 53.83 23.82C56.38 23.37 57.82 23.2 61.55 22.96C65.28 22.72 72.59 22.38 76.2 22.36C79.81 22.34 81.15 22.63 83.24 22.86C85.33 23.09 86.56 24.66 88.74 23.74C90.92 22.82 94.05 19.11 96.31 17.36C98.57 15.61 100.46 14.39 102.32 13.26C104.18 12.13 105.01 11.68 107.47 10.57C109.93 9.46 114.27 7.66 117.09 6.62C119.91 5.58 122.16 4.89 124.37 4.31C126.59 3.73 128.1 3.46 130.38 3.16C132.66 2.86 135.47 2.56 138.03 2.48C140.59 2.4 142.93 2.41 145.75 2.66C148.57 2.91 151.41 3.2 154.96 3.96C158.51 4.72 163.59 6.07 167.07 7.2C170.55 8.33 173.22 9.54 175.85 10.76C178.47 11.98 180.35 12.99 182.82 14.52C185.29 16.05 188.18 17.97 190.68 19.92C193.18 21.87 195.58 23.99 197.82 26.23C200.06 28.47 202.47 31.3 204.14 33.35C205.81 35.4 206.81 36.97 207.84 38.5C208.87 40.03 209.22 40.45 210.31 42.55C211.41 44.65 213.14 47.94 214.41 51.09C215.68 54.24 217.05 58.21 217.93 61.46C218.81 64.71 219.33 67.79 219.68 70.61C220.03 73.43 220.04 76.29 220.06 78.36C220.08 80.43 220.05 80.96 219.78 83.02C219.51 85.08 219.16 87.71 218.42 90.7C217.67 93.69 216.72 97.04 215.31 100.97C213.9 104.9 215.43 100.96 209.98 114.27Z",
 +  house:
 +    "M12.18 116.85C12.07 114.42 12.25 113.01 12.47 111.13C12.69 109.25 13.03 107.39 13.5 105.56C13.97 103.73 14.44 102.23 15.27 100.12C16.1 98.01 13.07 102.94 18.47 92.89C23.87 82.84 42.26 49.48 47.65 39.84C53.04 30.2 47.99 38.43 50.82 35.03C53.65 31.63 61.7 22.61 64.65 19.46C67.6 16.31 67.53 16.91 68.53 16.15C69.53 15.38 69.18 15.66 70.65 14.87C72.12 14.08 75.44 12.21 77.35 11.42C79.26 10.63 80.44 10.39 82.1 10.12C83.76 9.85 85.5 9.75 87.32 9.81C89.14 9.87 90.81 10.03 93.01 10.47C95.21 10.91 98.27 11.78 100.53 12.45C102.79 13.12 95.14 9.98 106.59 14.47C118.05 18.96 157.84 34.75 169.26 39.4C180.68 44.05 173.24 41.29 175.12 42.34C177 43.39 178.81 44.52 180.55 45.72C182.29 46.92 183.95 48.19 185.55 49.54C187.15 50.89 188.36 51.89 190.14 53.81C191.92 55.73 194.61 58.94 196.21 61.04C197.81 63.14 198.72 64.75 199.73 66.42C200.74 68.09 195.72 57.47 202.28 71.07C208.84 84.67 232.53 134.19 239.07 148.03C245.61 161.87 240.91 152.18 241.54 154.11C242.17 156.04 242.62 158.25 242.88 159.59C243.14 160.93 243.15 160.93 243.13 162.12C243.11 163.31 243.18 164.72 242.77 166.71C242.36 168.7 241.37 172.19 240.67 174.04C239.97 175.89 241.18 174.66 238.57 177.82C235.96 180.98 227.93 190.01 225.03 193.02C222.13 196.03 223.16 194.77 221.2 195.9C219.24 197.03 215.51 198.85 213.28 199.83C211.05 200.81 228.39 196.09 207.82 201.77C187.25 207.46 110.51 228.39 89.88 233.94C69.25 239.49 85.48 234.86 84.05 235.08C82.61 235.3 82.61 235.31 81.27 235.28C79.93 235.25 77.69 235.2 75.99 234.91C74.29 234.62 72.66 234.17 71.09 233.55C69.52 232.93 67.67 231.84 66.56 231.19C65.45 230.54 65.45 230.53 64.43 229.63C63.41 228.72 61.72 227.22 60.46 225.76C59.2 224.3 57.74 222.17 56.86 220.89C55.98 219.61 61.85 231.89 55.2 218.08C48.55 204.27 23.74 152.4 16.99 138.02C10.24 123.64 15.33 133.84 14.69 131.79C14.05 129.74 13.55 128.2 13.13 125.71C12.71 123.22 12.29 119.28 12.18 116.85Z",
-+  star:
-+    "M39.34 39.06C38.98 34.48 39.26 29.97 39.33 27.51C39.4 25.05 39.08 26.3 39.77 24.3C40.46 22.3 42.61 17.41 43.48 15.53C44.35 13.65 42.24 16.23 44.99 13.02C47.74 9.81 57.11 -0.67 60 -3.74C62.89 -6.81 60.73 -4.54 62.33 -5.42C63.93 -6.3 67.93 -8.31 69.62 -9.04C71.31 -9.77 71.49 -9.64 72.47 -9.82C73.45 -10 74.48 -10.11 75.51 -10.13C76.54 -10.15 77.61 -10.1 78.67 -9.96C79.73 -9.82 79.98 -9.88 81.89 -9.3C83.8 -8.73 88.26 -7.25 90.14 -6.51C92.02 -5.77 92.17 -5.51 93.16 -4.88C94.15 -4.25 95.13 -3.53 96.07 -2.72C97.01 -1.91 94.91 -4.35 98.81 -0.02C102.71 4.31 115.56 18.95 119.46 23.28C123.36 27.61 121.25 25.14 122.21 25.95C123.17 26.76 124.2 27.49 125.24 28.14C126.28 28.79 127.37 29.36 128.46 29.83C129.55 30.3 130.68 30.69 131.8 30.98C132.92 31.27 133.94 31.53 135.17 31.58C136.4 31.63 137.99 31.54 139.18 31.29C140.37 31.04 137.8 32.34 142.3 30.05C146.8 27.76 161.68 19.84 166.18 17.54C170.68 15.24 168.24 16.59 169.3 16.28C170.36 15.97 171.44 15.77 172.52 15.66C173.6 15.55 174.71 15.55 175.8 15.63C176.89 15.71 177.99 15.89 179.07 16.15C180.15 16.41 181.22 16.76 182.27 17.17C183.32 17.58 184.35 18.07 185.35 18.63C186.35 19.18 187.33 19.82 188.26 20.5C189.19 21.18 190.09 21.93 190.93 22.72C191.77 23.51 192.58 24.36 193.31 25.25C194.04 26.14 194.72 27.08 195.33 28.04C195.94 29 196.49 30.01 196.95 31.03C197.41 32.05 197.8 33.12 198.1 34.19C198.4 35.26 198.62 36.37 198.73 37.47C198.84 38.57 198.87 39.69 198.78 40.81C198.69 41.93 199.5 39.22 198.19 44.17C196.88 49.12 192.19 65.7 190.91 70.51C189.63 75.32 190.56 72.27 190.5 73.01C190.44 73.75 190.43 74.08 190.55 74.95C190.67 75.83 190.92 77.17 191.24 78.26C191.56 79.35 191.99 80.44 192.49 81.5C193 82.56 193.6 83.6 194.27 84.6C194.94 85.6 195.7 86.57 196.53 87.48C197.36 88.39 198.27 89.26 199.24 90.06C200.21 90.86 197.42 89.24 202.36 92.27C207.3 95.3 223.94 105.22 228.89 108.25C233.83 111.28 231.06 109.67 232.03 110.45C233 111.23 233.88 112.07 234.69 112.93C235.5 113.79 236.22 114.7 236.86 115.62C237.51 116.54 237.69 116.73 238.56 118.47C239.43 120.21 241.37 124.27 242.09 126.06C242.81 127.85 242.7 128.15 242.88 129.19C243.06 130.23 243.17 131.26 243.19 132.28C243.21 133.3 243.15 134.31 243.01 135.28C242.87 136.25 242.76 136.85 242.35 138.12C241.94 139.39 241.03 141.67 240.53 142.91C240.03 144.15 239.84 144.73 239.37 145.57C238.91 146.41 240.19 145.1 237.74 147.94C235.29 150.78 227.21 159.82 224.68 162.6C222.15 165.38 224.28 163.43 222.57 164.61C220.86 165.79 216.29 168.66 214.43 169.68C212.57 170.71 213.84 170.25 211.43 170.76C209.02 171.27 204 172.27 199.94 172.74C195.88 173.21 188.84 170.79 187.05 173.58C185.26 176.37 188.84 184.91 189.2 189.48C189.56 194.05 189.27 198.56 189.2 201.02C189.13 203.48 189.46 202.24 188.77 204.24C188.08 206.24 185.93 211.13 185.06 213.01C184.19 214.89 186.3 212.31 183.55 215.52C180.8 218.73 171.43 229.21 168.54 232.28C165.65 235.35 167.81 233.08 166.21 233.96C164.61 234.84 160.61 236.85 158.92 237.58C157.23 238.31 157.05 238.18 156.07 238.36C155.09 238.54 154.06 238.65 153.03 238.67C152 238.69 150.93 238.64 149.87 238.5C148.81 238.36 148.56 238.41 146.65 237.84C144.74 237.27 140.28 235.79 138.4 235.05C136.52 234.31 136.37 234.05 135.38 233.42C134.39 232.79 133.41 232.07 132.47 231.26C131.53 230.45 133.63 232.89 129.73 228.56C125.83 224.23 112.98 209.59 109.08 205.26C105.18 200.93 107.29 203.4 106.33 202.59C105.37 201.78 104.34 201.05 103.3 200.4C102.26 199.75 101.17 199.19 100.08 198.72C98.99 198.25 97.86 197.85 96.74 197.56C95.62 197.27 94.6 197.01 93.37 196.96C92.14 196.91 90.55 197 89.36 197.25C88.17 197.5 90.74 196.2 86.24 198.49C81.74 200.78 66.86 208.71 62.36 211.01C57.86 213.31 60.3 211.96 59.24 212.27C58.18 212.58 57.1 212.78 56.02 212.89C54.94 213 53.83 212.99 52.74 212.91C51.65 212.83 50.56 212.65 49.48 212.39C48.4 212.13 47.32 211.78 46.27 211.37C45.22 210.96 44.19 210.47 43.19 209.91C42.19 209.35 41.21 208.72 40.28 208.04C39.35 207.36 38.45 206.61 37.61 205.82C36.77 205.03 35.96 204.18 35.23 203.29C34.5 202.4 33.82 201.46 33.21 200.5C32.6 199.54 32.05 198.53 31.59 197.51C31.13 196.48 30.74 195.42 30.44 194.35C30.14 193.28 29.92 192.17 29.81 191.07C29.7 189.97 29.67 188.85 29.76 187.73C29.85 186.61 29.04 189.32 30.35 184.37C31.66 179.42 36.34 162.84 37.62 158.03C38.9 153.22 37.98 156.27 38.04 155.53C38.1 154.79 38.11 154.47 37.99 153.59C37.87 152.72 37.62 151.37 37.3 150.28C36.98 149.19 36.55 148.1 36.05 147.04C35.55 145.98 34.94 144.94 34.27 143.94C33.6 142.94 32.84 141.97 32.01 141.06C31.18 140.15 30.27 139.28 29.3 138.48C28.33 137.68 31.12 139.3 26.18 136.27C21.24 133.24 4.6 123.31 -0.35 120.28C-5.29 117.25 -2.52 118.87 -3.49 118.09C-4.46 117.31 -5.35 116.47 -6.15 115.61C-6.96 114.75 -7.3 114.59 -8.32 112.92C-9.34 111.25 -11.39 107.3 -12.26 105.56C-13.13 103.82 -13.2 103.52 -13.55 102.48C-13.9 101.45 -14.16 100.39 -14.34 99.35C-14.52 98.31 -14.63 97.28 -14.65 96.26C-14.67 95.25 -14.61 94.23 -14.47 93.26C-14.33 92.29 -14.42 92.14 -13.81 90.42C-13.2 88.7 -11.6 84.61 -10.83 82.97C-10.06 81.33 -11.65 83.45 -9.2 80.61C-6.75 77.77 1.33 68.73 3.86 65.95C6.39 63.17 4.26 65.12 5.97 63.94C7.68 62.76 12.25 59.89 14.11 58.86C15.97 57.83 14.71 58.29 17.12 57.78C19.54 57.27 24.54 56.28 28.6 55.81C32.66 55.34 39.7 57.75 41.49 54.96C43.28 52.17 39.7 43.64 39.34 39.06Z",
++  star: "M39.34 39.06C38.98 34.48 39.26 29.97 39.33 27.51C39.4 25.05 39.08 26.3 39.77 24.3C40.46 22.3 42.61 17.41 43.48 15.53C44.35 13.65 42.24 16.23 44.99 13.02C47.74 9.81 57.11 -0.67 60 -3.74C62.89 -6.81 60.73 -4.54 62.33 -5.42C63.93 -6.3 67.93 -8.31 69.62 -9.04C71.31 -9.77 71.49 -9.64 72.47 -9.82C73.45 -10 74.48 -10.11 75.51 -10.13C76.54 -10.15 77.61 -10.1 78.67 -9.96C79.73 -9.82 79.98 -9.88 81.89 -9.3C83.8 -8.73 88.26 -7.25 90.14 -6.51C92.02 -5.77 92.17 -5.51 93.16 -4.88C94.15 -4.25 95.13 -3.53 96.07 -2.72C97.01 -1.91 94.91 -4.35 98.81 -0.02C102.71 4.31 115.56 18.95 119.46 23.28C123.36 27.61 121.25 25.14 122.21 25.95C123.17 26.76 124.2 27.49 125.24 28.14C126.28 28.79 127.37 29.36 128.46 29.83C129.55 30.3 130.68 30.69 131.8 30.98C132.92 31.27 133.94 31.53 135.17 31.58C136.4 31.63 137.99 31.54 139.18 31.29C140.37 31.04 137.8 32.34 142.3 30.05C146.8 27.76 161.68 19.84 166.18 17.54C170.68 15.24 168.24 16.59 169.3 16.28C170.36 15.97 171.44 15.77 172.52 15.66C173.6 15.55 174.71 15.55 175.8 15.63C176.89 15.71 177.99 15.89 179.07 16.15C180.15 16.41 181.22 16.76 182.27 17.17C183.32 17.58 184.35 18.07 185.35 18.63C186.35 19.18 187.33 19.82 188.26 20.5C189.19 21.18 190.09 21.93 190.93 22.72C191.77 23.51 192.58 24.36 193.31 25.25C194.04 26.14 194.72 27.08 195.33 28.04C195.94 29 196.49 30.01 196.95 31.03C197.41 32.05 197.8 33.12 198.1 34.19C198.4 35.26 198.62 36.37 198.73 37.47C198.84 38.57 198.87 39.69 198.78 40.81C198.69 41.93 199.5 39.22 198.19 44.17C196.88 49.12 192.19 65.7 190.91 70.51C189.63 75.32 190.56 72.27 190.5 73.01C190.44 73.75 190.43 74.08 190.55 74.95C190.67 75.83 190.92 77.17 191.24 78.26C191.56 79.35 191.99 80.44 192.49 81.5C193 82.56 193.6 83.6 194.27 84.6C194.94 85.6 195.7 86.57 196.53 87.48C197.36 88.39 198.27 89.26 199.24 90.06C200.21 90.86 197.42 89.24 202.36 92.27C207.3 95.3 223.94 105.22 228.89 108.25C233.83 111.28 231.06 109.67 232.03 110.45C233 111.23 233.88 112.07 234.69 112.93C235.5 113.79 236.22 114.7 236.86 115.62C237.51 116.54 237.69 116.73 238.56 118.47C239.43 120.21 241.37 124.27 242.09 126.06C242.81 127.85 242.7 128.15 242.88 129.19C243.06 130.23 243.17 131.26 243.19 132.28C243.21 133.3 243.15 134.31 243.01 135.28C242.87 136.25 242.76 136.85 242.35 138.12C241.94 139.39 241.03 141.67 240.53 142.91C240.03 144.15 239.84 144.73 239.37 145.57C238.91 146.41 240.19 145.1 237.74 147.94C235.29 150.78 227.21 159.82 224.68 162.6C222.15 165.38 224.28 163.43 222.57 164.61C220.86 165.79 216.29 168.66 214.43 169.68C212.57 170.71 213.84 170.25 211.43 170.76C209.02 171.27 204 172.27 199.94 172.74C195.88 173.21 188.84 170.79 187.05 173.58C185.26 176.37 188.84 184.91 189.2 189.48C189.56 194.05 189.27 198.56 189.2 201.02C189.13 203.48 189.46 202.24 188.77 204.24C188.08 206.24 185.93 211.13 185.06 213.01C184.19 214.89 186.3 212.31 183.55 215.52C180.8 218.73 171.43 229.21 168.54 232.28C165.65 235.35 167.81 233.08 166.21 233.96C164.61 234.84 160.61 236.85 158.92 237.58C157.23 238.31 157.05 238.18 156.07 238.36C155.09 238.54 154.06 238.65 153.03 238.67C152 238.69 150.93 238.64 149.87 238.5C148.81 238.36 148.56 238.41 146.65 237.84C144.74 237.27 140.28 235.79 138.4 235.05C136.52 234.31 136.37 234.05 135.38 233.42C134.39 232.79 133.41 232.07 132.47 231.26C131.53 230.45 133.63 232.89 129.73 228.56C125.83 224.23 112.98 209.59 109.08 205.26C105.18 200.93 107.29 203.4 106.33 202.59C105.37 201.78 104.34 201.05 103.3 200.4C102.26 199.75 101.17 199.19 100.08 198.72C98.99 198.25 97.86 197.85 96.74 197.56C95.62 197.27 94.6 197.01 93.37 196.96C92.14 196.91 90.55 197 89.36 197.25C88.17 197.5 90.74 196.2 86.24 198.49C81.74 200.78 66.86 208.71 62.36 211.01C57.86 213.31 60.3 211.96 59.24 212.27C58.18 212.58 57.1 212.78 56.02 212.89C54.94 213 53.83 212.99 52.74 212.91C51.65 212.83 50.56 212.65 49.48 212.39C48.4 212.13 47.32 211.78 46.27 211.37C45.22 210.96 44.19 210.47 43.19 209.91C42.19 209.35 41.21 208.72 40.28 208.04C39.35 207.36 38.45 206.61 37.61 205.82C36.77 205.03 35.96 204.18 35.23 203.29C34.5 202.4 33.82 201.46 33.21 200.5C32.6 199.54 32.05 198.53 31.59 197.51C31.13 196.48 30.74 195.42 30.44 194.35C30.14 193.28 29.92 192.17 29.81 191.07C29.7 189.97 29.67 188.85 29.76 187.73C29.85 186.61 29.04 189.32 30.35 184.37C31.66 179.42 36.34 162.84 37.62 158.03C38.9 153.22 37.98 156.27 38.04 155.53C38.1 154.79 38.11 154.47 37.99 153.59C37.87 152.72 37.62 151.37 37.3 150.28C36.98 149.19 36.55 148.1 36.05 147.04C35.55 145.98 34.94 144.94 34.27 143.94C33.6 142.94 32.84 141.97 32.01 141.06C31.18 140.15 30.27 139.28 29.3 138.48C28.33 137.68 31.12 139.3 26.18 136.27C21.24 133.24 4.6 123.31 -0.35 120.28C-5.29 117.25 -2.52 118.87 -3.49 118.09C-4.46 117.31 -5.35 116.47 -6.15 115.61C-6.96 114.75 -7.3 114.59 -8.32 112.92C-9.34 111.25 -11.39 107.3 -12.26 105.56C-13.13 103.82 -13.2 103.52 -13.55 102.48C-13.9 101.45 -14.16 100.39 -14.34 99.35C-14.52 98.31 -14.63 97.28 -14.65 96.26C-14.67 95.25 -14.61 94.23 -14.47 93.26C-14.33 92.29 -14.42 92.14 -13.81 90.42C-13.2 88.7 -11.6 84.61 -10.83 82.97C-10.06 81.33 -11.65 83.45 -9.2 80.61C-6.75 77.77 1.33 68.73 3.86 65.95C6.39 63.17 4.26 65.12 5.97 63.94C7.68 62.76 12.25 59.89 14.11 58.86C15.97 57.83 14.71 58.29 17.12 57.78C19.54 57.27 24.54 56.28 28.6 55.81C32.66 55.34 39.7 57.75 41.49 54.96C43.28 52.17 39.7 43.64 39.34 39.06Z",
 +  pumpkin:
 +    "M222.94 114.27C223.63 111.61 224.08 108.88 224.35 106.15C224.62 103.42 224.69 100.65 224.58 97.91C224.47 95.17 224.15 92.41 223.67 89.7C223.19 86.99 222.51 84.31 221.72 81.67C220.93 79.03 220.21 76.83 218.94 73.89C217.67 70.95 215.65 66.82 214.11 64.02C212.57 61.21 211.58 59.65 209.72 57.06C207.86 54.47 205.35 51.21 202.96 48.49C200.57 45.77 197.99 43.23 195.38 40.76C192.77 38.29 190.09 35.91 187.3 33.69C184.52 31.47 181.15 29.31 178.67 27.44C176.19 25.57 174.21 23.74 172.41 22.45C170.61 21.16 170.23 20.87 167.85 19.69C165.47 18.52 160.99 16.51 158.1 15.4C155.21 14.29 153.49 13.75 150.49 13.05C147.49 12.36 143.56 11.62 140.08 11.23C136.61 10.84 132.67 10.69 129.64 10.68C126.6 10.67 124.43 10.91 121.87 11.18C119.31 11.45 116.77 11.79 114.27 12.28C111.77 12.77 109.68 13.27 106.88 14.12C104.08 14.97 100.24 16.68 97.46 17.36C94.68 18.04 92.58 17.72 90.2 18.18C87.82 18.64 85.09 19.49 83.17 20.13C81.25 20.77 80.14 21.31 78.69 22.04C77.24 22.77 75.82 23.59 74.48 24.51C73.14 25.44 71.56 26.76 70.64 27.59C69.72 28.42 69.58 28.98 68.94 29.47C68.3 29.96 67.59 30.27 66.82 30.51C66.05 30.75 65.51 30.59 64.3 30.9C63.09 31.21 61.1 31.8 59.57 32.4C58.04 33 56.55 33.73 55.1 34.49C53.65 35.25 52.53 35.82 50.84 36.98C49.15 38.14 46.83 39.86 44.96 41.47C43.09 43.08 41.31 44.81 39.63 46.62C37.95 48.43 36.65 50.53 34.91 52.33C33.17 54.13 31.35 55.32 29.2 57.43C27.05 59.54 24.04 62.67 22.03 64.97C20.02 67.27 18.69 69.06 17.16 71.23C15.63 73.4 14.39 75.25 12.85 77.98C11.31 80.71 9.37 84.3 7.94 87.63C6.52 90.96 5.2 94.89 4.3 97.96C3.4 101.03 2.9 103.31 2.54 106.03C2.19 108.75 2.18 111.06 2.17 114.27C2.16 117.48 2.29 122.08 2.5 125.28C2.71 128.49 3 130.78 3.44 133.5C3.88 136.22 4.43 138.94 5.13 141.61C5.83 144.28 6.68 146.92 7.61 149.51C8.54 152.1 9.56 154.67 10.7 157.17C11.84 159.67 13.09 162.13 14.47 164.5C15.85 166.87 17.36 169.18 19 171.37C20.64 173.56 22.42 175.67 24.31 177.63C26.2 179.59 27.86 181.2 30.35 183.14C32.84 185.08 36.8 187.39 39.28 189.26C41.76 191.12 43.5 193 45.21 194.33C46.92 195.66 48.04 196.34 49.52 197.24C51 198.14 52.11 198.85 54.09 199.72C56.07 200.59 59.31 201.86 61.4 202.48C63.49 203.1 64.76 202.44 66.61 203.44C68.46 204.44 70.8 207.19 72.52 208.46C74.24 209.74 75.41 210.3 76.92 211.09C78.43 211.88 79.18 212.37 81.59 213.21C84 214.05 88.91 215.52 91.39 216.14C93.87 216.76 94.75 216.77 96.45 216.95C98.15 217.13 99.44 217.22 101.57 217.22C103.7 217.22 106.29 217.31 109.23 216.92C112.17 216.52 116.36 215.67 119.21 214.85C122.06 214.03 124.4 212.9 126.33 212.02C128.26 211.14 128.83 209.96 130.81 209.58C132.79 209.21 136.16 209.86 138.19 209.77C140.22 209.68 141.83 209.29 143.02 209.06C144.22 208.83 144.24 208.85 145.36 208.37C146.48 207.89 148.66 206.79 149.72 206.17C150.78 205.55 151.08 205.22 151.71 204.65C152.34 204.08 152.72 203.88 153.5 202.77C154.28 201.66 155.77 199.3 156.42 198C157.07 196.7 156.86 195.57 157.41 194.98C157.96 194.39 158.81 194.43 159.7 194.46C160.59 194.49 161.75 194.99 162.74 195.14C163.73 195.29 164.26 195.44 165.61 195.35C166.96 195.25 169.55 194.84 170.82 194.57C172.09 194.3 172.07 194.26 173.21 193.75C174.35 193.24 176.26 192.37 177.66 191.51C179.06 190.65 180.36 189.63 181.61 188.57C182.86 187.51 183.58 187.03 185.17 185.17C186.76 183.3 189.5 179.2 191.17 177.38C192.84 175.56 193.27 175.96 195.18 174.27C197.09 172.58 200.58 169.41 202.61 167.22C204.65 165.03 205.92 163.26 207.39 161.14C208.86 159.02 210.23 156.8 211.45 154.52C212.66 152.24 213.78 149.87 214.68 147.44C215.58 145.01 216.33 142.5 216.83 139.96C217.34 137.42 217.63 134.38 217.71 132.22C217.79 130.06 216.91 128.67 217.32 126.98C217.73 125.29 219.26 124.2 220.2 122.08C221.14 119.96 222.25 116.92 222.94 114.27Z",
  };
  
  export const SHIPPED_BOT_AVATAR_SHAPE_KEYS = [
-@@ -38,10 +79,85 @@ export const SHIPPED_BOT_AVATAR_SHAPE_KEYS = [
+@@ -38,10 +72,136 @@ export const SHIPPED_BOT_AVATAR_SHAPE_KEYS = [
    "blob",
    "teardrop",
    "cloud",
@@ -99131,6 +99196,57 @@ index 0607200..eb1dc66 100644
 +  "star",
 +  "pumpkin",
 +] as const;
++
++/**
++ * The thirteen bodies the reference app's own picker offers, in its rows: five, five and three.
++ * These are the only bodies this build draws, so a stored index that names another one is drawn
++ * as the nearest of these (see `LEGACY_BODY_ALIASES`).
++ */
++export const OFFICIAL_FACE_SHAPE_KEYS = [
++  "blob",
++  "cloud",
++  "square",
++  "sparkle",
++  "clover",
++  "heart",
++  "flower",
++  "teardrop",
++  "tablet",
++  "wedge",
++  "house",
++  "star",
++  "hex",
++] as const;
++
++/**
++ * The bodies the earlier Rakazo build shipped that the reference picker does not offer, and the
++ * official body each one is drawn as. A bot saved with one of these keeps its colour and its
++ * index; only the silhouette it wears is the official one, so no screen can show an old body.
++ */
++export const LEGACY_BODY_ALIASES: Readonly<Record<string, string>> = {
++  pebble: "blob",
++  squircle: "square",
++  bean: "tablet",
++  egg: "teardrop",
++  capsule: "tablet",
++  cylinder: "tablet",
++  gem: "hex",
++  crystal: "sparkle",
++  shield: "house",
++  dome: "heart",
++  arch: "cloud",
++  leaf: "heart",
++  pumpkin: "blob",
++};
++
++/**
++ * The body a stored shape name is drawn as: its own when the reference picker offers it, the
++ * official body that stands in for it otherwise.
++ */
++export function officialFaceBodyKey(key: string): string {
++  if ((OFFICIAL_FACE_SHAPE_KEYS as readonly string[]).includes(key)) return key;
++  return LEGACY_BODY_ALIASES[key] ?? "blob";
++}
 +
 +/** For each shipped index, the index the official picker gives the same body. */
 +export const SHIPPED_SHAPE_TO_OFFICIAL_INDEX: readonly number[] = [

@@ -61198,6 +61198,31 @@ index 5f54439..3541ac7 100644
 +  });
 +  return [title, ...lines].filter((line) => line.trim().length > 0).join("\n");
 +}
+diff --git a/apps/mobile/components/VoiceChatCard.tsx b/apps/mobile/components/VoiceChatCard.tsx
+index 97a2fee..eed81a8 100644
+--- a/apps/mobile/components/VoiceChatCard.tsx
++++ b/apps/mobile/components/VoiceChatCard.tsx
+@@ -4,6 +4,7 @@ import { speechFromBlocks, voiceChatDuration, voiceChatSummary } from "@rakazo/c
+ import { typeScale } from "@rakazo/ui-tokens";
+ import { useState } from "react";
+ import { Pressable, StyleSheet, Text, View } from "react-native";
++import { MESSAGE_COLUMN_SHARE } from "../lib/message-row-layout";
+ import type { MobileMessage } from "../lib/mobile-types";
+ import { native, useMobileTokens } from "../lib/native";
+ import { NativeSymbol } from "./native-symbol";
+@@ -77,7 +78,11 @@ export function VoiceChatCard({ group }: { group: VoiceChatGroup<MobileMessage>
+ const styles = StyleSheet.create({
+   card: {
+     alignSelf: "flex-start",
+-    maxWidth: "88%",
++    // A call's card takes the share of the column a bubble above or below it takes, so a one-line
++    // summary no longer draws a short stub beside full-width bubbles. The transcript opens inside
++    // this same width, and a narrow phone narrows the share with it.
++    width: MESSAGE_COLUMN_SHARE,
++    maxWidth: MESSAGE_COLUMN_SHARE,
+     borderRadius: 18,
+   },
+   // 40 tall around the 22 pt title line, growing with it at larger text sizes.
 diff --git a/apps/mobile/components/account-header-button.tsx b/apps/mobile/components/account-header-button.tsx
 new file mode 100644
 index 0000000..d6e4bc5
@@ -64080,10 +64105,17 @@ index c2757a4..6381b11 100644
          )
        }
 diff --git a/apps/mobile/components/failed-send-bubble.tsx b/apps/mobile/components/failed-send-bubble.tsx
-index 99090c5..6993c71 100644
+index 99090c5..4721a99 100644
 --- a/apps/mobile/components/failed-send-bubble.tsx
 +++ b/apps/mobile/components/failed-send-bubble.tsx
-@@ -9,6 +9,8 @@ import type { SendAttempt } from "../lib/thread-feedback";
+@@ -3,12 +3,15 @@ import { isModelRequiredSendError } from "@rakazo/core";
+ import { typeScale } from "@rakazo/ui-tokens";
+ import { Alert, Image, Platform, Pressable, Text, View } from "react-native";
+ import { showIOSActionSheet } from "../lib/ios-action-sheet";
++import { MESSAGE_COLUMN_SHARE } from "../lib/message-row-layout";
+ import { openModelSettings } from "../lib/model-settings";
+ import { useMobileTokens } from "../lib/native";
+ import type { SendAttempt } from "../lib/thread-feedback";
  import type { UserBubble } from "../lib/user-bubble";
  import { withUserBubble } from "../lib/user-bubble";
  import { NativeSymbol } from "./native-symbol";
@@ -64092,7 +64124,39 @@ index 99090c5..6993c71 100644
  
  export function FailedSendBubble({
    attempt,
-@@ -145,16 +147,29 @@ export function FailedSendBubble({
+@@ -44,6 +47,9 @@ export function FailedSendBubble({
+   const messageLabel = [payload.displayText, ...payload.attachments.map(({ name }) => name)]
+     .filter(Boolean)
+     .join(", ");
++  // A file being sent wears the same width as the card that replaces it: a card that grew when
++  // the send landed would jump under the reader's eye.
++  const fileCards = payload.attachments.some((attachment) => !attachment.previewUri);
+   const color = sending ? tokens.mutedForeground : tokens.destructive;
+ 
+   function showActions(manage = true) {
+@@ -107,7 +113,13 @@ export function FailedSendBubble({
+         attempt.imageConfirmation ? () => showActions(false) : retryable ? onRetry : undefined
+       }
+       onLongPress={() => showActions()}
+-      style={{ alignSelf: "flex-end", maxWidth: "90%", marginTop: 12, gap: 4 }}
++      style={{
++        alignSelf: "flex-end",
++        width: fileCards ? MESSAGE_COLUMN_SHARE : undefined,
++        maxWidth: MESSAGE_COLUMN_SHARE,
++        marginTop: 12,
++        gap: 4,
++      }}
+     >
+       <View
+         style={{
+@@ -139,22 +151,35 @@ export function FailedSendBubble({
+           </Text>
+         ) : null}
+         {payload.attachments.map((attachment) => (
+-          <View key={attachment.id} style={{ gap: 4 }}>
++          <View key={attachment.id} style={{ gap: 4, width: "100%" }}>
+             {attachment.previewUri ? (
+               <Image
                  source={{ uri: attachment.previewUri }}
                  style={{ width: 180, height: 120, borderRadius: 12 }}
                />
@@ -70913,7 +70977,7 @@ index 0000000..4762d37
 +  return `${(bytes / 1024).toFixed(1)} KB`;
 +}
 diff --git a/apps/mobile/components/thread/message-bubble.tsx b/apps/mobile/components/thread/message-bubble.tsx
-index aa623d6..1af1e32 100644
+index aa623d6..c2ab233 100644
 --- a/apps/mobile/components/thread/message-bubble.tsx
 +++ b/apps/mobile/components/thread/message-bubble.tsx
 @@ -15,7 +15,7 @@ import {
@@ -70933,7 +70997,7 @@ index aa623d6..1af1e32 100644
  import { McpAppCard } from "./mcp-app-card";
  import type { MessageRowActions } from "./message-row";
  import { isSpecialMessageBlock, SpecialMessageCard } from "./special-message-card";
-@@ -578,8 +579,26 @@ const MessageBubbleContent = memo(function MessageBubbleContent({
+@@ -578,10 +579,27 @@ const MessageBubbleContent = memo(function MessageBubbleContent({
        paddingVertical: 12,
        gap: 8,
      } as const;
@@ -70942,26 +71006,28 @@ index aa623d6..1af1e32 100644
 +    // card's own border.
 +    const filesOnly =
 +      !caption && !hasInlineImages && attachments.every((attachment) => attachment.kind === "file");
++    const fileCards = attachments.some(isFileCardAttachment);
 +    const frame: ViewStyle = hasInlineImages
 +      ? { maxWidth: "100%", gap: 8 }
-+      : filesOnly
++      : fileCards || filesOnly
 +        ? // A file card takes the message's whole width, which the row has already sized to the
 +          // reference app's share of the column: a short name no longer draws a narrow card that
-+          // stops halfway across the chat.
-+          {
-+            width: "100%",
-+            maxWidth: "100%",
-+            gap: 8,
-+            alignItems: outgoing ? "flex-end" : "flex-start",
-+          }
++          // stops halfway across the chat. The frame stretches rather than aligning its children,
++          // because a file's card fills that width instead of shrinking to its own words.
++          { width: "100%", maxWidth: "100%", gap: 8 }
 +        : bubbleStyle;
      return (
 -      <View style={hasInlineImages ? { maxWidth: "100%", gap: 8 } : bubbleStyle}>
 +      <View style={frame}>
          {((showBotSenderName || authorName) && speaker) || caption ? (
-           <View style={hasInlineImages ? bubbleStyle : undefined}>
+-          <View style={hasInlineImages ? bubbleStyle : undefined}>
++          // A caption over a file keeps its own bubble above the card, as an image's caption does;
++          // only a file on its own is drawn straight on the page.
++          <View style={hasInlineImages || (fileCards && !filesOnly) ? bubbleStyle : undefined}>
              {(showBotSenderName || authorName) && speaker ? (
-@@ -604,7 +623,11 @@ const MessageBubbleContent = memo(function MessageBubbleContent({
+               <Text
+                 style={{ color: speakerColor ?? tokens.mutedForeground, ...typeScale.footnote }}
+@@ -604,7 +622,18 @@ const MessageBubbleContent = memo(function MessageBubbleContent({
          {attachments.map((attachment, index) => (
            <View
              key={`${attachment.artifactId ?? attachment.name ?? attachment.kind}-${index}`}
@@ -70969,12 +71035,28 @@ index aa623d6..1af1e32 100644
 +            style={
 +              attachment.kind === "image" && !isInlineImageBlock(attachment)
 +                ? bubbleStyle
-+                : undefined
++                : isFileCardAttachment(attachment)
++                  ? // The card is the message's own width: it fills the frame above instead of
++                    // stopping at its own 264 pt floor, and its edge meets a text bubble's.
++                    { width: "100%" }
++                  : isAudioAttachment(attachment)
++                    ? // A clip keeps its pill's own width, held to the same side as the bubble.
++                      { alignSelf: outgoing ? "flex-end" : "flex-start" }
++                    : undefined
 +            }
            >
              {attachment.kind === "image" ? (
                isInlineImageBlock(attachment) ? (
-@@ -659,43 +682,12 @@ const MessageBubbleContent = memo(function MessageBubbleContent({
+@@ -649,7 +678,7 @@ const MessageBubbleContent = memo(function MessageBubbleContent({
+                   </Text>
+                 </Pressable>
+               )
+-            ) : attachment.artifactId && isAttachmentAudioMimeType(attachment.mimeType ?? "") ? (
++            ) : isAudioAttachment(attachment) ? (
+               <AudioAttachment
+                 pressableProps={actionProps}
+                 target={artifactTarget}
+@@ -659,43 +688,12 @@ const MessageBubbleContent = memo(function MessageBubbleContent({
                  labelColor={outgoing ? tokens.chatUserForeground : undefined}
                />
              ) : (
@@ -71024,7 +71106,7 @@ index aa623d6..1af1e32 100644
              )}
            </View>
          ))}
-@@ -758,6 +750,7 @@ const MessageBubbleContent = memo(function MessageBubbleContent({
+@@ -758,6 +756,7 @@ const MessageBubbleContent = memo(function MessageBubbleContent({
          <ChoiceCard
            key={`choice-${index}`}
            botId={cardBotId}
@@ -71032,10 +71114,23 @@ index aa623d6..1af1e32 100644
            block={block}
            onDismissed={onChoiceDismissed ? () => onChoiceDismissed(block.question) : undefined}
            accessibilityActions={actionProps.accessibilityActions}
-@@ -943,3 +936,62 @@ function AgentEventLabel({
+@@ -943,3 +942,75 @@ function AgentEventLabel({
      </Pressable>
    );
  }
++
++/**
++ * Whether a block draws the file card itself, and so takes the message's whole width. A clip that
++ * plays in place wears its own pill instead, which keeps the size of its own controls.
++ */
++function isFileCardAttachment(attachment: Extract<MessageBlock, { kind: "image" | "file" }>) {
++  return attachment.kind === "file" && !isAudioAttachment(attachment);
++}
++
++/** Whether a file block plays as a clip here rather than standing as a card. */
++function isAudioAttachment(attachment: Extract<MessageBlock, { kind: "image" | "file" }>) {
++  return Boolean(attachment.artifactId) && isAttachmentAudioMimeType(attachment.mimeType ?? "");
++}
 +
 +/**
 + * A file block as its own card: a tap previews it when the app can draw it, and otherwise
@@ -72182,7 +72277,7 @@ index 722969f..2360c7e 100644
        react: (message, reaction) => rowActionsRef.current.react(message, reaction),
        markUnread: (message) => rowActionsRef.current.markUnread(message),
 diff --git a/apps/mobile/components/thread/thread-screen.tsx b/apps/mobile/components/thread/thread-screen.tsx
-index c3c0cfd..045bdcb 100644
+index c3c0cfd..c542aef 100644
 --- a/apps/mobile/components/thread/thread-screen.tsx
 +++ b/apps/mobile/components/thread/thread-screen.tsx
 @@ -3,7 +3,6 @@ import { useLingui } from "@lingui/react/macro";
@@ -72230,7 +72325,7 @@ index c3c0cfd..045bdcb 100644
 +import { useKeyboardLift } from "../../lib/keyboard-lift";
 +import { clearLedger, publishLedgerTasks, setLedgerOpen, useLedger } from "../../lib/ledger-store";
 +import type { LedgerTask } from "../../lib/ledger-tasks";
-+import { frontDeskLedgerTasks, ledgerTasks } from "../../lib/ledger-tasks";
++import { frontDeskActivity, frontDeskLedgerTasks, ledgerTasks } from "../../lib/ledger-tasks";
  import { useThemedStyles } from "../../lib/native";
  import { useChatOnScreen } from "../../lib/page-card-detail";
  import { useInboxBot } from "../../lib/search-inbox";
@@ -72339,16 +72434,26 @@ index c3c0cfd..045bdcb 100644
    // The group's members in its order, once the chat or its group list has loaded them; the
    // title seats the inbox's copy until then.
    const groupMembers = threadGroupMembers(groupId, snap, mentionGroups);
-@@ -271,6 +314,8 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -271,6 +314,18 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
      (message) => message.id.startsWith("progress:") && liveMessageComposing(message.blocks),
    );
    const activityLine = liveActivityLine(snap?.messages ?? []);
-+  // The line holds each step for a moment and names the work in a phrase rather than a tool.
-+  const pacedActivity = usePacedActivity(activityLine, isRunWaitingOnUser(currentBotStatus));
++  // The front desk answers in seconds and its run ends there, but the work it handed to the back
++  // office keeps going. Its ledger rows name the step that work is on, so the chat's line goes on
++  // saying what is being done once the desk's own run is gone — beside the title's capsule, not
++  // instead of it.
++  const background = frontDeskActivity(snap?.frontDeskTasks);
++  // The line holds each step for a moment and names the work in a phrase rather than a tool. A
++  // run waiting on the user says so only while nothing else is running: a task still in the back
++  // office is what the reader is waiting on then.
++  const pacedActivity = usePacedActivity(
++    activityLine ?? background.line,
++    isRunWaitingOnUser(currentBotStatus) && !background.working,
++  );
    const workingRoutine = workingRoutineName(snap?.activeRuns ?? (snap?.run ? [snap.run] : []));
    const userBubble = useMemo(
      () =>
-@@ -365,6 +410,80 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -365,6 +420,88 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
      markReadIfVisible,
    });
  
@@ -72425,11 +72530,19 @@ index c3c0cfd..045bdcb 100644
 +    const timer = setInterval(() => void refresh(), 4_000);
 +    return () => clearInterval(timer);
 +  }, [ledger.open, readOnly, refresh]);
++  // The same rows feed the working line under the chat, so the chat reads them at the same pace
++  // while the back office has work in hand: the line follows the step the task is on, and stops
++  // with the work, without the panel having to be open.
++  useEffect(() => {
++    if (!background.working || readOnly) return;
++    const timer = setInterval(() => void refresh(), 4_000);
++    return () => clearInterval(timer);
++  }, [background.working, readOnly, refresh]);
 +
    const paging = useThreadPaging({
      history,
      scroll,
-@@ -447,7 +566,8 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -447,7 +584,8 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
        setReplyQuote(null);
      },
      quote: setQuoteTarget,
@@ -72439,7 +72552,29 @@ index c3c0cfd..045bdcb 100644
      speak,
      react: composer.react,
      markUnread: markUnreadFrom,
-@@ -527,6 +647,14 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -508,14 +646,19 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+   });
+ 
+   const workingBots =
+-    !inGroup && titleBot && isRunWorking(currentBotStatus) && !hasLiveProgress
++    !inGroup &&
++    titleBot &&
++    (isRunWorking(currentBotStatus) || background.working) &&
++    !hasLiveProgress
+       ? [
+           {
+             id: titleBot.id,
+             name: titleBot.name,
+             color: titleBot.color,
+             avatarSet: titleBot.avatarSet,
+-            status: currentBotStatus,
++            // The mark animates while the chat has work in hand, whether the Bot itself is
++            // answering or the back office is doing what it handed over.
++            status: isRunWorking(currentBotStatus) ? currentBotStatus : "running",
+           },
+         ]
+       : inGroup
+@@ -527,6 +670,19 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
              status: bot.status,
            }))
          : [];
@@ -72448,13 +72583,18 @@ index c3c0cfd..045bdcb 100644
 +  useWorkActivityCard({
 +    title: displayName ?? titleBot?.name ?? "",
 +    target: inGroup ? (groupId ? { groupId } : null) : botId ? { botId } : null,
-+    status: currentBotStatus,
-+    stage: pacedActivity.label ?? activityLine ?? "",
++    // A chat with work in hand says so on the card, which follows the same line as the footer.
++    status: isRunWorking(currentBotStatus)
++      ? currentBotStatus
++      : background.working
++        ? "running"
++        : currentBotStatus,
++    stage: pacedActivity.label ?? activityLine ?? background.line ?? "",
 +  });
    const workingFooter = (
      <ThreadWorkingFooter
        bots={workingBots.map((bot) => ({
-@@ -535,7 +663,8 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -535,7 +691,8 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
        }))}
        atBottom={!scroll.state.detached}
        label={
@@ -72464,7 +72604,7 @@ index c3c0cfd..045bdcb 100644
        }
      />
    );
-@@ -572,23 +701,20 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -572,23 +729,20 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
    );
  
    return (
@@ -72501,7 +72641,7 @@ index c3c0cfd..045bdcb 100644
          <View style={{ flex: 1 }}>
            <NewestPageCards.Provider value={newestPages}>
              <ThreadMessageList
-@@ -610,35 +736,12 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -610,35 +764,12 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
                showLatest={showLatest}
              />
            </NewestPageCards.Provider>
@@ -72538,7 +72678,7 @@ index c3c0cfd..045bdcb 100644
              attachmentNotice={attachments.attachmentNotice}
              attachments={attachments.activePendingAttachments}
              onRemoveAttachment={(id) =>
-@@ -650,6 +753,10 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -650,6 +781,10 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
              <ThreadComposer
                key={threadKey}
                ref={composer.composerRef}
@@ -72549,7 +72689,7 @@ index c3c0cfd..045bdcb 100644
                draftScope={draftScope}
                agentSkills={agentSkills}
                composerMentionTargets={composerMentionTargets}
-@@ -657,9 +764,25 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -657,9 +792,25 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
                composerPrompt={composerPrompt}
                replyTargetId={replyTarget?.id}
                replyQuote={replyQuote}
@@ -72575,7 +72715,7 @@ index c3c0cfd..045bdcb 100644
                botId={botId}
                onCall={onCall}
                sending={attachments.shareImporting}
-@@ -673,27 +796,55 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -673,27 +824,51 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
              />
            </ThreadComposerDock>
          </View>
@@ -72606,11 +72746,7 @@ index c3c0cfd..045bdcb 100644
 +        />
 +      ) : null}
 +      {botId ? (
-+        <TaskStepsSheet
-+          taskId={stepsTaskId}
-+          botId={botId}
-+          onClose={() => setStepsTaskId(null)}
-+        />
++        <TaskStepsSheet taskId={stepsTaskId} botId={botId} onClose={() => setStepsTaskId(null)} />
 +      ) : null}
 +      {selectableText !== null ? (
 +        <SelectTextSheet
@@ -74847,6 +74983,44 @@ index bd85003..7e5caf4 100644
 -  expect(runCreateAction.mock.calls).toEqual([["bot"], ["group"], ["space"]]);
 +  expect(runCreateAction.mock.calls).toEqual([["bot"], ["group"], ["space"], ["activity"]]);
  });
+diff --git a/apps/mobile/lib/ask-card.test.tsx b/apps/mobile/lib/ask-card.test.tsx
+index 75ac634..f54e210 100644
+--- a/apps/mobile/lib/ask-card.test.tsx
++++ b/apps/mobile/lib/ask-card.test.tsx
+@@ -703,6 +703,33 @@ it.each([undefined, "pending", "answered"] as const)(
+   },
+ );
+ 
++it("gives a message that carries a file the width a long line of text takes", () => {
++  const file = {
++    kind: "file" as const,
++    artifactId: "file-1",
++    name: "icu 11_.xlsx",
++    mimeType: "application/vnd.ms-excel",
++    size: 12_200,
++  };
++  // The card is the message, and a caption sits over it: both cases size the column here, so the
++  // card inside has a definite width to fill instead of falling back to its own floor.
++  for (const blocks of [[file], [{ kind: "text" as const, text: "先看这张表" }, file]]) {
++    const layout = messageRowLayout(blocks, { inGroup: false, columnWidth: 400 });
++    expect(layout.width).toBe("90%");
++    expect(layout.maxWidth).toBe("90%");
++    expect(layout.menuMaxWidth).toBe(324);
++  }
++  // With an avatar's own gutter the column still takes the same share; the avatar's width is
++  // what the card loses, the same as a long line would.
++  const withAvatar = messageRowLayout([file], {
++    activityBotId: "bot-1",
++    inGroup: false,
++    columnWidth: 400,
++  });
++  expect(withAvatar.width).toBe("90%");
++  expect(withAvatar.menuMaxWidth).toBe(360 - 36);
++});
++
+ it("keeps pending approvals primary without adding a selection state", async () => {
+   await act(async () =>
+     root.render(
 diff --git a/apps/mobile/lib/avatar-clock.test.tsx b/apps/mobile/lib/avatar-clock.test.tsx
 index cdada5d..0fb11df 100644
 --- a/apps/mobile/lib/avatar-clock.test.tsx
@@ -78691,18 +78865,40 @@ index 0000000..c5e089f
 +}
 diff --git a/apps/mobile/lib/ledger-tasks.test.ts b/apps/mobile/lib/ledger-tasks.test.ts
 new file mode 100644
-index 0000000..2a606d1
+index 0000000..d3a6a24
 --- /dev/null
 +++ b/apps/mobile/lib/ledger-tasks.test.ts
-@@ -0,0 +1,123 @@
+@@ -0,0 +1,185 @@
++import type { FrontDeskTask } from "@rakazo/contracts";
 +import { describe, expect, it } from "vitest";
 +import {
++  frontDeskActivity,
 +  ledgerElapsed,
 +  ledgerModelLabel,
 +  ledgerSummary,
 +  ledgerTasks,
 +} from "./ledger-tasks";
 +import type { MobileMessage } from "./mobile-types";
++
++function deskTask(overrides: Partial<FrontDeskTask>): FrontDeskTask {
++  return {
++    id: "task-1",
++    runId: "run-1",
++    title: "整理积分表",
++    status: "running",
++    slot: "daily",
++    modelProvider: "magic",
++    modelId: "gemini-3-flash",
++    progress: null,
++    steps: [],
++    currentStep: null,
++    elapsedMs: 1_000,
++    createdAt: "2026-11-17T04:00:00.000Z",
++    updatedAt: "2026-11-17T04:00:10.000Z",
++    completedAt: null,
++    ...overrides,
++  };
++}
 +
 +function card(overrides: {
 +  id?: string;
@@ -78788,6 +78984,46 @@ index 0000000..2a606d1
 +  });
 +});
 +
++describe("frontDeskActivity", () => {
++  it("keeps the chat's line alive on work the back office still has", () => {
++    const activity = frontDeskActivity([
++      deskTask({ id: "done", status: "completed", currentStep: "做好了。" }),
++      deskTask({ id: "live", currentStep: "Reading the schedule" }),
++    ]);
++    expect(activity).toEqual({ working: true, line: "Reading the schedule" });
++  });
++
++  it("takes the newest running task's step, so the line follows the work in hand", () => {
++    const activity = frontDeskActivity([
++      deskTask({ id: "older", currentStep: "Reading the schedule" }),
++      deskTask({ id: "newer", currentStep: "Running: npm test" }),
++    ]);
++    expect(activity.line).toBe("Running: npm test");
++  });
++
++  it("falls back to the task's own progress line, then to nothing", () => {
++    expect(frontDeskActivity([deskTask({ progress: "  使用 Web Search " })]).line).toBe(
++      "使用 Web Search",
++    );
++    // Work in hand that has not said what it is doing still keeps the line on screen.
++    expect(frontDeskActivity([deskTask({ currentStep: "   ", progress: null })])).toEqual({
++      working: true,
++      line: undefined,
++    });
++  });
++
++  it("says nothing when every task has settled or the server publishes none", () => {
++    expect(frontDeskActivity(undefined)).toEqual({ working: false, line: undefined });
++    expect(frontDeskActivity([])).toEqual({ working: false, line: undefined });
++    expect(
++      frontDeskActivity([
++        deskTask({ status: "queued", currentStep: "排队中" }),
++        deskTask({ status: "completed", currentStep: "做好了。" }),
++      ]),
++    ).toEqual({ working: false, line: undefined });
++  });
++});
++
 +describe("ledgerElapsed", () => {
 +  const now = Date.parse("2026-11-16T12:10:00.000Z");
 +
@@ -78820,10 +79056,10 @@ index 0000000..2a606d1
 +});
 diff --git a/apps/mobile/lib/ledger-tasks.ts b/apps/mobile/lib/ledger-tasks.ts
 new file mode 100644
-index 0000000..889ae1a
+index 0000000..7d83127
 --- /dev/null
 +++ b/apps/mobile/lib/ledger-tasks.ts
-@@ -0,0 +1,188 @@
+@@ -0,0 +1,212 @@
 +import type { FrontDeskTask } from "@rakazo/contracts";
 +import type { LiveThreadRun } from "@rakazo/core";
 +import type { MobileMessage } from "./mobile-types";
@@ -79011,6 +79247,30 @@ index 0000000..889ae1a
 +    });
 +  }
 +  return rows;
++}
++
++/**
++ * What the back office is doing for this chat right now.
++ *
++ * The front desk answers in seconds and its run ends there, so the chat's own live line goes quiet
++ * while the work it handed over keeps running. These rows are that work: `working` keeps the
++ * chat's working line on screen, and `line` is the step the task says it is on, in its own words,
++ * which `activityStep` turns into the same short phrase the live line uses.
++ */
++export function frontDeskActivity(tasks: readonly FrontDeskTask[] | undefined): {
++  readonly working: boolean;
++  readonly line: string | undefined;
++} {
++  const running = (tasks ?? []).filter((task) => task.status === "running");
++  if (running.length === 0) return { working: false, line: undefined };
++  // The newest task is the one the reader is waiting on; older ones are usually further behind.
++  for (let index = running.length - 1; index >= 0; index -= 1) {
++    const task = running[index];
++    const step = task?.currentStep?.trim() || task?.progress?.trim() || undefined;
++    if (step) return { working: true, line: step };
++  }
++  // Work in hand that has not said what it is doing yet still keeps the line on screen.
++  return { working: true, line: undefined };
 +}
 diff --git a/apps/mobile/lib/link-preview.ts b/apps/mobile/lib/link-preview.ts
 new file mode 100644
@@ -79420,6 +79680,36 @@ index c2d471f..01f6e63 100644
    grid_view: require("../assets/material-icons/grid_view.xml"),
 +  notifications: require("../assets/material-icons/notifications.xml"),
  };
+diff --git a/apps/mobile/lib/message-mention-accessibility.test.tsx b/apps/mobile/lib/message-mention-accessibility.test.tsx
+index b6d4acd..32dc277 100644
+--- a/apps/mobile/lib/message-mention-accessibility.test.tsx
++++ b/apps/mobile/lib/message-mention-accessibility.test.tsx
+@@ -41,7 +41,12 @@ vi.mock("expo-secure-store", () => ({}));
+ vi.mock("./live-notifications", () => ({ resumeLiveNotifications: vi.fn() }));
+ vi.mock("./network-cache", () => ({ clearNetworkCache: vi.fn() }));
+ vi.mock("./artifact-open", () => ({ openMobileArtifact: vi.fn() }));
+-vi.mock("./native", () => ({ native: {}, useResolvedAppearance: () => "dark" }));
++vi.mock("./native", () => ({
++  native: {},
++  // The file card reads the theme's tokens; a message that carries a file draws its card here.
++  useMobileTokens: () => ({}),
++  useResolvedAppearance: () => "dark",
++}));
+ 
+ vi.mock("@rakazo/chat-ui/native", () => ({
+   MarkdownLongPressContext: createContext(undefined),
+@@ -82,6 +87,11 @@ vi.mock("../components/McpApprovalCard", () => ({ McpApprovalCard: () => null })
+ vi.mock("../components/native-symbol", () => ({ NativeSymbol: () => null }));
+ vi.mock("../components/pages/page-card", () => ({ PageCard: () => null }));
+ vi.mock("../components/thread/mcp-app-card", () => ({ McpAppCard: () => null }));
++// The file card is its own component with its own tests; here only the name it prints matters.
++vi.mock("../components/thread/file-attachment-card", () => ({
++  FILE_CARD_MIN_WIDTH: 264,
++  FileAttachmentCard: ({ name }: { name: string }) => <span>{name}</span>,
++}));
+ 
+ import { MessageBubble } from "../components/thread/message-bubble";
+ 
 diff --git a/apps/mobile/lib/message-presentation.ts b/apps/mobile/lib/message-presentation.ts
 index 7d18d6c..c4ef253 100644
 --- a/apps/mobile/lib/message-presentation.ts
@@ -79451,23 +79741,40 @@ index 7d18d6c..c4ef253 100644
  export const THREAD_COLUMN_GUTTER = 20;
  const MESSAGE_COLUMN_RATIO = 0.9;
 diff --git a/apps/mobile/lib/message-row-layout.ts b/apps/mobile/lib/message-row-layout.ts
-index 6249152..3e89e04 100644
+index 6249152..7b905fa 100644
 --- a/apps/mobile/lib/message-row-layout.ts
 +++ b/apps/mobile/lib/message-row-layout.ts
-@@ -33,9 +33,14 @@ export function messageRowLayout(
+@@ -3,6 +3,12 @@ import { isCenteredAgentEvent, THREAD_COLUMN_GUTTER } from "./message-presentati
+ import type { MobileMessage } from "./mobile-types";
+ 
+ const COLUMN_PADDING = THREAD_COLUMN_GUTTER * 2;
++/**
++ * The share of the chat's column one bubble takes. A long line of text, a file's own card and a
++ * call's card all wear this one number, so their edges line up down the conversation instead of
++ * each sizing itself to its own words.
++ */
++export const MESSAGE_COLUMN_SHARE = "90%";
+ 
+ /** Sizes a message's column: wide asks and centered events fill it, minus the avatar gutter. */
+ export function messageRowLayout(
+@@ -33,9 +39,18 @@ export function messageRowLayout(
          !block.settingsUpdate),
    );
    const gutter = activityBotId ? (inGroup ? 28 : 36) : 0;
-+  // A message that is nothing but files wears no bubble of its own: its card is the message, and
-+  // it takes the width a long line of text takes, so the two line up edge to edge. That width has
-+  // to be definite here — a percentage inside a box that sizes to its content falls back to the
-+  // card's own minimum, which is how a file card ended up half the row.
-+  const filesOnly = blocks.length > 0 && blocks.every((block) => block.kind === "file");
++  // A message that carries a file — the file alone, or a caption over it — gives its card the
++  // width a long line of text takes, so the two line up edge to edge. That width has to be
++  // definite here: a percentage inside a box that sizes to its content falls back to the card's
++  // own minimum, which is how a file card ended up half the row.
++  const carriesFile = blocks.some((block) => block.kind === "file");
    return {
 -    width: full ? "100%" : fillsBubble && !activityBotId ? "90%" : undefined,
 -    maxWidth: full ? "100%" : activityBotId ? undefined : "90%",
-+    width: full ? "100%" : filesOnly || (fillsBubble && !activityBotId) ? "90%" : undefined,
-+    maxWidth: full ? "100%" : filesOnly || !activityBotId ? "90%" : undefined,
++    width: full
++      ? "100%"
++      : carriesFile || (fillsBubble && !activityBotId)
++        ? MESSAGE_COLUMN_SHARE
++        : undefined,
++    maxWidth: full ? "100%" : carriesFile || !activityBotId ? MESSAGE_COLUMN_SHARE : undefined,
      menuFullWidth: wideAsk || fillsBubble,
      menuMaxWidth: wideAsk
        ? columnWidth - COLUMN_PADDING - gutter
@@ -81665,7 +81972,7 @@ index 35333e6..939859c 100644
    }
  
 diff --git a/apps/mobile/lib/thread-card-width.test.tsx b/apps/mobile/lib/thread-card-width.test.tsx
-index 3a33e38..05c2975 100644
+index 3a33e38..e6bf6c0 100644
 --- a/apps/mobile/lib/thread-card-width.test.tsx
 +++ b/apps/mobile/lib/thread-card-width.test.tsx
 @@ -241,7 +241,7 @@ describe("thread cards", () => {
@@ -81698,6 +82005,83 @@ index 3a33e38..05c2975 100644
        act(() =>
          container.querySelector<HTMLButtonElement>('button[aria-label="screenshot.png"]')!.click(),
        );
+@@ -292,6 +291,76 @@ describe("thread cards", () => {
+     },
+   );
+ 
++  it.each(["user", "bot"] as const)("gives a %s file card the message's own width", (role) => {
++    const file: MessageBlock = {
++      kind: "file",
++      artifactId: "file-1",
++      name: "icu 11_.xlsx",
++      mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
++      size: 12_200,
++    };
++    // The file on its own: the frame wears no bubble and hands the card its whole width, so a
++    // short name cannot leave the card at its 264 pt floor halfway across the chat.
++    renderBlocks([file], {}, role);
++    const outer = container.firstElementChild!;
++    expect(styleOf(outer)).toMatchObject({ width: "100%", maxWidth: "100%", gap: 8 });
++    expect(styleOf(outer)).not.toHaveProperty("alignItems");
++    const bare = styleOf(outer.lastElementChild);
++    expect(bare).toMatchObject({ width: "100%" });
++    expect(bare).not.toHaveProperty("borderRadius");
++    expect(bare).not.toHaveProperty("backgroundColor");
++  });
++
++  it.each(["user", "bot"] as const)(
++    "widens the file card under a %s caption and keeps the caption in its own bubble",
++    (role) => {
++      renderBlocks(
++        [
++          text("先看这张积分表"),
++          {
++            kind: "file",
++            artifactId: "file-1",
++            name: "icu 11_.xlsx",
++            mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
++            size: 12_200,
++          },
++        ],
++        {},
++        role,
++      );
++      const outer = container.firstElementChild!;
++      expect(styleOf(outer)).toMatchObject({ width: "100%", maxWidth: "100%" });
++      const caption = styleOf(outer.firstElementChild);
++      expect(caption).toMatchObject({ borderRadius: 20, paddingHorizontal: 14 });
++      expect(caption).not.toHaveProperty("width");
++      const card = styleOf(outer.lastElementChild);
++      expect(card).toMatchObject({ width: "100%" });
++      expect(card).not.toHaveProperty("borderRadius");
++    },
++  );
++
++  it.each([
++    ["user", "flex-end"],
++    ["bot", "flex-start"],
++  ] as const)("keeps a %s audio clip's pill its own width on its own side", (role, side) => {
++    renderBlocks(
++      [
++        {
++          kind: "file",
++          artifactId: "clip-1",
++          name: "note.m4a",
++          mimeType: "audio/mp4",
++          size: 8_400,
++        },
++      ],
++      {},
++      role,
++    );
++    const clip = styleOf(container.firstElementChild!.lastElementChild);
++    expect(clip).toMatchObject({ alignSelf: side });
++    expect(clip).not.toHaveProperty("width");
++  });
++
+   it.each([
+     [
+       "helper then text",
 diff --git a/apps/mobile/lib/thread-feedback.test.tsx b/apps/mobile/lib/thread-feedback.test.tsx
 index c109548..b553a1a 100644
 --- a/apps/mobile/lib/thread-feedback.test.tsx
@@ -82322,6 +82706,38 @@ index 9c969b6..2894daf 100644
  /** True only when the provider is ready to transcribe. Any other outcome is false. */
  export async function probeProviderTranscribe(
    loadVoiceStatus: () => Promise<VoiceCallStatus>,
+diff --git a/apps/mobile/lib/voice-chat-card.test.tsx b/apps/mobile/lib/voice-chat-card.test.tsx
+index d216f5d..49d958b 100644
+--- a/apps/mobile/lib/voice-chat-card.test.tsx
++++ b/apps/mobile/lib/voice-chat-card.test.tsx
+@@ -32,12 +32,27 @@ vi.mock("./native", () => ({
+ vi.mock("../components/native-symbol", () => ({ NativeSymbol: () => null }));
+ 
+ import { VoiceChatCard } from "../components/VoiceChatCard";
++import { MESSAGE_COLUMN_SHARE } from "./message-row-layout";
+ 
+ function styleOf(element: Element | null) {
+   return JSON.parse(element?.getAttribute("data-style") ?? "{}") as Record<string, unknown>;
+ }
+ 
+ describe("VoiceChatCard", () => {
++  it("takes the share of the column a bubble above or below it takes", () => {
++    const html = renderToStaticMarkup(
++      <VoiceChatCard group={{ kind: "voiceChat", key: "call:1", callId: "1", messages: [] }} />,
++    );
++    const document = new DOMParser().parseFromString(html, "text/html");
++    const card = styleOf(document.body.firstElementChild);
++
++    // Not 88% and no longer sized by its summary line: a card that shrank to its words left a
++    // short stub beside full-width bubbles.
++    expect(card.width).toBe(MESSAGE_COLUMN_SHARE);
++    expect(card.maxWidth).toBe(MESSAGE_COLUMN_SHARE);
++    expect(card.alignSelf).toBe("flex-start");
++  });
++
+   it("keeps its header 40pt tall and lets it grow with the title at larger text sizes", () => {
+     const html = renderToStaticMarkup(
+       <VoiceChatCard group={{ kind: "voiceChat", key: "call:1", callId: "1", messages: [] }} />,
 diff --git a/apps/mobile/lib/voice.test.ts b/apps/mobile/lib/voice.test.ts
 index d3f14e2..194e723 100644
 --- a/apps/mobile/lib/voice.test.ts

@@ -73614,10 +73614,10 @@ index 4777a02..79da0cf 100644
  
 diff --git a/apps/mobile/lib/activity-label.test.ts b/apps/mobile/lib/activity-label.test.ts
 new file mode 100644
-index 0000000..f38b7eb
+index 0000000..a891e30
 --- /dev/null
 +++ b/apps/mobile/lib/activity-label.test.ts
-@@ -0,0 +1,41 @@
+@@ -0,0 +1,115 @@
 +import { describe, expect, it } from "vitest";
 +import { activityStep, needsYouStep } from "./activity-label";
 +
@@ -73630,8 +73630,11 @@ index 0000000..f38b7eb
 +  });
 +
 +  it("keeps one step while the same work goes on, whatever its details", () => {
-+    expect(activityStep("Searching the web: 一")?.key).toBe(activityStep("Searching the web: 二")?.key);
++    expect(activityStep("Searching the web: 一")?.key).toBe(
++      activityStep("Searching the web: 二")?.key,
++    );
 +    expect(activityStep("Reading a.md")?.key).toBe(activityStep("Reading b.md")?.key);
++    expect(activityStep("Read file a.md")?.key).toBe(activityStep("Read file b.md")?.key);
 +  });
 +
 +  it("tells reading a page apart from running a command", () => {
@@ -73659,21 +73662,97 @@ index 0000000..f38b7eb
 +    expect(needsYouStep()).toEqual({ key: "needs-you", label: "需要你输入" });
 +  });
 +});
++
++/** What the server writes on the ledger: a tool's own name, then what it was handed. */
++describe("activityStep on the server's own tool lines", () => {
++  it("reads a file in Chinese, never the path the tool was given", () => {
++    // The line IMG_2804 caught: the ledger says the tool and the path, not what it is doing.
++    expect(activityStep("Read file magpie-ios-app/Magpie/Views/Server.swift")?.label).toBe(
++      "正在读文件",
++    );
++    expect(activityStep("Read file magpie-ios-app/Magpie/Views/Serve…")?.label).toBe("正在读文件");
++  });
++
++  it("names each tool it can meet, in the words of the phrase list", () => {
++    expect(activityStep("Write file notes.md")?.label).toBe("正在写文件");
++    expect(activityStep("Edit file notes.md")?.label).toBe("正在写文件");
++    expect(activityStep("List files /workspace")?.label).toBe("正在翻看目录");
++    expect(activityStep("Search files 排班")?.label).toBe("正在四处查找");
++    expect(activityStep("Web search 院外心脏骤停")?.label).toBe("正在四处查找");
++    expect(activityStep("Web fetch https://example.com")?.label).toBe("正在读网页");
++    expect(activityStep("Find tool 排班表")?.label).toBe("正在找合适的工具");
++    expect(activityStep("Attach file 交班记录.docx")?.label).toBe("正在整理文件");
++    expect(activityStep("Remember 明天早上查房")?.label).toBe("正在记笔记");
++    expect(activityStep("Search history 排班")?.label).toBe("正在翻查以前的记录");
++    expect(activityStep("Search diaries 排班")?.label).toBe("正在翻查以前的记录");
++    expect(activityStep("Read diary d-1")?.label).toBe("正在翻查以前的记录");
++    expect(activityStep("Generate image 一张图")?.label).toBe("正在画图");
++    expect(activityStep("Generate video 一段片头")?.label).toBe("正在做一段视频");
++    expect(activityStep("Send email to 张医生")?.label).toBe("正在发邮件");
++    expect(activityStep("Run subagent 文献速递")?.label).toBe("正在和另一个 Bot 确认");
++    expect(activityStep("Schedule create 每周五")?.label).toBe("正在安排定时任务");
++  });
++
++  it("reads a call that named no target as its tool", () => {
++    expect(activityStep("using Read file")?.label).toBe("正在读文件");
++    expect(activityStep("using Web search")?.label).toBe("正在四处查找");
++  });
++
++  it("says a bare command as the shell's line", () => {
++    // `shell` writes its currentStep as the command itself, with no tool name in front.
++    expect(activityStep("ls -la /workspace")?.label).toBe("正在执行几条命令");
++    expect(activityStep("python3 fetch.py")?.label).toBe("正在执行几条命令");
++    expect(activityStep("curl -s https://rakazo.163ll.com/rpc/health")?.label).toBe(
++      "正在执行几条命令",
++    );
++    expect(activityStep("/usr/libexec/PlistBuddy -c 'Print :UIAppFonts'")?.label).toBe(
++      "正在执行几条命令",
++    );
++    expect(activityStep("git -C /workspace/repos/rakazo status")?.label).toBe("正在执行几条命令");
++    expect(activityStep("EXPO_PUBLIC_API_URL=https://x pnpm build")?.label).toBe(
++      "正在执行几条命令",
++    );
++  });
++
++  it("keeps one step for a run of commands", () => {
++    expect(activityStep("ls -la")?.key).toBe(activityStep("python3 fetch.py")?.key);
++  });
++
++  it("says the ledger's own lines in Chinese too", () => {
++    expect(activityStep("quality gate (level-4): passed")?.label).toBe("正在复核结果");
++    expect(activityStep("waiting on your approval: https://example.com")?.label).toBe("需要你确认");
++  });
++
++  it("never shows an English line the table has not met", () => {
++    expect(activityStep("Notion search 周报")?.label).toBe("正在处理");
++    expect(activityStep("Checking the schedule")?.label).toBe("正在处理");
++    expect(activityStep("Read file")?.label).toBe("正在读文件");
++  });
++
++  it("still leaves a Chinese note as the bot wrote it", () => {
++    expect(activityStep("先把交班记录翻出来看一眼")?.label).toBe("先把交班记录翻出来看一眼");
++  });
++});
 diff --git a/apps/mobile/lib/activity-label.ts b/apps/mobile/lib/activity-label.ts
 new file mode 100644
-index 0000000..986f857
+index 0000000..17505bd
 --- /dev/null
 +++ b/apps/mobile/lib/activity-label.ts
-@@ -0,0 +1,129 @@
+@@ -0,0 +1,448 @@
 +import { t } from "@lingui/core/macro";
 +
 +/**
 + * What the working line says, in the reference app's words: one short phrase for what a bot is
 + * doing, rather than the tool's own name and its arguments.
 + *
-+ * The server sends a line about the call it is making ("Searching the web: …", "Running: …"), so
-+ * each known way of starting that line becomes its phrase. Anything else — the bot's own note
-+ * about what it is up to — is shown as the bot wrote it.
++ * Two kinds of line reach it. One is the bot's own note about what it is up to, and the bot writes
++ * that in the reader's own words, so it is shown as written. The other is the server's record of
++ * the call being made, which is a tool's name and what it was given — `Read file
++ * magpie-ios-app/Magpie/Views/Server.swift`, `Web search 院外心脏骤停` — or, for a shell, the bare
++ * command. Those say what a tool was handed, not what the bot is telling the reader, so the line
++ * says 正在读文件 rather than a path: every name the server can write has its phrase below, and a
++ * line that is plainly a command is said as one. A line with no Chinese in it is never one of the
++ * bot's own notes, so it is never shown as written either.
 + */
 +export type ActivityStep = {
 +  /** What is being done, so a second call of the same kind does not redraw the line. */
@@ -73683,6 +73762,238 @@ index 0000000..986f857
 +
 +type Rule = { readonly match: RegExp; readonly key: string; readonly label: () => string };
 +
++/** One phrase of the working line, and the tool names whose call reads as it. */
++type ToolPhrase = {
++  /** The call's own name, lower-cased: what the server writes before the detail. */
++  readonly names: readonly string[];
++  readonly key: string;
++  readonly label: () => string;
++};
++
++/**
++ * Every tool the server can name, under the phrase its call reads as. The names are the tool's own
++ * name with its underscores turned into spaces (`read_file` → `read file`), which is what
++ * `humanizeToolName` writes at the head of the line.
++ */
++const TOOL_PHRASES: readonly ToolPhrase[] = [
++  // Looking things up.
++  {
++    names: ["web search", "service search", "search files", "find files", "search the web"],
++    key: "search",
++    label: () => t`正在四处查找`,
++  },
++  {
++    names: ["web fetch", "browser snapshot", "browser read", "fetch url"],
++    key: "read-web",
++    label: () => t`正在读网页`,
++  },
++  {
++    names: ["browser navigate", "open url", "navigate"],
++    key: "open-web",
++    label: () => t`正在打开网页`,
++  },
++  {
++    names: ["browser act", "browser click", "browser type"],
++    key: "use-web",
++    label: () => t`正在网页上点来点去`,
++  },
++  // Files.
++  {
++    names: ["read file", "read files", "open file", "view file"],
++    key: "read-file",
++    label: () => t`正在读文件`,
++  },
++  {
++    names: ["write file", "write files", "edit file", "write text"],
++    key: "write-file",
++    label: () => t`正在写文件`,
++  },
++  {
++    names: ["list files", "list dir", "list directory"],
++    key: "list-files",
++    label: () => t`正在翻看目录`,
++  },
++  {
++    names: [
++      "attach file",
++      "attach files",
++      "save page",
++      "move file",
++      "move files",
++      "copy file",
++      "delete file",
++    ],
++    key: "attach-file",
++    label: () => t`正在整理文件`,
++  },
++  {
++    names: ["generate image", "render plot", "sketch", "draw"],
++    key: "draw",
++    label: () => t`正在画图`,
++  },
++  { names: ["generate video", "film"], key: "video", label: () => t`正在做一段视频` },
++  // Commands and computers. A shell's own line is the bare command, so these are the names that
++  // still carry one — the user's computer, which the app says apart from a connected app.
++  {
++    names: ["shell", "computer shell", "user computer shell", "run command", "exec"],
++    key: "shell",
++    label: () => t`正在执行几条命令`,
++  },
++  {
++    names: ["computer observe", "computer act", "launch app", "open path", "screenshot"],
++    key: "its-computer",
++    label: () => t`正在屏幕上点一点`,
++  },
++  {
++    names: ["user computer observe", "user computer act"],
++    key: "your-computer",
++    label: () => t`正在你的电脑上操作`,
++  },
++  // Connected apps and their own tools. An MCP tool's name arrives as `mcp__<server>__<tool>`,
++  // which reads as `Mcp <server> <tool>`; the app is what the reader cares about.
++  {
++    names: ["service call", "connect app", "add mcp server", "call app", "mcp", "composio"],
++    key: "connector",
++    label: () => t`正在用连接的应用`,
++  },
++  // Other bots, and the user's own roster.
++  {
++    names: [
++      "run subagent",
++      "message bot",
++      "handoff to bot",
++      "message agent",
++      "connect agent",
++      "respond agent connection",
++      "cloud agent launch",
++      "cloud agent status",
++      "cloud agent reply",
++      "cloud agent cancel",
++      "delegate",
++    ],
++    key: "peer",
++    label: () => t`正在和另一个 Bot 确认`,
++  },
++  { names: ["list bots", "list fleet", "fleet"], key: "fleet", label: () => t`正在查看你的 Bot` },
++  {
++    names: ["create group", "update group", "organize bot", "create space", "organize space"],
++    key: "organize",
++    label: () => t`正在整理侧栏`,
++  },
++  {
++    names: [
++      "spawn bot",
++      "update bot",
++      "create bot",
++      "archive bot",
++      "set child instructions",
++      "set child bot model",
++      "set bot model",
++      "set bot hierarchy",
++      "create child routine",
++      "save routing rule",
++      "list routing rules",
++      "delete routing rule",
++    ],
++    key: "bot-setup",
++    label: () => t`正在安排 Bot`,
++  },
++  // Notes, memory and the pages that hold them.
++  {
++    names: [
++      "remember",
++      "save memory",
++      "save shared memory",
++      "forget memory",
++      "reflect memory",
++      "scratchpad list",
++      "scratchpad add",
++      "scratchpad update",
++      "scratchpad complete",
++      "scratchpad remove",
++    ],
++    key: "memory",
++    label: () => t`正在记笔记`,
++  },
++  { names: ["recall memory", "memory search"], key: "memory-read", label: () => t`正在翻看记忆` },
++  {
++    names: ["search history", "read history", "search diaries", "read diary", "list diaries"],
++    key: "history",
++    label: () => t`正在翻查以前的记录`,
++  },
++  {
++    names: ["skill read", "skill create", "skill update", "skill delete", "read skill"],
++    key: "skill",
++    label: () => t`正在整理技能`,
++  },
++  // Mail.
++  {
++    names: ["read email", "search email", "list email", "list emails"],
++    key: "mail-read",
++    label: () => t`正在读邮件`,
++  },
++  {
++    names: ["send email", "draft email", "claim email address"],
++    key: "mail-send",
++    label: () => t`正在发邮件`,
++  },
++  {
++    names: ["delete email", "archive email", "label email"],
++    key: "mail-organize",
++    label: () => t`正在整理邮件`,
++  },
++  // The day's bookkeeping.
++  {
++    names: ["board tickets", "ticket get", "ticket create", "ticket update", "ticket comment"],
++    key: "ticket",
++    label: () => t`正在整理待办`,
++  },
++  {
++    names: ["schedule create", "schedule list", "schedule update", "schedule cancel"],
++    key: "schedule",
++    label: () => t`正在安排定时任务`,
++  },
++  { names: ["update preferences", "set preferences"], key: "settings", label: () => t`正在改设置` },
++  // Money, secrets and the phone call.
++  {
++    names: ["request purchase", "purchase status", "paid request"],
++    key: "pay",
++    label: () => t`正在处理付款`,
++  },
++  {
++    names: ["request secret", "generate secret", "list secrets", "secret request", "forget secret"],
++    key: "vault",
++    label: () => t`正在看保管库`,
++  },
++  { names: ["call user", "end call", "start call"], key: "call", label: () => t`正在打电话` },
++  // The reply itself, and what waits on the reader.
++  {
++    names: ["reply now", "message user", "react to message", "send message"],
++    key: "reply",
++    label: () => t`正在回话`,
++  },
++  {
++    names: ["ask user", "present quiz", "request takeover", "request answer"],
++    key: "needs-you",
++    label: () => t`需要你输入`,
++  },
++  {
++    names: ["find tool", "task catalog", "tool catalog"],
++    key: "find-tool",
++    label: () => t`正在找合适的工具`,
++  },
++  { names: ["check usage", "usage"], key: "usage", label: () => t`正在查用量` },
++];
++
++/** The tools by name, longest name first, so a line is read by the longest name it starts with. */
++const TOOL_BY_NAME: readonly (readonly [string, ToolPhrase])[] = TOOL_PHRASES.flatMap((phrase) =>
++  phrase.names.map((name) => [name, phrase] as const),
++).sort(([a], [b]) => b.length - a.length);
++
++/**
++ * Ways of starting a line that the server used to write, kept so an older server still reads as a
++ * phrase. The names above cover every tool it writes today.
++ */
 +const RULES: readonly Rule[] = [
 +  // Looking things up.
 +  {
@@ -73770,6 +74081,17 @@ index 0000000..986f857
 +  { match: /^Working in a connected app\b/i, key: "connector", label: () => t`正在用连接的应用` },
 +  { match: /^(Checking your usage)\b/i, key: "usage", label: () => t`正在查用量` },
 +  { match: /^Finding a tool\b/i, key: "find-tool", label: () => t`正在找合适的工具` },
++  // The ledger's own lines about a piece of work, which name no tool at all.
++  {
++    match: /^quality gate\b/i,
++    key: "gate",
++    label: () => t`正在复核结果`,
++  },
++  {
++    match: /^waiting on (your )?approval\b/i,
++    key: "approval",
++    label: () => t`需要你确认`,
++  },
 +];
 +
 +/** The line a bot waiting on the user shows instead of what it is doing. */
@@ -73777,20 +74099,91 @@ index 0000000..986f857
 +  return { key: "needs-you", label: t`需要你输入` };
 +}
 +
++/** `using Read file` — a call whose arguments named no target at all. */
++const USING_TOOL = /^using\s+(.+)$/i;
++
++/** A line with no Chinese in it is not the bot talking to this reader. */
++const HAS_CJK = /[\u3400-\u9fff\uf900-\ufaff]/;
++
++/**
++ * A name this table has not learned, followed by what it was given: `Notion search 周报`. Two
++ * English words at least, so a note that merely opens with one is still the bot's own.
++ */
++const UNKNOWN_TOOL_LINE = /^[A-Za-z][\w.-]*(?: [\w./-]+)+ \S/;
++
++/**
++ * The programs a bare command line may start with. A shell writes its own step as the command
++ * itself, with no tool's name in front of it.
++ */
++const COMMANDS = new Set(
++  (
++    "ls ll la cat head tail less more grep egrep rg ag sed awk find fd tree stat file wc sort " +
++    "uniq cut tr diff patch xargs echo printf tee touch mkdir rmdir cp mv rm ln chmod chown cd " +
++    "pwd env export source alias which whereis type readlink date sleep time du df free ps top " +
++    "htop kill pkill nohup node npm npx pnpm yarn bun deno tsc eslint biome prettier vitest jest " +
++    "pytest python python3 pip pip3 uv poetry ruby gem go cargo rustc java javac mvn gradle swift " +
++    "swiftc xcrun xcodebuild pod fastlane plutil defaults osascript screencapture security git gh " +
++    "curl wget ssh scp rsync nc ping dig nslookup netstat lsof ip ifconfig ss traceroute openssl " +
++    "gpg tar zip unzip gzip gunzip jq yq sqlite3 psql mysql redis-cli mongosh docker " +
++    "docker-compose kubectl helm terraform ansible aws gcloud az make cmake ninja bash sh zsh " +
++    "fish sudo su apt apt-get dpkg brew systemctl service journalctl crontab launchctl mount " +
++    "umount uname whoami id groups hostname uptime man vim vi nano emacs code open ffmpeg convert " +
++    "magick sips textutil base64 md5 md5sum shasum sha256sum"
++  ).split(" "),
++);
++
++/** True for a line that is one command rather than a sentence (`ls -la`, `/usr/bin/env node x`). */
++function isCommandLine(text: string): boolean {
++  const first = text.split(" ")[0] ?? "";
++  if (COMMANDS.has(first.toLowerCase())) return true;
++  // A program named by its path: `./build.sh`, `~/bin/check`, `/usr/bin/env node …`.
++  if (/^(?:\.{0,2}\/|~\/)/.test(first)) return true;
++  // A command with a variable set in front of it: `EXPO_PUBLIC_API_URL=… pnpm build`.
++  if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(first)) return true;
++  // One line that pipes, chains, redirects or reads a variable is one command.
++  return /[|&;<>()`$]/.test(text);
++}
++
++/** The phrase for the tool `text` starts with, if it starts with one this table knows. */
++function toolStep(text: string): ActivityStep | undefined {
++  const lower = text.toLowerCase();
++  for (const [name, phrase] of TOOL_BY_NAME) {
++    if (lower === name || lower.startsWith(`${name} `)) {
++      return { key: phrase.key, label: phrase.label() };
++    }
++  }
++  return undefined;
++}
++
 +/** A note that is not about a tool: the bot's own words, kept as written. */
 +const NOTE_MAX = 90;
 +
 +/**
-+ * The step one live activity line stands for. Tool lines become their phrase; a bot's own note
-+ * stays its words, so a reader sees "先去查院内的指南" rather than a tool name.
++ * The step one live activity line stands for. A call's line becomes its phrase, a command line
++ * becomes the shell's, and anything with no Chinese in it — a tool this table has not met, a
++ * command — is never shown as written. The bot's own note stays its words, so a reader sees
++ * "先去查院内的指南" rather than a tool name.
 + */
 +export function activityStep(line: string | undefined): ActivityStep | undefined {
 +  const text = line?.replace(/\s+/g, " ").trim();
 +  if (!text) return undefined;
++  // `using Read file`: the tool is the whole line, and it is not `Using your computer`.
++  const named = USING_TOOL.exec(text)?.[1];
++  if (named) {
++    const tool = toolStep(named);
++    if (tool) return tool;
++  }
 +  for (const rule of RULES) {
 +    if (rule.match.test(text)) return { key: rule.key, label: rule.label() };
 +  }
-+  // `Using toolName` from a connector, in the words the app already translates.
++  const tool = toolStep(text);
++  if (tool) return tool;
++  if (!HAS_CJK.test(text)) {
++    return isCommandLine(text)
++      ? { key: "shell", label: t`正在执行几条命令` }
++      : { key: "unknown-tool", label: t`正在处理` };
++  }
++  if (UNKNOWN_TOOL_LINE.test(text)) return { key: "unknown-tool", label: t`正在处理` };
 +  const clipped = text.length > NOTE_MAX ? `${text.slice(0, NOTE_MAX).trimEnd()}…` : text;
 +  return { key: `note:${clipped}`, label: clipped };
 +}
@@ -78865,12 +79258,13 @@ index 0000000..c5e089f
 +}
 diff --git a/apps/mobile/lib/ledger-tasks.test.ts b/apps/mobile/lib/ledger-tasks.test.ts
 new file mode 100644
-index 0000000..d3a6a24
+index 0000000..a706118
 --- /dev/null
 +++ b/apps/mobile/lib/ledger-tasks.test.ts
-@@ -0,0 +1,185 @@
+@@ -0,0 +1,195 @@
 +import type { FrontDeskTask } from "@rakazo/contracts";
 +import { describe, expect, it } from "vitest";
++import { activityStep } from "./activity-label";
 +import {
 +  frontDeskActivity,
 +  ledgerElapsed,
@@ -79021,6 +79415,15 @@ index 0000000..d3a6a24
 +        deskTask({ status: "completed", currentStep: "做好了。" }),
 +      ]),
 +    ).toEqual({ working: false, line: undefined });
++  });
++
++  it("hands the line to the footer, which says the tool in Chinese", () => {
++    // The server writes the call it is making, so the desk's own step is English about a tool
++    // (`Read file magpie-ios-app/...`, or a bare command). The footer translates it.
++    const reading = frontDeskActivity([deskTask({ currentStep: "Read file a/b.swift" })]).line;
++    expect(activityStep(reading)?.label).toBe("正在读文件");
++    const running = frontDeskActivity([deskTask({ currentStep: "npx tsc --noEmit" })]).line;
++    expect(activityStep(running)?.label).toBe("正在执行几条命令");
 +  });
 +});
 +

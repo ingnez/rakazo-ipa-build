@@ -37,6 +37,13 @@ test -f apps/mobile/modules/rakazo-realtime-audio/ios/RakazoRealtimeAudioModule.
 test -f apps/mobile/lib/realtime-call.ts
 test -f apps/mobile/assets/fonts/xvf/XVF-Regular.ttf
 test -f apps/mobile/assets/sounds/grok/ping_4_chime_a.wav
+# The phone's own connectors: five frameworks behind one native module, and the usage strings
+# iOS shows when the person turns one on. A patch that lost any of them must fail here.
+test -f apps/mobile/modules/rakazo-connectors/ios/RakazoConnectorsModule.swift
+test -f apps/mobile/modules/rakazo-connectors/ios/PhoneAlarmKit.swift
+test -f apps/mobile/modules/rakazo-connectors/ios/PhoneCalendarConnector.swift
+test -f apps/mobile/lib/phone-connectors.ts
+node -e 'const p=require("./apps/mobile/app.json");const ip=p.expo.ios.infoPlist;for(const k of ["NSAlarmKitUsageDescription","NSCalendarsFullAccessUsageDescription","NSRemindersFullAccessUsageDescription","NSContactsUsageDescription","NSLocationWhenInUseUsageDescription"]){if(!ip[k])throw new Error("missing "+k)}'
 grep -q 'expo-font' apps/mobile/app.json
 # The icon is shipped as an Icon Composer package and the splash as images: a patch that lost
 # either would still compile, so fail here and name what is missing.

@@ -62492,7 +62492,7 @@ index dc2c99b..6979171 100644
 +}
 diff --git a/apps/mobile/components/bot-profile-tabs.tsx b/apps/mobile/components/bot-profile-tabs.tsx
 new file mode 100644
-index 0000000..efd0f7d
+index 0000000..be48d40
 --- /dev/null
 +++ b/apps/mobile/components/bot-profile-tabs.tsx
 @@ -0,0 +1,772 @@
@@ -62819,7 +62819,7 @@ index 0000000..efd0f7d
 +  const tokens = useMobileTokens();
 +  const router = useRouter();
 +  const diaryRead = rpcQuery("memory/diaries", { botId, limit: 20 });
-+  const diaries = useQuery(diaryRead);
++  const diaries = useQuery(diaryRead, queryClient);
 +  const pendingRead = rpcQuery("memory/learnings", { botId, status: "pending", limit: 50 });
 +  const pending = useQuery(pendingRead, queryClient);
 +  const approvedRead = rpcQuery("memory/learnings", { botId, status: "approved", limit: 50 });
@@ -78914,6 +78914,116 @@ index c9997f1..af98063 100644
          if (prepared.uri !== uri) {
            resized.push(prepared.uri);
            let resizedSize: number | undefined;
+diff --git a/apps/mobile/lib/query-client-provided.test.ts b/apps/mobile/lib/query-client-provided.test.ts
+new file mode 100644
+index 0000000..d29134b
+--- /dev/null
++++ b/apps/mobile/lib/query-client-provided.test.ts
+@@ -0,0 +1,104 @@
++import { readdirSync, readFileSync, statSync } from "node:fs";
++import { dirname, join, relative, resolve } from "node:path";
++import { fileURLToPath } from "node:url";
++import ts from "typescript";
++import { describe, expect, it } from "vitest";
++
++// Nothing in the app wraps a <QueryClientProvider>, so a query hook that is called with only its
++// options reads a client out of React context that no one put there: the screen throws
++// "No QueryClient set, use QueryClientProvider to set one" the moment it renders. That is what
++// the Bot's page did on its 记忆与总结 column, and TypeScript cannot catch it because the hook's
++// second parameter is optional. This test is the guard instead: every query hook call in the app
++// must name the shared client.
++
++const mobileRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
++const HOOKS = new Set(["useQuery", "useMutation", "useInfiniteQuery", "useQueries"]);
++
++/** Every .ts/.tsx file the app ships, tests and generated native code left out. */
++function sourceFiles(directory: string): string[] {
++  return readdirSync(directory).flatMap((entry) => {
++    if (entry === "node_modules" || entry.startsWith(".")) return [];
++    const path = join(directory, entry);
++    if (statSync(path).isDirectory()) return sourceFiles(path);
++    if (!/\.tsx?$/.test(entry) || /\.test\.tsx?$/.test(entry) || /\.d\.ts$/.test(entry)) return [];
++    return [path];
++  });
++}
++
++/** The hook names this file takes from @tanstack/react-query, so a same-named local is left alone. */
++function importedHooks(file: ts.SourceFile): Set<string> {
++  const names = new Set<string>();
++  for (const statement of file.statements) {
++    if (!ts.isImportDeclaration(statement)) continue;
++    if (!ts.isStringLiteral(statement.moduleSpecifier)) continue;
++    if (statement.moduleSpecifier.text !== "@tanstack/react-query") continue;
++    const { importClause } = statement;
++    const bindings = importClause?.namedBindings;
++    if (!bindings || !ts.isNamedImports(bindings)) continue;
++    for (const element of bindings.elements) {
++      const imported = (element.propertyName ?? element.name).text;
++      if (HOOKS.has(imported)) names.add(element.name.text);
++    }
++  }
++  return names;
++}
++
++/** The second argument must be the shared client itself, not something that may be undefined. */
++function namesQueryClient(node: ts.Expression): boolean {
++  if (ts.isIdentifier(node)) return node.text === "queryClient";
++  if (ts.isPropertyAccessExpression(node)) return node.name.text === "queryClient";
++  return false;
++}
++
++type Violation = { file: string; line: number; call: string };
++
++function scan(): { calls: number; violations: Violation[]; files: number } {
++  const violations: Violation[] = [];
++  let calls = 0;
++  let files = 0;
++  for (const path of sourceFiles(mobileRoot)) {
++    const text = readFileSync(path, "utf8");
++    if (!HOOKS.size || !/(useQuery|useMutation|useInfiniteQuery|useQueries)/.test(text)) continue;
++    const source = ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
++    const hooks = importedHooks(source);
++    if (hooks.size === 0) continue;
++    files += 1;
++    const visit = (node: ts.Node) => {
++      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
++        const name = node.expression.text;
++        if (hooks.has(name)) {
++          calls += 1;
++          const options = node.arguments[0];
++          const client = node.arguments[1];
++          if (!options || !client || !namesQueryClient(client) || node.arguments.length !== 2) {
++            const { line } = source.getLineAndCharacterOfPosition(node.getStart(source));
++            violations.push({
++              file: relative(mobileRoot, path),
++              line: line + 1,
++              call: node.getText(source).split("\n")[0]?.slice(0, 90) ?? name,
++            });
++          }
++        }
++      }
++      ts.forEachChild(node, visit);
++    };
++    ts.forEachChild(source, visit);
++  }
++  return { calls, violations, files };
++}
++
++describe("query hooks name the shared client", () => {
++  it("passes queryClient to every useQuery / useMutation / useInfiniteQuery call", () => {
++    const { calls, violations, files } = scan();
++    // The scan itself must reach the app's screens: a silent zero would pass this test for nothing.
++    expect(files).toBeGreaterThan(5);
++    expect(calls).toBeGreaterThan(15);
++    expect(violations.map((v) => `${v.file}:${v.line} ${v.call}`)).toEqual([]);
++  });
++
++  it("keeps the Bot page's diary list on the shared client", () => {
++    const page = readFileSync(join(mobileRoot, "components", "bot-profile-tabs.tsx"), "utf8");
++    expect(page).toContain("const diaries = useQuery(diaryRead, queryClient);");
++    expect(page).not.toContain("useQuery(diaryRead)");
++  });
++});
 diff --git a/apps/mobile/lib/quick-look.test.ts b/apps/mobile/lib/quick-look.test.ts
 new file mode 100644
 index 0000000..8b86735

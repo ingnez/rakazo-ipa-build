@@ -1088,7 +1088,7 @@ index 0000000..7e57db0
 +  });
 +}
 diff --git a/apps/mobile/app/(settings)/integrations.tsx b/apps/mobile/app/(settings)/integrations.tsx
-index 283b574..5745d03 100644
+index 283b574..2243d64 100644
 --- a/apps/mobile/app/(settings)/integrations.tsx
 +++ b/apps/mobile/app/(settings)/integrations.tsx
 @@ -10,7 +10,6 @@ import type {
@@ -1745,7 +1745,7 @@ index 283b574..5745d03 100644
              ) : null}
  
              {catalogError ? (
-@@ -1125,147 +1237,137 @@ export default function Integrations() {
+@@ -1125,147 +1237,139 @@ export default function Integrations() {
                </View>
              ) : null}
  
@@ -1856,7 +1856,7 @@ index 283b574..5745d03 100644
 -                    {renderedApps.map((item) => renderCatalogTile(item, item.name))}
 -                  </View>
 -                ) : null}
-+            {!onlyConnected ? renderConnected() : null}
++            {renderConnected()}
  
 -                {catalogsReady &&
 -                catalogApps.length === 0 &&
@@ -1936,9 +1936,11 @@ index 283b574..5745d03 100644
 +
 +            {empty && !query.trim() ? (
 +              <Text style={styles.secondary}>
-+                {tab === "all"
-+                  ? t`Configure a plugin catalog on the server to connect apps.`
-+                  : t`Nothing on this shelf yet.`}
++                {onlyConnected
++                  ? t`No apps connected yet.`
++                  : tab === "all"
++                    ? t`Configure a plugin catalog on the server to connect apps.`
++                    : t`Nothing on this shelf yet.`}
 +              </Text>
 +            ) : null}
 +
@@ -100908,7 +100910,7 @@ index 73652a3..5a4a900 100644
 +msgid "Same as Everyday help"
 +msgstr "Günlük yardımla aynı"
 diff --git a/packages/i18n/locales/zh-CN/messages.po b/packages/i18n/locales/zh-CN/messages.po
-index 422c5af..3923610 100644
+index 422c5af..714c802 100644
 --- a/packages/i18n/locales/zh-CN/messages.po
 +++ b/packages/i18n/locales/zh-CN/messages.po
 @@ -281,7 +281,7 @@ msgstr "{count} 个需要处理"
@@ -101026,7 +101028,7 @@ index 422c5af..3923610 100644
  #. js-lingui-explicit-id
  #: packages/i18n/src/run-error.ts
  msgid "The model hit its output limit before finishing its reply."
-@@ -11755,3 +11803,323 @@ msgstr "你的语音提供商拒绝了该密钥。"
+@@ -11755,3 +11803,327 @@ msgstr "你的语音提供商拒绝了该密钥。"
  #: apps/web/src/components/vault/VaultItemEditor.tsx
  msgid "ZIP or postal code"
  msgstr "邮政编码"
@@ -101350,6 +101352,10 @@ index 422c5af..3923610 100644
 +#: apps/mobile/app/(settings)/integrations.tsx
 +msgid "{count} accounts"
 +msgstr "{count} 个账户"
++
++#: apps/mobile/app/(settings)/integrations.tsx
++msgid "No apps connected yet."
++msgstr "还没有已连接的应用。"
 diff --git a/packages/i18n/locales/zh-TW/messages.po b/packages/i18n/locales/zh-TW/messages.po
 index 796df87..d90c130 100644
 --- a/packages/i18n/locales/zh-TW/messages.po

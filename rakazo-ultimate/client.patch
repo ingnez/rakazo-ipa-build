@@ -2229,7 +2229,7 @@ index e65118b..7433409 100644
                <ComputerUpdateProgress />
                <MessageMenuHost />
 diff --git a/apps/mobile/app/bot-profile.tsx b/apps/mobile/app/bot-profile.tsx
-index 9187fee..175a27c 100644
+index 9187fee..1d678eb 100644
 --- a/apps/mobile/app/bot-profile.tsx
 +++ b/apps/mobile/app/bot-profile.tsx
 @@ -8,6 +8,7 @@ import { Alert, Platform, ScrollView, StyleSheet, Text, View } from "react-nativ
@@ -2240,20 +2240,14 @@ index 9187fee..175a27c 100644
  import { glassHeaderOptions } from "../components/glass-title";
  import { NativeActionButton } from "../components/native-action-button";
  import { NativeSymbol } from "../components/native-symbol";
-@@ -141,6 +142,17 @@ export default function BotProfile() {
+@@ -141,6 +142,11 @@ export default function BotProfile() {
            onPress={() => router.push({ pathname: "/bot-settings", params: { botId } })}
          />
        </View>
 +      {botId ? (
 +        // The Bot's own three columns, as the reference app lays them out: what it is working on,
 +        // what starts it by itself, and what it has learned — then the rest of its settings.
-+        <BotProfileTabs
-+          botId={botId}
-+          botName={name}
-+          onOpenChat={(id, botName) =>
-+            router.push({ pathname: "/thread", params: { botId: id, name: botName } })
-+          }
-+        />
++        <BotProfileTabs botId={botId} botName={name} />
 +      ) : null}
        <SettingsGroup>
          <SettingsRow
@@ -62492,26 +62486,35 @@ index dc2c99b..6979171 100644
 +}
 diff --git a/apps/mobile/components/bot-profile-tabs.tsx b/apps/mobile/components/bot-profile-tabs.tsx
 new file mode 100644
-index 0000000..be48d40
+index 0000000..38a7758
 --- /dev/null
 +++ b/apps/mobile/components/bot-profile-tabs.tsx
-@@ -0,0 +1,772 @@
-+import { useLingui } from "@lingui/react/macro";
+@@ -0,0 +1,743 @@
 +import type { DiarySummary, FrontDeskTask, MemoryLearning, Routine } from "@rakazo/contracts";
-+import { useQuery } from "@tanstack/react-query";
++import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 +import { useRouter } from "expo-router";
-+import { useCallback, useEffect, useMemo, useState } from "react";
++import { useCallback, useMemo, useState } from "react";
 +import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from "react-native";
-+import { activityStatusLabel, formatActivityRelativeTime } from "../lib/activity";
 +import { rpc } from "../lib/api";
 +import { hapticError, hapticSelection, hapticSuccess } from "../lib/haptics";
 +import { native, useMobileTokens } from "../lib/native";
 +import { queryClient, rpcQuery } from "../lib/query";
 +import { deviceTimeZone, routineRowDetail } from "../lib/routine";
 +import { setRoutineActive, useBotRoutines } from "../lib/routine-store";
++import {
++  groupTasksByDay,
++  mergeTaskPages,
++  TASK_LIST_POLL_MS,
++  taskIsOpen,
++  taskRowDetail,
++  taskRowMeta,
++  taskRowTrail,
++  taskStatusLabel,
++} from "../lib/task-steps";
 +import { errorText } from "../lib/user-error";
 +import { NativeSwitch } from "./native-switch";
 +import { NativeSymbol } from "./native-symbol";
++import { TaskStepsSheet } from "./task-steps-sheet";
 +
 +/**
 + * The Bot's own page, in the reference app's three columns: the work it has been given, the
@@ -62528,24 +62531,10 @@ index 0000000..be48d40
 +  { id: "memory", ios: "book", android: "book-outline", label: "记忆与总结" },
 +] as const;
 +
-+/** One line the Tasks column draws: running work, or work that has just settled. */
-+type TaskLine = {
-+  key: string;
-+  title: string;
-+  detail: string;
-+  /** Running work breathes; settled work does not. */
-+  running: boolean;
-+};
++/** How many rows one page of the bot's work holds. */
++const TASK_PAGE_SIZE = 30;
 +
-+export function BotProfileTabs({
-+  botId,
-+  botName,
-+  onOpenChat,
-+}: {
-+  botId: string;
-+  botName: string;
-+  onOpenChat: (botId: string, botName: string) => void;
-+}) {
++export function BotProfileTabs({ botId, botName }: { botId: string; botName: string }) {
 +  const tokens = useMobileTokens();
 +  const [tab, setTab] = useState<ProfileTab>("tasks");
 +  return (
@@ -62582,155 +62571,146 @@ index 0000000..be48d40
 +          );
 +        })}
 +      </View>
-+      {tab === "tasks" ? (
-+        <TasksColumn botId={botId} botName={botName} onOpenChat={onOpenChat} />
-+      ) : null}
++      {tab === "tasks" ? <TasksColumn botId={botId} /> : null}
 +      {tab === "schedules" ? <SchedulesColumn botId={botId} botName={botName} /> : null}
 +      {tab === "memory" ? <MemoryColumn botId={botId} botName={botName} /> : null}
 +    </View>
 +  );
 +}
 +
-+/** 任务: what the front desk handed to the back office, and what just came back. */
-+function TasksColumn({
-+  botId,
-+  botName,
-+  onOpenChat,
-+}: {
-+  botId: string;
-+  botName: string;
-+  onOpenChat: (botId: string, botName: string) => void;
-+}) {
++/**
++ * 任务: the work this Bot handed to the back office lately, across every chat it takes part in —
++ * newest first, under the day it was handed over. A row opens the steps that work actually took,
++ * so the page answers "what is it doing, and how far did it get" without leaving the Bot.
++ */
++function TasksColumn({ botId }: { botId: string }) {
 +  const tokens = useMobileTokens();
-+  const { t } = useLingui();
-+  const [lines, setLines] = useState<TaskLine[] | null>(null);
-+  const [failure, setFailure] = useState<string | null>(null);
++  const [opened, setOpened] = useState<string | null>(null);
++  const read = rpcQuery("bots/tasks", { botId, limit: TASK_PAGE_SIZE });
++  const query = useInfiniteQuery(
++    {
++      queryKey: read.queryKey,
++      queryFn: (context) =>
++        rpcQuery("bots/tasks", {
++          botId,
++          limit: TASK_PAGE_SIZE,
++          ...(context.pageParam ? { before: context.pageParam as string } : {}),
++        }).queryFn(context as never) as Promise<FrontDeskTask[]>,
++      initialPageParam: null as string | null,
++      // A full page's last row is where the one after it starts: the server pages by `before`.
++      getNextPageParam: (page: FrontDeskTask[]) =>
++        page.length >= TASK_PAGE_SIZE ? (page[page.length - 1]?.createdAt ?? null) : null,
++      // The work keeps moving behind the page, so a row settles and a step lands while it is open.
++      refetchInterval: TASK_LIST_POLL_MS,
++    },
++    queryClient,
++  );
++  const rows = useMemo(() => (query.data ? mergeTaskPages(query.data.pages) : null), [query.data]);
++  const days = useMemo(() => groupTasksByDay(rows ?? []), [rows]);
 +
-+  const load = useCallback(async () => {
-+    const reads = await Promise.allSettled([
-+      // The chat's ledger: the work its front desk handed out, with the desk and the step.
-+      rpc("threads/get", { botId }),
-+      rpc("runs/list", { filter: "active" }),
-+      rpc("runs/list", { filter: "recent" }),
-+    ]);
-+    const [thread, active, recent] = reads;
-+    const snapshot = thread.status === "fulfilled" ? thread.value : null;
-+    const working = active.status === "fulfilled" ? active.value.runs : [];
-+    const finished = recent.status === "fulfilled" ? recent.value.runs : [];
-+    // A read that did not happen is not an empty page: it says so instead of "nothing here".
-+    if (
-+      thread.status === "rejected" &&
-+      active.status === "rejected" &&
-+      recent.status === "rejected"
-+    )
-+      throw new Error("unreachable");
-+    const now = Date.now();
-+    const rows: TaskLine[] = [];
-+    const seen = new Set<string>();
-+    const ledger: FrontDeskTask[] = snapshot?.frontDeskTasks ?? [];
-+    for (const task of ledger) {
-+      const running = task.status === "queued" || task.status === "running";
-+      seen.add(task.id);
-+      rows.push({
-+        key: task.id,
-+        title: task.title || task.slot,
-+        detail: running
-+          ? [task.progress?.trim() || "正在开始", task.modelId ?? task.slot]
-+              .filter(Boolean)
-+              .join(" · ")
-+          : [
-+              `${activityStatusLabel(task.status as never)}`,
-+              timeOf(task.completedAt ?? task.createdAt),
-+            ]
-+              .filter(Boolean)
-+              .join(" · "),
-+        running,
-+      });
-+    }
-+    for (const run of working) {
-+      if (run.botId !== botId || seen.has(run.runId)) continue;
-+      rows.push({
-+        key: run.runId,
-+        title: firstLine(run.promptSnippet) || t`Working`,
-+        detail: [activityStatusLabel(run.status), ago(run.updatedAt, now)]
-+          .filter(Boolean)
-+          .join(" · "),
-+        running: true,
-+      });
-+    }
-+    for (const run of finished) {
-+      if (run.botId !== botId || seen.has(run.runId)) continue;
-+      rows.push({
-+        key: run.runId,
-+        title: firstLine(run.promptSnippet) || t`Finished a run`,
-+        detail: [activityStatusLabel(run.status), ago(run.updatedAt, now)]
-+          .filter(Boolean)
-+          .join(" · "),
-+        running: false,
-+      });
-+    }
-+    return rows.sort((a, b) => Number(b.running) - Number(a.running));
-+  }, [botId, t]);
-+
-+  useEffect(() => {
-+    let current = true;
-+    setFailure(null);
-+    void load().then(
-+      (rows) => {
-+        if (current) setLines(rows);
-+      },
-+      (error: unknown) => {
-+        if (!current) return;
-+        setLines([]);
-+        setFailure(errorText(error, "现在读不到任务"));
-+      },
-+    );
-+    return () => {
-+      current = false;
-+    };
-+  }, [load]);
-+
-+  if (!lines && !failure) {
-+    return <ActivityIndicator accessibilityLabel={t`Loading…`} color={tokens.mutedForeground} />;
++  if (query.isPending) {
++    return <ActivityIndicator accessibilityLabel="正在读任务" color={tokens.mutedForeground} />;
 +  }
 +  return (
-+    <View style={{ gap: 10 }}>
-+      {failure ? (
++    <View style={{ gap: 14 }}>
++      {query.error ? (
 +        <Text accessibilityRole="alert" style={[styles.error, { color: tokens.destructive }]}>
-+          {failure}
++          {errorText(query.error, "现在读不到任务")}
 +        </Text>
 +      ) : null}
-+      {lines && lines.length === 0 ? (
++      {rows && rows.length === 0 ? (
 +        <Text style={[styles.empty, { color: tokens.mutedForeground }]}>
 +          还没有任务。直接跟它说一句，派出去的活会出现在这里。
 +        </Text>
 +      ) : null}
-+      {(lines ?? []).map((line) => (
-+        <Pressable
-+          key={line.key}
-+          accessibilityRole="button"
-+          accessibilityLabel={`${line.title}, ${line.detail}`}
-+          onPress={() => {
-+            hapticSelection();
-+            onOpenChat(botId, botName);
-+          }}
-+          style={({ pressed }) => [
-+            styles.card,
-+            { backgroundColor: native.groupedCell, opacity: pressed ? 0.7 : 1 },
-+          ]}
-+        >
-+          <View style={styles.cardBody}>
-+            <Text numberOfLines={1} style={[styles.cardTitle, { color: native.label }]}>
-+              {line.title}
-+            </Text>
-+            <Text numberOfLines={1} style={[styles.cardDetail, { color: native.secondaryLabel }]}>
-+              {line.detail}
-+            </Text>
-+          </View>
-+          {line.running ? <RunningDot color={tokens.warning} /> : null}
-+        </Pressable>
++      {days.map((day) => (
++        <View key={day.key} style={{ gap: 8 }}>
++          <Text style={[styles.sectionLabel, { color: native.secondaryLabel }]}>{day.label}</Text>
++          {day.tasks.map((task) => (
++            <TaskRow
++              key={task.id}
++              task={task}
++              onOpen={() => {
++                hapticSelection();
++                setOpened(task.id);
++              }}
++            />
++          ))}
++        </View>
 +      ))}
++      {query.hasNextPage ? (
++        <Pressable
++          accessibilityRole="button"
++          disabled={query.isFetchingNextPage}
++          onPress={() => void query.fetchNextPage()}
++          style={({ pressed }) => [styles.linkRow, { opacity: pressed ? 0.6 : 1 }]}
++        >
++          <Text style={[styles.link, { color: tokens.accent }]}>
++            {query.isFetchingNextPage ? "正在读更早的…" : "更早的任务"}
++          </Text>
++        </Pressable>
++      ) : null}
++      {/* The steps the work actually took, opened over this page so the list keeps its place. */}
++      <TaskStepsSheet taskId={opened} botId={botId} onClose={() => setOpened(null)} />
 +    </View>
++  );
++}
++
++/** One piece of work: what it is, the line it is on, and the mark that says where it stands. */
++function TaskRow({ task, onOpen }: { task: FrontDeskTask; onOpen: () => void }) {
++  const tokens = useMobileTokens();
++  const open = taskIsOpen(task.status);
++  const failed = task.status === "failed";
++  const detail = taskRowDetail(task);
++  const trail = taskRowTrail(task);
++  return (
++    <Pressable
++      accessibilityRole="button"
++      accessibilityLabel={`${task.title}，${taskStatusLabel(task.status)}，${detail}`}
++      onPress={onOpen}
++      style={({ pressed }) => [
++        styles.card,
++        { backgroundColor: native.groupedCell, opacity: pressed ? 0.7 : 1 },
++      ]}
++    >
++      <View style={styles.mark}>
++        {open ? (
++          <ActivityIndicator size="small" color={tokens.warning} />
++        ) : (
++          <NativeSymbol
++            ios={failed ? "exclamationmark.circle.fill" : "checkmark.circle.fill"}
++            android={failed ? "alert-circle" : "checkmark-circle"}
++            size={17}
++            color={failed ? tokens.destructive : native.tertiaryLabel}
++          />
++        )}
++      </View>
++      <View style={styles.cardBody}>
++        <Text numberOfLines={1} style={[styles.cardTitle, { color: native.label }]}>
++          {task.title.trim() || task.slot || "任务"}
++        </Text>
++        <Text
++          numberOfLines={1}
++          style={[styles.cardDetail, { color: open ? tokens.accent : native.secondaryLabel }]}
++        >
++          {detail}
++        </Text>
++        <Text numberOfLines={1} style={[styles.cardMeta, { color: native.tertiaryLabel }]}>
++          {taskRowMeta(task)}
++        </Text>
++      </View>
++      <View style={styles.trail}>
++        {trail ? (
++          <Text style={[styles.cardMeta, { color: native.tertiaryLabel }]}>{trail}</Text>
++        ) : null}
++        <NativeSymbol
++          ios="chevron.right"
++          android="chevron-forward"
++          size={14}
++          color={native.tertiaryLabel}
++        />
++      </View>
++    </Pressable>
 +  );
 +}
 +
@@ -63164,25 +63144,8 @@ index 0000000..be48d40
 +    .join(" · ");
 +}
 +
-+/** A breathing mark for work still in hand, so a still list still reads as alive. */
-+function RunningDot({ color }: { color: string }) {
-+  return <View style={[styles.dot, { backgroundColor: color }]} />;
-+}
-+
 +function firstLine(text: string | null | undefined): string {
 +  return (text ?? "").split("\n")[0]?.trim() ?? "";
-+}
-+
-+function ago(iso: string | undefined, now: number): string {
-+  if (!iso) return "";
-+  return formatActivityRelativeTime(iso, new Date(now));
-+}
-+
-+function timeOf(iso: string | undefined): string {
-+  if (!iso) return "";
-+  const date = new Date(iso);
-+  if (Number.isNaN(date.getTime())) return "";
-+  return date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
 +}
 +
 +/** When the schedule runs next, in the shortest form that still reads as time. */
@@ -63253,7 +63216,9 @@ index 0000000..be48d40
 +  rejectText: { fontSize: 15, fontWeight: "500" },
 +  linkRow: { paddingVertical: 6, alignItems: "flex-start" },
 +  link: { fontSize: 14, fontWeight: "500" },
-+  dot: { width: 7, height: 7, borderRadius: 3.5 },
++  mark: { width: 18, alignItems: "center", justifyContent: "center" },
++  trail: { alignItems: "flex-end", justifyContent: "center", gap: 2 },
++  cardMeta: { fontSize: 11, fontVariant: ["tabular-nums"] },
 +  hooks: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6 },
 +  hookChip: {
 +    flexDirection: "row",
@@ -68515,6 +68480,501 @@ index 0792689..27b495a 100644
 -    dimmed: { opacity: 0.45 },
    });
  }
+diff --git a/apps/mobile/components/task-steps-sheet.tsx b/apps/mobile/components/task-steps-sheet.tsx
+new file mode 100644
+index 0000000..1b765cd
+--- /dev/null
++++ b/apps/mobile/components/task-steps-sheet.tsx
+@@ -0,0 +1,489 @@
++import type { TaskStep } from "@rakazo/contracts";
++import { useQuery } from "@tanstack/react-query";
++import * as Clipboard from "expo-clipboard";
++import { useCallback, useEffect, useMemo, useRef, useState } from "react";
++import type { ScrollViewInstance } from "react-native";
++import {
++  ActivityIndicator,
++  Modal,
++  Platform,
++  Pressable,
++  ScrollView,
++  StyleSheet,
++  Text,
++  View,
++} from "react-native";
++import { useSafeAreaInsets } from "react-native-safe-area-context";
++import { rpc } from "../lib/api";
++import { hapticImpact, hapticSuccess } from "../lib/haptics";
++import { ledgerModelLabel } from "../lib/ledger-tasks";
++import { useMobileTokens } from "../lib/native";
++import { queryClient, rpcQuery } from "../lib/query";
++import {
++  TASK_STEPS_POLL_MS,
++  taskDurationLabel,
++  taskElapsedLabel,
++  taskIsOpen,
++  taskStatusLabel,
++  taskTimelineSteps,
++} from "../lib/task-steps";
++import { errorText } from "../lib/user-error";
++import { NativeSymbol } from "./native-symbol";
++
++/**
++ * One piece of the back office's work, opened up: what it was handed, what the model said on the
++ * way, and every call it made — the command it ran, the file it read, how long each took and which
++ * one is still running. It is a page sheet over whatever the person was reading, so the chat (or
++ * the Bot's page) keeps its place underneath.
++ *
++ * A task still in hand is read again every couple of seconds, and stops being read the moment it
++ * settles; an open one can be stopped from here.
++ */
++export function TaskStepsSheet({
++  taskId,
++  botId,
++  onClose,
++}: {
++  /** The task to open; null keeps the sheet closed. */
++  taskId: string | null;
++  /** Whose work it is: what Stop names, and what the read is authorised against. */
++  botId: string;
++  onClose: () => void;
++}) {
++  const tokens = useMobileTokens();
++  const insets = useSafeAreaInsets();
++  const read = rpcQuery("threads/taskSteps", { taskId: taskId ?? "" });
++  const query = useQuery(
++    {
++      ...read,
++      enabled: Boolean(taskId),
++      // The work keeps moving while it is watched: read it again until it settles.
++      refetchInterval: (context) =>
++        taskIsOpen(context.state.data?.status) ? TASK_STEPS_POLL_MS : false,
++    },
++    queryClient,
++  );
++  const [stopping, setStopping] = useState(false);
++  const [copied, setCopied] = useState<string | null>(null);
++  const scroll = useRef<ScrollViewInstance>(null);
++  // The answer for the task that was open last is not this task's: only its own id counts.
++  const task = query.data && query.data.id === taskId ? query.data : undefined;
++  const steps = useMemo(() => taskTimelineSteps(task), [task]);
++  const open = taskIsOpen(task?.status);
++  const model = task ? (ledgerModelLabel(task.modelProvider, task.modelId) ?? "") : "";
++
++  // Opening another task starts clean: no copy toast, no stop in flight.
++  useEffect(() => {
++    setStopping(false);
++    setCopied(null);
++  }, [taskId]);
++
++  const copy = useCallback((detail: string) => {
++    void Clipboard.setStringAsync(detail)
++      .then(() => {
++        hapticSuccess();
++        setCopied(detail);
++      })
++      .catch(() => undefined);
++  }, []);
++
++  const stop = useCallback(() => {
++    if (!taskId || stopping) return;
++    hapticImpact();
++    setStopping(true);
++    void rpc("threads/stopHelper", { botId, taskId })
++      .catch(() => undefined)
++      .finally(() => {
++        setStopping(false);
++        void query.refetch();
++      });
++  }, [botId, query, stopping, taskId]);
++
++  const subtitle = task
++    ? [
++        (task.currentStep ?? "").trim() || taskStatusLabel(task.status),
++        taskElapsedLabel(task.elapsedMs),
++      ]
++        .filter(Boolean)
++        .join(" · ")
++    : "";
++
++  // A closed sheet costs nothing: no modal in the tree until a task is asked for.
++  if (!taskId) return null;
++
++  return (
++    <Modal
++      visible
++      animationType="slide"
++      presentationStyle="pageSheet"
++      onRequestClose={onClose}
++    >
++      <View
++        accessibilityViewIsModal
++        style={{
++          flex: 1,
++          backgroundColor: tokens.background,
++          paddingTop: Platform.OS === "ios" ? 12 : insets.top + 12,
++          paddingBottom: insets.bottom,
++        }}
++      >
++        <View style={styles.header}>
++          <Pressable
++            accessibilityRole="button"
++            accessibilityLabel="收起"
++            hitSlop={8}
++            onPress={onClose}
++            style={[styles.round, { backgroundColor: tokens.muted }]}
++          >
++            <NativeSymbol
++              ios="chevron.down"
++              android="chevron-down"
++              size={15}
++              color={tokens.foreground}
++            />
++          </Pressable>
++          <View style={styles.headText}>
++            <Text
++              accessibilityRole="header"
++              numberOfLines={2}
++              style={[styles.title, { color: tokens.foreground }]}
++            >
++              {task?.title?.trim() || "任务"}
++            </Text>
++            {subtitle ? (
++              <Text numberOfLines={1} style={[styles.subtitle, { color: tokens.accent }]}>
++                {subtitle}
++              </Text>
++            ) : null}
++          </View>
++          {open ? (
++            <Pressable
++              accessibilityRole="button"
++              accessibilityLabel="停止这个任务"
++              disabled={stopping}
++              hitSlop={8}
++              onPress={stop}
++              style={[styles.stopButton, { backgroundColor: tokens.muted }]}
++            >
++              <Text style={[styles.stopText, { color: tokens.destructive }]}>
++                {stopping ? "停止中…" : "停止"}
++              </Text>
++            </Pressable>
++          ) : (
++            <View style={styles.round} />
++          )}
++        </View>
++
++        <ScrollView
++          ref={scroll}
++          style={{ flex: 1 }}
++          contentContainerStyle={styles.body}
++          // A task still working keeps its newest step in sight; a settled one opens at its start.
++          onContentSizeChange={() => {
++            if (open) scroll.current?.scrollToEnd({ animated: false });
++          }}
++        >
++          {query.error ? (
++            <Text accessibilityRole="alert" style={[styles.error, { color: tokens.destructive }]}>
++              {errorText(query.error, "现在读不到这个任务的步骤")}
++            </Text>
++          ) : null}
++
++          {query.isPending && taskId ? (
++            <ActivityIndicator
++              accessibilityLabel="正在读"
++              color={tokens.mutedForeground}
++              style={{ paddingTop: 24 }}
++            />
++          ) : null}
++
++          {task ? (
++            <>
++              <View style={styles.chips}>
++                <Chip
++                  text={taskStatusLabel(task.status)}
++                  color={open ? tokens.accent : tokens.mutedForeground}
++                  background={tokens.muted}
++                />
++                {model ? (
++                  <Chip text={model} color={tokens.mutedForeground} background={tokens.muted} />
++                ) : null}
++                {task.attempt > 1 || task.redos > 0 ? (
++                  <Chip
++                    text={[
++                      task.attempt > 1 ? `第 ${task.attempt} 次` : "",
++                      task.redos > 0 ? `退回 ${task.redos} 次` : "",
++                    ]
++                      .filter(Boolean)
++                      .join(" · ")}
++                    color={tokens.mutedForeground}
++                    background={tokens.muted}
++                  />
++                ) : null}
++              </View>
++
++              {task.task.trim() && task.task.trim() !== task.title.trim() ? (
++                <View
++                  style={[
++                    styles.brief,
++                    { backgroundColor: tokens.card, borderColor: tokens.border },
++                  ]}
++                >
++                  <Text style={[styles.briefLabel, { color: tokens.mutedForeground }]}>交办</Text>
++                  <Text numberOfLines={4} style={[styles.briefText, { color: tokens.foreground }]}>
++                    {task.task.trim()}
++                  </Text>
++                </View>
++              ) : null}
++
++              {steps.length === 0 ? (
++                <Text style={[styles.empty, { color: tokens.mutedForeground }]}>
++                  这一步还没有记录，等它开始做就会出现。
++                </Text>
++              ) : (
++                <View>
++                  {steps.map((step, index) => (
++                    <StepRow
++                      key={step.id}
++                      step={step}
++                      first={index === 0}
++                      last={index === steps.length - 1}
++                      copied={copied === step.detail}
++                      onCopy={copy}
++                    />
++                  ))}
++                </View>
++              )}
++
++              {task.error ? (
++                <View
++                  style={[
++                    styles.brief,
++                    { backgroundColor: tokens.card, borderColor: tokens.border },
++                  ]}
++                >
++                  <Text style={[styles.briefLabel, { color: tokens.destructive }]}>报错</Text>
++                  <Text style={[styles.briefText, { color: tokens.foreground }]}>{task.error}</Text>
++                </View>
++              ) : null}
++
++              {!open && task.result?.trim() ? (
++                <View
++                  style={[
++                    styles.brief,
++                    { backgroundColor: tokens.card, borderColor: tokens.border },
++                  ]}
++                >
++                  <Text style={[styles.briefLabel, { color: tokens.mutedForeground }]}>结果</Text>
++                  <Text style={[styles.briefText, { color: tokens.foreground }]}>
++                    {task.result.trim()}
++                  </Text>
++                </View>
++              ) : null}
++            </>
++          ) : null}
++        </ScrollView>
++      </View>
++    </Modal>
++  );
++}
++
++function Chip({ text, color, background }: { text: string; color: string; background: string }) {
++  return (
++    <View style={[styles.chip, { backgroundColor: background }]}>
++      <Text numberOfLines={1} style={[styles.chipText, { color }]}>
++        {text}
++      </Text>
++    </View>
++  );
++}
++
++/** One line of the timeline: what it was, when, how long, and the address it reached. */
++function StepRow({
++  step,
++  first,
++  last,
++  copied,
++  onCopy,
++}: {
++  step: TaskStep;
++  first: boolean;
++  last: boolean;
++  copied: boolean;
++  onCopy: (detail: string) => void;
++}) {
++  const tokens = useMobileTokens();
++  const tool = step.kind === "tool";
++  const symbol = tool ? toolSymbol(step) : stepSymbol(step);
++  const failed = step.status === "failed";
++  const running = step.status === "running";
++  const ink = failed ? tokens.destructive : running ? tokens.foreground : tokens.mutedForeground;
++  return (
++    <View style={styles.step}>
++      <View style={styles.rail}>
++        <View
++          style={[
++            styles.railLine,
++            { backgroundColor: tokens.border },
++            first ? { top: 22 } : null,
++            last ? { bottom: undefined, height: 22 } : null,
++          ]}
++        />
++        <View style={styles.railIcon}>
++          <NativeSymbol ios={symbol.ios} android={symbol.android} size={14} color={ink} />
++        </View>
++      </View>
++      <View style={styles.stepBody}>
++        <View style={styles.stepHead}>
++          <Text
++            numberOfLines={tool ? 2 : 4}
++            style={[
++              styles.stepLabel,
++              { color: tool ? tokens.foreground : tokens.foreground },
++              tool ? styles.stepLabelTool : null,
++            ]}
++          >
++            {step.label}
++          </Text>
++          <View style={styles.stepTrail}>
++            {running ? (
++              <ActivityIndicator size="small" color={tokens.mutedForeground} />
++            ) : failed ? (
++              <NativeSymbol
++                ios="xmark"
++                android="close"
++                size={11}
++                color={tokens.destructive}
++                weight="semibold"
++              />
++            ) : step.durationMs !== undefined ? (
++              <Text style={[styles.stepTime, { color: tokens.mutedForeground }]}>
++                {taskDurationLabel(step.durationMs)}
++              </Text>
++            ) : null}
++          </View>
++        </View>
++        {step.detail ? (
++          <Pressable
++            accessibilityRole="button"
++            accessibilityLabel={`复制：${step.detail}`}
++            delayLongPress={250}
++            onLongPress={() => onCopy(step.detail ?? "")}
++            style={[styles.code, { backgroundColor: tokens.muted }]}
++          >
++            <Text
++              numberOfLines={6}
++              style={[styles.codeText, { color: tokens.secondaryForeground }]}
++            >
++              {step.detail}
++            </Text>
++            {copied ? (
++              <Text style={[styles.copied, { color: tokens.mutedForeground }]}>已复制</Text>
++            ) : null}
++          </Pressable>
++        ) : null}
++      </View>
++    </View>
++  );
++}
++
++type Glyph = { ios: string; android: Parameters<typeof NativeSymbol>[0]["android"] };
++
++/** A call's own mark, from the tool it ran: the shell, a file, the web, the computer. */
++function toolSymbol(step: TaskStep): Glyph {
++  const name = `${step.toolName ?? ""} ${step.label}`.toLowerCase();
++  if (/shell|bash|terminal|exec|command/.test(name))
++    return { ios: "terminal", android: "terminal-outline" };
++  if (/read|write|edit|file|patch|notebook/.test(name))
++    return { ios: "doc.text", android: "document-text-outline" };
++  if (/web|fetch|http|search|browser|link/.test(name))
++    return { ios: "globe", android: "globe-outline" };
++  if (/computer|desktop|screen|ui/.test(name))
++    return { ios: "desktopcomputer", android: "desktop-outline" };
++  if (/image|photo|draw/.test(name)) return { ios: "photo", android: "image-outline" };
++  return { ios: "wrench.and.screwdriver", android: "construct-outline" };
++}
++
++/** A status line is a marker; what the model said is a bubble. */
++function stepSymbol(step: TaskStep): Glyph {
++  if (step.kind === "status")
++    return step.status === "running"
++      ? { ios: "hourglass", android: "hourglass-outline" }
++      : { ios: "play", android: "play-outline" };
++  return { ios: "bubble.left", android: "chatbubble-outline" };
++}
++
++const styles = StyleSheet.create({
++  header: {
++    flexDirection: "row",
++    alignItems: "center",
++    gap: 10,
++    paddingHorizontal: 16,
++    paddingBottom: 10,
++  },
++  round: {
++    width: 32,
++    height: 32,
++    borderRadius: 16,
++    alignItems: "center",
++    justifyContent: "center",
++  },
++  headText: { flex: 1, minWidth: 0, alignItems: "center", gap: 2 },
++  title: { fontSize: 16, fontWeight: "600", textAlign: "center" },
++  subtitle: { fontSize: 12, fontVariant: ["tabular-nums"], textAlign: "center" },
++  stopButton: {
++    minWidth: 32,
++    height: 32,
++    borderRadius: 16,
++    paddingHorizontal: 10,
++    alignItems: "center",
++    justifyContent: "center",
++  },
++  stopText: { fontSize: 13, fontWeight: "600" },
++  body: { paddingHorizontal: 18, paddingTop: 4, paddingBottom: 28, gap: 14 },
++  chips: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
++  chip: {
++    maxWidth: "100%",
++    borderRadius: 8,
++    borderCurve: "continuous",
++    paddingHorizontal: 8,
++    paddingVertical: 3,
++  },
++  chipText: { fontSize: 11, fontWeight: "500" },
++  brief: {
++    borderRadius: 14,
++    borderCurve: "continuous",
++    borderWidth: StyleSheet.hairlineWidth,
++    paddingHorizontal: 14,
++    paddingVertical: 12,
++    gap: 4,
++  },
++  briefLabel: { fontSize: 11, fontWeight: "600" },
++  briefText: { fontSize: 14, lineHeight: 20 },
++  empty: { fontSize: 14, lineHeight: 20 },
++  error: { fontSize: 13 },
++  step: { flexDirection: "row", gap: 10 },
++  rail: { width: 24, alignItems: "center" },
++  railLine: { position: "absolute", top: 0, bottom: 0, width: StyleSheet.hairlineWidth },
++  railIcon: { width: 24, height: 22, alignItems: "center", justifyContent: "center" },
++  stepBody: { flex: 1, minWidth: 0, gap: 6, paddingBottom: 14 },
++  stepHead: { flexDirection: "row", alignItems: "flex-start", gap: 8, minHeight: 22 },
++  stepLabel: { flex: 1, minWidth: 0, fontSize: 14, lineHeight: 20 },
++  stepLabelTool: { fontWeight: "600" },
++  stepTrail: { alignItems: "flex-end", justifyContent: "center", minHeight: 22 },
++  stepTime: { fontSize: 11, fontVariant: ["tabular-nums"] },
++  code: {
++    borderRadius: 10,
++    borderCurve: "continuous",
++    paddingHorizontal: 10,
++    paddingVertical: 8,
++    gap: 4,
++  },
++  codeText: {
++    fontSize: 12,
++    lineHeight: 17,
++    // The chat's own code blocks are Menlo; Android falls back to its monospace face.
++    fontFamily: "Menlo",
++  },
++  copied: { fontSize: 10 },
++});
 diff --git a/apps/mobile/components/thread-composer.tsx b/apps/mobile/components/thread-composer.tsx
 index 91025cc..8b57627 100644
 --- a/apps/mobile/components/thread-composer.tsx
@@ -69789,10 +70249,10 @@ index 0000000..36b7638
 +});
 diff --git a/apps/mobile/components/thread/ledger-panel.tsx b/apps/mobile/components/thread/ledger-panel.tsx
 new file mode 100644
-index 0000000..eef8d6b
+index 0000000..76bdd98
 --- /dev/null
 +++ b/apps/mobile/components/thread/ledger-panel.tsx
-@@ -0,0 +1,223 @@
+@@ -0,0 +1,250 @@
 +import { useNow } from "@rakazo/chat-ui/hooks";
 +import { useEffect } from "react";
 +import { Pressable, StyleSheet, Text, View } from "react-native";
@@ -69829,6 +70289,7 @@ index 0000000..eef8d6b
 +  topInset,
 +  onClose,
 +  onStop,
++  onOpenTask,
 +  stopping,
 +}: {
 +  open: boolean;
@@ -69837,6 +70298,8 @@ index 0000000..eef8d6b
 +  topInset: number;
 +  onClose: () => void;
 +  onStop: (task: LedgerTask) => void;
++  /** A ledger row opens the steps its work actually took, without leaving the chat. */
++  onOpenTask?: (task: LedgerTask) => void;
 +  /** Cards whose Stop was pressed, until their own update settles them. */
 +  stopping: ReadonlySet<string>;
 +}) {
@@ -69887,6 +70350,8 @@ index 0000000..eef8d6b
 +              now={now}
 +              stopping={stopping.has(task.id)}
 +              onStop={() => onStop(task)}
++              // Only a ledger row names a task the server can open; a card has no timeline.
++              onOpen={onOpenTask && task.taskId ? () => onOpenTask(task) : undefined}
 +            />
 +          ))
 +        )}
@@ -69900,18 +70365,21 @@ index 0000000..eef8d6b
 +  now,
 +  stopping,
 +  onStop,
++  onOpen,
 +}: {
 +  task: LedgerTask;
 +  now: number;
 +  stopping: boolean;
 +  onStop: () => void;
++  /** Opens this work's steps; absent on a row the server cannot open. */
++  onOpen?: () => void;
 +}) {
 +  const tokens = mobileTokens();
 +  const elapsed = ledgerElapsed(task.startedAt, now);
 +  const settled =
 +    task.status !== undefined && task.status !== "queued" && task.status !== "running";
-+  return (
-+    <View style={[styles.row, { borderTopColor: tokens.border }]}>
++  const body = (
++    <>
 +      {settled ? (
 +        <NativeSymbol
 +          ios={task.status === "failed" ? "exclamationmark.circle" : "checkmark.circle"}
@@ -69961,7 +70429,26 @@ index 0000000..eef8d6b
 +          </Pressable>
 +        ) : null}
 +      </View>
-+    </View>
++    </>
++  );
++  if (!onOpen) {
++    return <View style={[styles.row, { borderTopColor: tokens.border }]}>{body}</View>;
++  }
++  return (
++    <Pressable
++      accessibilityRole="button"
++      accessibilityLabel={`${task.title}，看它做到哪一步`}
++      onPress={() => {
++        hapticImpact();
++        onOpen();
++      }}
++      style={({ pressed }) => [
++        styles.row,
++        { borderTopColor: tokens.border, opacity: pressed ? 0.7 : 1 },
++      ]}
++    >
++      {body}
++    </Pressable>
 +  );
 +}
 +
@@ -71695,7 +72182,7 @@ index 722969f..2360c7e 100644
        react: (message, reaction) => rowActionsRef.current.react(message, reaction),
        markUnread: (message) => rowActionsRef.current.markUnread(message),
 diff --git a/apps/mobile/components/thread/thread-screen.tsx b/apps/mobile/components/thread/thread-screen.tsx
-index c3c0cfd..afa5bf1 100644
+index c3c0cfd..045bdcb 100644
 --- a/apps/mobile/components/thread/thread-screen.tsx
 +++ b/apps/mobile/components/thread/thread-screen.tsx
 @@ -3,7 +3,6 @@ import { useLingui } from "@lingui/react/macro";
@@ -71759,7 +72246,7 @@ index c3c0cfd..afa5bf1 100644
  import { useThreadPaging } from "../../lib/thread-paging";
  import { useThreadRead } from "../../lib/thread-read";
  import {
-@@ -64,6 +74,7 @@ import { useThreadSync } from "../../lib/thread-sync";
+@@ -64,16 +74,20 @@ import { useThreadSync } from "../../lib/thread-sync";
  import { useThreadTranscript } from "../../lib/thread-transcript";
  import { useAutoSpeakReply, useSpeakMessages, useThreadVoiceCall } from "../../lib/thread-voice";
  import { liveEndRunError } from "../../lib/thread-window";
@@ -71767,7 +72254,8 @@ index c3c0cfd..afa5bf1 100644
  import { FailedSendBubble } from "../failed-send-bubble";
  import { NewestPageCards } from "../pages/page-card";
  import { RunErrorSheet } from "../run-error-sheet";
-@@ -71,9 +82,11 @@ import { SelectTextSheet } from "../select-text-sheet";
+ import { SelectTextSheet } from "../select-text-sheet";
++import { TaskStepsSheet } from "../task-steps-sheet";
  import { ThreadComposer } from "../thread-composer";
  import { ThreadErrorNotice, ThreadFetchErrorNotice } from "../thread-error-notice";
  import { createThreadHeaderStyles } from "../thread-header-styles";
@@ -71780,7 +72268,7 @@ index c3c0cfd..afa5bf1 100644
  import { useThreadHeader } from "./thread-header";
  import { LoadEarlierButton, ThreadWorkingFooter } from "./thread-list-controls";
  import { ThreadMessageList } from "./thread-message-list";
-@@ -118,6 +131,7 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -118,6 +132,7 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
      groupId,
      name,
      messageId,
@@ -71788,7 +72276,7 @@ index c3c0cfd..afa5bf1 100644
      threadId,
      readOnly: readOnlyParam,
    } = useLocalSearchParams<{
-@@ -125,6 +139,8 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -125,6 +140,8 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
      groupId?: string;
      name?: string;
      messageId?: string;
@@ -71797,7 +72285,7 @@ index c3c0cfd..afa5bf1 100644
      threadId?: string;
      readOnly?: string;
    }>();
-@@ -133,6 +149,11 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -133,6 +150,11 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
    const inGroup = Boolean(groupId);
    const call = useCallSession();
    const rootAvoidsKeyboard = useContext(CallKeyboardContext);
@@ -71809,7 +72297,7 @@ index c3c0cfd..afa5bf1 100644
    const contentBottomInset = useContentBottomInset();
    const onCall = Boolean(botId) && call?.botId === botId;
    // The composer floats over the list, which scrolls underneath; this keeps the newest message
-@@ -218,12 +239,25 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -218,12 +240,25 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
    );
    const feedback = useThreadFeedback(threadKey, newClientId, echoed);
    const { error, setError } = feedback;
@@ -71836,7 +72324,7 @@ index c3c0cfd..afa5bf1 100644
    const composerMentionTargets = useMemo(
      () =>
        buildComposerMentionOptions({
-@@ -263,6 +297,14 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -263,6 +298,14 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
      snap && (!showingSaved || error)
        ? snap.run?.status
        : (titleBot?.threadStatus ?? snap?.run?.status);
@@ -71851,7 +72339,7 @@ index c3c0cfd..afa5bf1 100644
    // The group's members in its order, once the chat or its group list has loaded them; the
    // title seats the inbox's copy until then.
    const groupMembers = threadGroupMembers(groupId, snap, mentionGroups);
-@@ -271,6 +313,8 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -271,6 +314,8 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
      (message) => message.id.startsWith("progress:") && liveMessageComposing(message.blocks),
    );
    const activityLine = liveActivityLine(snap?.messages ?? []);
@@ -71860,7 +72348,7 @@ index c3c0cfd..afa5bf1 100644
    const workingRoutine = workingRoutineName(snap?.activeRuns ?? (snap?.run ? [snap.run] : []));
    const userBubble = useMemo(
      () =>
-@@ -365,6 +409,78 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -365,6 +410,80 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
      markReadIfVisible,
    });
  
@@ -71898,6 +72386,8 @@ index c3c0cfd..afa5bf1 100644
 +  }, [route.key, runningTasks]);
 +  // A chat that goes away takes its ledger with it.
 +  useEffect(() => () => clearLedger(route.key), [route.key]);
++  // A capsule row opens its work's steps over the chat, so the conversation keeps its place.
++  const [stepsTaskId, setStepsTaskId] = useState<string | null>(null);
 +  const [stoppingLedger, setStoppingLedger] = useState<ReadonlySet<string>>(() => new Set());
 +  const stopLedgerTask = useCallback(
 +    (task: LedgerTask) => {
@@ -71939,7 +72429,7 @@ index c3c0cfd..afa5bf1 100644
    const paging = useThreadPaging({
      history,
      scroll,
-@@ -447,7 +563,8 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -447,7 +566,8 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
        setReplyQuote(null);
      },
      quote: setQuoteTarget,
@@ -71949,7 +72439,7 @@ index c3c0cfd..afa5bf1 100644
      speak,
      react: composer.react,
      markUnread: markUnreadFrom,
-@@ -527,6 +644,14 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -527,6 +647,14 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
              status: bot.status,
            }))
          : [];
@@ -71964,7 +72454,7 @@ index c3c0cfd..afa5bf1 100644
    const workingFooter = (
      <ThreadWorkingFooter
        bots={workingBots.map((bot) => ({
-@@ -535,7 +660,8 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -535,7 +663,8 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
        }))}
        atBottom={!scroll.state.detached}
        label={
@@ -71974,7 +72464,7 @@ index c3c0cfd..afa5bf1 100644
        }
      />
    );
-@@ -572,23 +698,20 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -572,23 +701,20 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
    );
  
    return (
@@ -72011,7 +72501,7 @@ index c3c0cfd..afa5bf1 100644
          <View style={{ flex: 1 }}>
            <NewestPageCards.Provider value={newestPages}>
              <ThreadMessageList
-@@ -610,35 +733,12 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -610,35 +736,12 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
                showLatest={showLatest}
              />
            </NewestPageCards.Provider>
@@ -72048,7 +72538,7 @@ index c3c0cfd..afa5bf1 100644
              attachmentNotice={attachments.attachmentNotice}
              attachments={attachments.activePendingAttachments}
              onRemoveAttachment={(id) =>
-@@ -650,6 +750,10 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -650,6 +753,10 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
              <ThreadComposer
                key={threadKey}
                ref={composer.composerRef}
@@ -72059,7 +72549,7 @@ index c3c0cfd..afa5bf1 100644
                draftScope={draftScope}
                agentSkills={agentSkills}
                composerMentionTargets={composerMentionTargets}
-@@ -657,9 +761,25 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -657,9 +764,25 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
                composerPrompt={composerPrompt}
                replyTargetId={replyTarget?.id}
                replyQuote={replyQuote}
@@ -72085,7 +72575,7 @@ index c3c0cfd..afa5bf1 100644
                botId={botId}
                onCall={onCall}
                sending={attachments.shareImporting}
-@@ -673,27 +793,47 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -673,27 +796,55 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
              />
            </ThreadComposerDock>
          </View>
@@ -72111,7 +72601,15 @@ index c3c0cfd..afa5bf1 100644
 +          topInset={headerHeight - THREAD_HEADER_PILL_BOTTOM_INSET + LEDGER_PANEL_GAP}
 +          stopping={stoppingLedger}
 +          onStop={stopLedgerTask}
++          onOpenTask={(task) => setStepsTaskId(task.taskId ?? null)}
 +          onClose={() => setLedgerOpen(route.key, false)}
++        />
++      ) : null}
++      {botId ? (
++        <TaskStepsSheet
++          taskId={stepsTaskId}
++          botId={botId}
++          onClose={() => setStepsTaskId(null)}
 +        />
 +      ) : null}
 +      {selectableText !== null ? (
@@ -74618,10 +75116,136 @@ index 9970e53..f46bfcd 100644
    };
  }
 diff --git a/apps/mobile/lib/bot-profile.test.tsx b/apps/mobile/lib/bot-profile.test.tsx
-index 358ca2a..52231e4 100644
+index 358ca2a..4ab326b 100644
 --- a/apps/mobile/lib/bot-profile.test.tsx
 +++ b/apps/mobile/lib/bot-profile.test.tsx
-@@ -381,7 +381,16 @@ describe("bot profile", () => {
+@@ -1,6 +1,6 @@
+ // @vitest-environment jsdom
+ 
+-import type { Routine } from "@rakazo/contracts";
++import type { FrontDeskTask, Routine, TaskSteps } from "@rakazo/contracts";
+ import { notifyManager } from "@tanstack/react-query";
+ import type { ReactNode } from "react";
+ import { act, createElement, useEffect, useLayoutEffect } from "react";
+@@ -121,6 +121,8 @@ vi.mock("react-native", () => {
+       createElement("button", { type: "button", onClick: onRefresh }, "Refresh files"),
+     ScrollView: view,
+     View: view,
++    Modal: ({ children, visible }: { children?: ReactNode; visible?: boolean }) =>
++      visible === false ? null : createElement("div", { role: "dialog" }, children),
+     Text: ({ children }: { children?: ReactNode }) => createElement("span", null, children),
+     TextInput: ({ value }: { value?: string }) => createElement("input", { value, readOnly: true }),
+     Pressable: ({
+@@ -188,6 +190,8 @@ vi.mock("./native", () => ({
+   useThemedStyles: (createStyles: () => unknown) => createStyles(),
+ }));
+ vi.mock("./appearance", () => ({ mobileTokens: () => color }));
++// A step's command can be copied; the clipboard is a native module the test has no use for.
++vi.mock("expo-clipboard", () => ({ setStringAsync: vi.fn(async () => true) }));
+ vi.mock("./routine", async (importOriginal) => ({
+   ...(await importOriginal<typeof RoutineHelpers>()),
+   deviceTimeZone: () => "Europe/Berlin",
+@@ -264,6 +268,70 @@ const routine = (id: string, name: string, partial: Partial<Routine> = {}) => ({
+   ...partial,
+ });
+ 
++function task(partial: Partial<FrontDeskTask> = {}): FrontDeskTask {
++  return {
++    id: "task-fixture",
++    runId: "run-fixture",
++    title: "一件活",
++    status: "running",
++    slot: "heavy",
++    modelProvider: "Workbudy",
++    modelId: "gpt-5",
++    progress: null,
++    steps: [],
++    currentStep: null,
++    elapsedMs: 0,
++    createdAt: "2026-11-17T08:57:00.000Z",
++    updatedAt: "2026-11-17T09:07:00.000Z",
++    completedAt: null,
++    ...partial,
++  };
++}
++
++function steps(partial: Partial<TaskSteps> = {}): TaskSteps {
++  return {
++    id: "task-open",
++    runId: "run-fixture",
++    title: "热修记忆页",
++    task: "把记忆页漏传的 client 补上，并重编一版",
++    status: "running",
++    slot: "heavy",
++    modelProvider: "Workbudy",
++    modelId: "gpt-5",
++    attempt: 1,
++    redos: 0,
++    reviewVerdict: null,
++    currentStep: "ls -la /workspace",
++    result: null,
++    error: null,
++    elapsedMs: 584_000,
++    createdAt: "2026-11-17T08:57:00.000Z",
++    startedAt: "2026-11-17T08:57:04.000Z",
++    updatedAt: "2026-11-17T09:07:00.000Z",
++    completedAt: null,
++    steps: [
++      {
++        id: "status:started",
++        kind: "status",
++        label: "Work started",
++        status: "completed",
++        timestamp: "2026-11-17T08:57:04.000Z",
++      },
++      {
++        id: "call:1",
++        kind: "tool",
++        label: "Shell",
++        toolName: "shell",
++        detail: "ls -la /workspace",
++        status: "completed",
++        durationMs: 4_240,
++        timestamp: "2026-11-17T08:58:00.000Z",
++      },
++    ],
++    ...partial,
++  };
++}
++
+ // Cached reads reach the screens in the same act() as the answer, as in the other query tests.
+ notifyManager.setScheduler((callback) => callback());
+ 
+@@ -327,6 +395,10 @@ function profileRpc(
+   routines: () => Promise<unknown>,
+   {
+     bot = async () => fixtureBot,
++    tasks = async () => [],
++    steps = async () => {
++      throw new Error("unexpected threads/taskSteps");
++    },
+     update = async () => {
+       throw new Error("unexpected bots/update");
+     },
+@@ -340,6 +412,8 @@ function profileRpc(
+     computer = async () => ({ state: "stopped" }),
+   }: {
+     bot?: () => Promise<unknown>;
++    tasks?: () => Promise<unknown>;
++    steps?: (input: { taskId: string }) => Promise<unknown>;
+     update?: () => Promise<unknown>;
+     updateRoutine?: (input: { routineId: string; active: boolean }) => Promise<unknown>;
+     removeRoutine?: (input: { routineId: string }) => Promise<unknown>;
+@@ -349,6 +423,8 @@ function profileRpc(
+ ) {
+   rpc.mockImplementation((procedure: string, input: never) => {
+     if (procedure === "bots/get") return bot();
++    if (procedure === "bots/tasks") return tasks();
++    if (procedure === "threads/taskSteps") return steps(input);
+     if (procedure === "routines/list") return routines();
+     if (procedure === "bots/update") return update();
+     if (procedure === "routines/update") return updateRoutine(input);
+@@ -381,7 +457,76 @@ describe("bot profile", () => {
        [{ pathname: "/computer", params: { botId: "bot-fixture", name: "Fixture" } }],
      ]);
      const rows = [...container.querySelectorAll("button")].map((node) => node.textContent);
@@ -74636,6 +75260,66 @@ index 358ca2a..52231e4 100644
 +    ]);
 +    expect(rows[0]).toBe("Edit");
 +    expect(rows.slice(4, 8)).toEqual(["Routines0 on", "Pages", "Artifacts", "Computer"]);
++  });
++
++  it("lists the work the bot handed to the back office, and the line it is on", async () => {
++    const now = Date.now();
++    profileRpc(async () => [], {
++      tasks: async () => [
++        task({
++          id: "task-open",
++          title: "热修记忆页",
++          status: "running",
++          currentStep: "cd /workspace && python3 .tools/run.py",
++          elapsedMs: 584_000,
++          createdAt: new Date(now - 600_000).toISOString(),
++          updatedAt: new Date(now - 16_000).toISOString(),
++        }),
++        task({
++          id: "task-done",
++          title: "交付 v5 IPA",
++          status: "completed",
++          currentStep: "结果：热修包已出",
++          completedAt: new Date(now - 3_600_000).toISOString(),
++          createdAt: new Date(now - 7_200_000).toISOString(),
++          updatedAt: new Date(now - 3_600_000).toISOString(),
++        }),
++      ],
++    });
++    await render(createElement(BotProfile));
++
++    // The Bot's own Tasks list is the server's: the bot's recent work, a page at a time.
++    const call = rpc.mock.calls.find(([procedure]) => procedure === "bots/tasks");
++    expect(call?.[1]).toEqual({ botId: "bot-fixture", limit: 30 });
++    expect(container.textContent).toContain("热修记忆页");
++    expect(container.textContent).toContain("cd /workspace && python3 .tools/run.py");
++    expect(container.textContent).toContain("9:44");
++    expect(container.textContent).toContain("进行中");
++    // A settled row says where it stands and what came back, not how long it ran.
++    expect(container.textContent).toContain("交付 v5 IPA");
++    expect(container.textContent).toContain("结果：热修包已出");
++    expect(container.textContent).toContain("已完成");
++    // The older route — the chat's snapshot and the runs lists — is no longer what fills this tab.
++    const procedures = rpc.mock.calls.map(([procedure]) => procedure);
++    expect(procedures).not.toContain("runs/list");
++  });
++
++  it("opens the steps one piece of work actually took", async () => {
++    profileRpc(async () => [], {
++      tasks: async () => [task({ id: "task-open", title: "热修记忆页", status: "running" })],
++      steps: async () => steps(),
++    });
++    await render(createElement(BotProfile));
++
++    await act(async () => button("热修记忆页").click());
++
++    const call = rpc.mock.calls.find(([procedure]) => procedure === "threads/taskSteps");
++    expect(call?.[1]).toEqual({ taskId: "task-open" });
++    // The timeline draws the call it made, the command it ran and how long it took.
++    expect(container.textContent).toContain("Shell");
++    expect(container.textContent).toContain("ls -la /workspace");
++    expect(container.textContent).toContain("4.2s");
++    expect(container.textContent).toContain("Work started");
    });
  
    it("keeps the bot's less common actions in its … menu, and clears the open chat", async () => {
@@ -78136,10 +78820,10 @@ index 0000000..2a606d1
 +});
 diff --git a/apps/mobile/lib/ledger-tasks.ts b/apps/mobile/lib/ledger-tasks.ts
 new file mode 100644
-index 0000000..bda9f42
+index 0000000..889ae1a
 --- /dev/null
 +++ b/apps/mobile/lib/ledger-tasks.ts
-@@ -0,0 +1,184 @@
+@@ -0,0 +1,188 @@
 +import type { FrontDeskTask } from "@rakazo/contracts";
 +import type { LiveThreadRun } from "@rakazo/core";
 +import type { MobileMessage } from "./mobile-types";
@@ -78156,6 +78840,8 @@ index 0000000..bda9f42
 +export type LedgerTask = {
 +  /** Stable across updates: the ledger row's id, or the card's agent id on the older route. */
 +  id: string;
++  /** The ledger row's task id, which opens the steps it took; absent on the older route. */
++  taskId?: string;
 +  title: string;
 +  /** The step the work is on right now, in the work's own words. */
 +  step?: string;
@@ -78310,6 +78996,8 @@ index 0000000..bda9f42
 +      task.progress?.trim() || task.steps[task.steps.length - 1]?.line?.trim() || undefined;
 +    rows.push({
 +      id: task.id,
++      // A ledger row is what opens its steps: the same id the server lists.
++      taskId: task.id,
 +      title: task.title.trim() || task.slot || "后台任务",
 +      ...(step ? { step } : {}),
 +      ...(ledgerModelLabel(task.modelProvider, task.modelId)
@@ -80542,6 +81230,382 @@ index 0000000..8c747a6
 +  }
 +  const piece = rest.slice(0, end).trim();
 +  return { piece, taken: from + end };
++}
+diff --git a/apps/mobile/lib/task-steps.test.ts b/apps/mobile/lib/task-steps.test.ts
+new file mode 100644
+index 0000000..3860fca
+--- /dev/null
++++ b/apps/mobile/lib/task-steps.test.ts
+@@ -0,0 +1,192 @@
++import type { FrontDeskTask, TaskStep } from "@rakazo/contracts";
++import { describe, expect, it } from "vitest";
++import {
++  groupTasksByDay,
++  mergeTaskPages,
++  taskClock,
++  taskDayLabel,
++  taskDurationLabel,
++  taskElapsedLabel,
++  taskIsOpen,
++  taskRowDetail,
++  taskRowMeta,
++  taskRowTrail,
++  taskRunningStep,
++  taskStatusLabel,
++  taskTimelineSteps,
++} from "./task-steps";
++
++function task(overrides: Partial<FrontDeskTask> = {}): FrontDeskTask {
++  return {
++    id: "task_1",
++    runId: "run_1",
++    title: "热修记忆页",
++    status: "running",
++    slot: "heavy",
++    modelProvider: "Workbudy",
++    modelId: "gpt-5",
++    progress: null,
++    steps: [],
++    currentStep: null,
++    elapsedMs: 584_000,
++    createdAt: "2026-11-17T08:57:00.000",
++    updatedAt: "2026-11-17T09:07:00.000",
++    completedAt: null,
++    ...overrides,
++  };
++}
++
++function step(overrides: Partial<TaskStep> = {}): TaskStep {
++  return {
++    id: "call:1",
++    kind: "tool",
++    label: "Shell",
++    status: "completed",
++    timestamp: "2026-11-17T08:58:00.000",
++    ...overrides,
++  };
++}
++
++describe("taskIsOpen", () => {
++  it("counts only the two states that mean the work is still in the back office", () => {
++    expect(taskIsOpen("queued")).toBe(true);
++    expect(taskIsOpen("running")).toBe(true);
++    expect(taskIsOpen("completed")).toBe(false);
++    expect(taskIsOpen("failed")).toBe(false);
++    expect(taskIsOpen("cancelled")).toBe(false);
++    expect(taskIsOpen(undefined)).toBe(false);
++  });
++});
++
++describe("taskStatusLabel", () => {
++  it("says each state in the app's own words", () => {
++    expect(taskStatusLabel("queued")).toBe("排队中");
++    expect(taskStatusLabel("running")).toBe("进行中");
++    expect(taskStatusLabel("completed")).toBe("已完成");
++    expect(taskStatusLabel("failed")).toBe("失败");
++    expect(taskStatusLabel("cancelled")).toBe("已取消");
++    expect(taskStatusLabel("waiting_input")).toBe("等你回答");
++    expect(taskStatusLabel("something_else")).toBe("something_else");
++  });
++});
++
++describe("taskElapsedLabel", () => {
++  it("shows minutes and seconds like the reference app's row", () => {
++    expect(taskElapsedLabel(584_000)).toBe("9:44");
++    expect(taskElapsedLabel(0)).toBe("0:00");
++    expect(taskElapsedLabel(7_000)).toBe("0:07");
++    expect(taskElapsedLabel(62_000)).toBe("1:02");
++  });
++
++  it("grows to hours rather than counting minutes forever", () => {
++    expect(taskElapsedLabel(3_723_000)).toBe("1:02:03");
++  });
++
++  it("shows nothing when the server sent no number", () => {
++    expect(taskElapsedLabel(undefined)).toBe("");
++    expect(taskElapsedLabel(null)).toBe("");
++    expect(taskElapsedLabel(Number.NaN)).toBe("");
++  });
++});
++
++describe("taskDurationLabel", () => {
++  it("keeps a call's own time short", () => {
++    expect(taskDurationLabel(320)).toBe("320ms");
++    expect(taskDurationLabel(4_240)).toBe("4.2s");
++    expect(taskDurationLabel(38_000)).toBe("38s");
++    expect(taskDurationLabel(68_000)).toBe("1m 08s");
++    expect(taskDurationLabel(undefined)).toBe("");
++  });
++});
++
++describe("taskClock", () => {
++  it("reads the moment in the phone's time zone", () => {
++    expect(taskClock(new Date(2026, 10, 17, 8, 57).toISOString())).toBe("8:57");
++    expect(taskClock(new Date(2026, 10, 17, 23, 5, 40).toISOString())).toBe("23:05");
++    expect(taskClock(undefined)).toBe("");
++    expect(taskClock("not a date")).toBe("");
++  });
++});
++
++describe("taskDayLabel", () => {
++  const now = new Date(2026, 10, 17, 11, 30).getTime();
++
++  it("names today and yesterday, then the date", () => {
++    expect(taskDayLabel(new Date(2026, 10, 17, 8, 57).toISOString(), now)).toBe("今天");
++    expect(taskDayLabel(new Date(2026, 10, 16, 22, 10).toISOString(), now)).toBe("昨天");
++    expect(taskDayLabel(new Date(2026, 10, 14, 3, 21).toISOString(), now)).toBe("11月14日");
++  });
++});
++
++describe("the rows the Tasks list draws", () => {
++  it("puts the work's own line under the title, and the elapsed time at the right", () => {
++    const running = task({ currentStep: "cd /workspace && python3 .tools/run.py" });
++    expect(taskRowDetail(running)).toBe("cd /workspace && python3 .tools/run.py");
++    expect(taskRowTrail(running)).toBe("9:44");
++    expect(taskRowMeta(running)).toBe("进行中 · 8:57 开始");
++  });
++
++  it("falls back to progress, then to a line that still says something", () => {
++    expect(taskRowDetail(task({ progress: "看看排班表" }))).toBe("看看排班表");
++    expect(taskRowDetail(task({}))).toBe("正在开始");
++    expect(taskRowDetail(task({ status: "completed" }))).toBe("已完成");
++  });
++
++  it("shows when a task settled rather than how long it ran", () => {
++    const done = task({
++      status: "completed",
++      currentStep: "结果：热修包已出",
++      completedAt: new Date(2026, 10, 17, 8, 24).toISOString(),
++    });
++    expect(taskRowTrail(done)).toBe("8:24");
++    expect(taskRowMeta(done)).toBe("已完成 · 8:57 开始");
++  });
++
++  it("groups rows under their day, newest day first, keeping the server's order inside a day", () => {
++    const today = new Date(2026, 10, 17, 9, 0).toISOString();
++    const earlier = new Date(2026, 10, 16, 23, 0).toISOString();
++    const groups = groupTasksByDay(
++      [
++        task({ id: "a", createdAt: today, updatedAt: today }),
++        task({ id: "b", createdAt: today, updatedAt: today }),
++        task({ id: "c", createdAt: earlier, updatedAt: earlier }),
++      ],
++      new Date(2026, 10, 17, 11, 30).getTime(),
++    );
++    expect(groups.map((group) => group.label)).toEqual(["今天", "昨天"]);
++    expect(groups[0]?.tasks.map((row) => row.id)).toEqual(["a", "b"]);
++  });
++
++  it("does not show a row twice when a page boundary moved under it", () => {
++    const one = task({ id: "a" });
++    const two = task({ id: "b" });
++    expect(
++      mergeTaskPages([
++        [one, two],
++        [two, task({ id: "c" })],
++      ]).map((row) => row.id),
++    ).toEqual(["a", "b", "c"]);
++  });
++});
++
++describe("the timeline", () => {
++  it("reads the steps in the order they happened, whatever order they came in", () => {
++    const steps = taskTimelineSteps({
++      steps: [
++        step({ id: "late", timestamp: "2026-11-17T09:00:00.000" }),
++        step({ id: "early", timestamp: "2026-11-17T08:58:00.000" }),
++      ],
++    } as never);
++    expect(steps.map((entry) => entry.id)).toEqual(["early", "late"]);
++  });
++
++  it("names the step still running, which the header follows", () => {
++    const steps = [step({ id: "a" }), step({ id: "b", status: "running" }), step({ id: "c" })];
++    expect(taskRunningStep(steps)?.id).toBe("b");
++    expect(taskRunningStep([step({ id: "a" })])).toBeUndefined();
++  });
++
++  it("has nothing to draw for a task with no answer yet", () => {
++    expect(taskTimelineSteps(undefined)).toEqual([]);
++  });
++});
+diff --git a/apps/mobile/lib/task-steps.ts b/apps/mobile/lib/task-steps.ts
+new file mode 100644
+index 0000000..814bb24
+--- /dev/null
++++ b/apps/mobile/lib/task-steps.ts
+@@ -0,0 +1,172 @@
++import type { FrontDeskTask, TaskStep, TaskSteps } from "@rakazo/contracts";
++
++/**
++ * The work the front desk handed to the back office, as the Bot's own page lists it and as one
++ * piece of it opens up: the steps it actually took, in order, from the hand-off to where it is now.
++ *
++ * The server is the source of both reads (`bots/tasks` and `threads/taskSteps`); nothing here keeps
++ * its own copy of the work. This module only turns those answers into the lines the phone draws.
++ */
++
++/** The states a piece of work can be in, as the front desk records them. */
++export const TASK_OPEN_STATUSES: readonly string[] = ["queued", "running"];
++
++/** Queued work has not started; a `waiting_input` row is a work still in hand that asked a question. */
++export const TASK_WAITING_STATUS = "waiting_input";
++
++/** How often an open task's timeline is read again: a step lands while a person watches it. */
++export const TASK_STEPS_POLL_MS = 2_000;
++
++/** How often the profile's Tasks list is read again while it is on screen. */
++export const TASK_LIST_POLL_MS = 5_000;
++
++/** A row that is still in the back office, in either of the states that mean it is unfinished. */
++export function taskIsOpen(status: string | null | undefined): boolean {
++  return status !== null && status !== undefined && TASK_OPEN_STATUSES.includes(status);
++}
++
++/** The status in the app's own words: what the row's line says the work is doing. */
++export function taskStatusLabel(status: string | null | undefined): string {
++  switch (status) {
++    case "queued":
++      return "排队中";
++    case "running":
++      return "进行中";
++    case TASK_WAITING_STATUS:
++      return "等你回答";
++    case "completed":
++      return "已完成";
++    case "failed":
++      return "失败";
++    case "cancelled":
++      return "已取消";
++    default:
++      return status?.trim() || "任务";
++  }
++}
++
++/**
++ * How long the work has been going, in the shortest form that still reads as time: `9:44` while it
++ * is under an hour, `1:02:03` once it is longer. The server counts the milliseconds; the row only
++ * needs to show them.
++ */
++export function taskElapsedLabel(ms: number | null | undefined): string {
++  if (ms === null || ms === undefined || !Number.isFinite(ms)) return "";
++  const seconds = Math.max(0, Math.round(ms / 1000));
++  const minutes = Math.floor(seconds / 60);
++  const rest = seconds % 60;
++  if (minutes < 60) return `${minutes}:${String(rest).padStart(2, "0")}`;
++  const hours = Math.floor(minutes / 60);
++  return `${hours}:${String(minutes % 60).padStart(2, "0")}:${String(rest).padStart(2, "0")}`;
++}
++
++/** How long one step took: `320ms`, `4.2s`, `1m 08s` — a call's own small number. */
++export function taskDurationLabel(ms: number | null | undefined): string {
++  if (ms === null || ms === undefined || !Number.isFinite(ms)) return "";
++  if (ms < 1000) return `${Math.max(0, Math.round(ms))}ms`;
++  const seconds = ms / 1000;
++  if (seconds < 60) return `${seconds.toFixed(seconds < 10 ? 1 : 0)}s`;
++  const minutes = Math.floor(seconds / 60);
++  return `${minutes}m ${String(Math.round(seconds % 60)).padStart(2, "0")}s`;
++}
++
++/** The clock a row shows: `8:57`, from the moment in the phone's own time zone. */
++export function taskClock(iso: string | null | undefined): string {
++  if (!iso) return "";
++  const at = new Date(iso);
++  if (Number.isNaN(at.getTime())) return "";
++  return `${at.getHours()}:${String(at.getMinutes()).padStart(2, "0")}`;
++}
++
++/** The day a row belongs under, as the phone counts days. */
++export function taskDayKey(iso: string | null | undefined): string {
++  if (!iso) return "";
++  const at = new Date(iso);
++  if (Number.isNaN(at.getTime())) return "";
++  return `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(at.getDate()).padStart(2, "0")}`;
++}
++
++/** A day's heading: 今天 / 昨天, then the date, so the list reads as the reference app's. */
++export function taskDayLabel(iso: string | null | undefined, now = Date.now()): string {
++  const key = taskDayKey(iso);
++  if (!key) return "";
++  const today = taskDayKey(new Date(now).toISOString());
++  if (key === today) return "今天";
++  const yesterday = taskDayKey(new Date(now - 24 * 60 * 60 * 1000).toISOString());
++  if (key === yesterday) return "昨天";
++  const [, month, day] = key.split("-");
++  return `${Number(month)}月${Number(day)}日`;
++}
++
++/**
++ * The row's second line: what the work is on right now in its own words, and once it settled, what
++ * came back. A row the server left blank still says something rather than showing an empty line.
++ */
++export function taskRowDetail(task: FrontDeskTask): string {
++  const said = (task.currentStep ?? "").trim() || (task.progress ?? "").trim();
++  if (said) return said;
++  return taskIsOpen(task.status) ? "正在开始" : taskStatusLabel(task.status);
++}
++
++/** The number at the row's right: how long a running task has gone, or when it settled. */
++export function taskRowTrail(task: FrontDeskTask): string {
++  return taskIsOpen(task.status)
++    ? taskElapsedLabel(task.elapsedMs)
++    : taskClock(task.completedAt ?? task.updatedAt);
++}
++
++/** The row's third line: where the work stands, and when it was handed over. */
++export function taskRowMeta(task: FrontDeskTask): string {
++  const started = taskClock(task.createdAt);
++  return [taskStatusLabel(task.status), started ? `${started} 开始` : ""]
++    .filter(Boolean)
++    .join(" · ");
++}
++
++/** The rows under their day headings, newest day first, each day newest row first. */
++export function groupTasksByDay(
++  tasks: readonly FrontDeskTask[],
++  now = Date.now(),
++): { key: string; label: string; tasks: FrontDeskTask[] }[] {
++  const groups: { key: string; label: string; tasks: FrontDeskTask[] }[] = [];
++  for (const task of tasks) {
++    const key = taskDayKey(task.createdAt);
++    const last = groups[groups.length - 1];
++    if (last && last.key === key) {
++      last.tasks.push(task);
++      continue;
++    }
++    groups.push({ key, label: taskDayLabel(task.createdAt, now), tasks: [task] });
++  }
++  return groups;
++}
++
++/**
++ * The pages a `bots/tasks` read came back in, as one list: the server pages by `before`, and a row
++ * that moved between two reads (a task that just finished) must not show twice.
++ */
++export function mergeTaskPages(pages: readonly (readonly FrontDeskTask[])[]): FrontDeskTask[] {
++  const seen = new Set<string>();
++  const rows: FrontDeskTask[] = [];
++  for (const page of pages) {
++    for (const task of page) {
++      if (seen.has(task.id)) continue;
++      seen.add(task.id);
++      rows.push(task);
++    }
++  }
++  return rows;
++}
++
++/** The steps that carry the work's own timeline, oldest first, as the server answered them. */
++export function taskTimelineSteps(task: Pick<TaskSteps, "steps"> | undefined): TaskStep[] {
++  if (!task?.steps?.length) return [];
++  return [...task.steps].sort(
++    (a, b) => (Date.parse(a.timestamp) || 0) - (Date.parse(b.timestamp) || 0),
++  );
++}
++
++/** The one step still running, which the header's line and the row's spinner follow. */
++export function taskRunningStep(steps: readonly TaskStep[]): TaskStep | undefined {
++  return [...steps].reverse().find((step) => step.status === "running");
 +}
 diff --git a/apps/mobile/lib/text-scale.ts b/apps/mobile/lib/text-scale.ts
 index b12a1a5..7f19b78 100644
@@ -88371,7 +89435,7 @@ index eca1f50..2fdde1f 100644
    "generate_secret",
    "list_secrets",
 diff --git a/packages/contracts/src/domain.ts b/packages/contracts/src/domain.ts
-index d45cd5a..15b2768 100644
+index d45cd5a..5649d44 100644
 --- a/packages/contracts/src/domain.ts
 +++ b/packages/contracts/src/domain.ts
 @@ -100,6 +100,12 @@ export const BotSchema = z.object({
@@ -88437,7 +89501,7 @@ index d45cd5a..15b2768 100644
  export const ConnectionSchema = z.object({
    id: Id,
    connectorId: z.string(),
-@@ -1294,6 +1343,31 @@ export const ThreadMessagePageSchema = z.object({
+@@ -1294,6 +1343,100 @@ export const ThreadMessagePageSchema = z.object({
  });
  export type ThreadMessagePage = z.infer<typeof ThreadMessagePageSchema>;
  
@@ -88445,8 +89509,38 @@ index d45cd5a..15b2768 100644
 + * One piece of work the chat's front desk handed to the back office, as the phone's ledger draws
 + * it: what it is, which desk and model have it, how far it got, and when it started and ended.
 + */
-+export const FrontDeskTaskStepSchema = z.object({ at: z.string(), line: z.string() });
++/**
++ * One line of a piece of work's timeline: how it started, what it said, and every call it made.
++ * The phone draws them in order, oldest first, and marks the one still running.
++ */
++export const TaskStepKind = z.enum(["status", "message", "tool"]);
++export type TaskStepKind = z.infer<typeof TaskStepKind>;
++
++export const FrontDeskTaskStepSchema = z.object({
++  at: z.string(),
++  line: z.string(),
++  /** What kind of step this was, on rows recorded since the timeline shipped. */
++  kind: TaskStepKind.optional(),
++});
 +export type FrontDeskTaskStep = z.infer<typeof FrontDeskTaskStepSchema>;
++
++export const TaskStepStatusSchema = z.enum(["running", "completed", "failed"]);
++export type TaskStepStatus = z.infer<typeof TaskStepStatusSchema>;
++
++export const TaskStepSchema = z.object({
++  id: z.string(),
++  kind: TaskStepKind,
++  /** What the step did, in one line: what it is reading, the command it ran, what it said. */
++  label: z.string(),
++  /** The address it reached: a file path, a URL, a search, the work it is checking. */
++  detail: z.string().optional(),
++  /** The tool that ran, for a step that is one call. */
++  toolName: z.string().optional(),
++  status: TaskStepStatusSchema,
++  durationMs: z.number().int().nonnegative().optional(),
++  timestamp: z.string(),
++});
++export type TaskStep = z.infer<typeof TaskStepSchema>;
 +
 +export const FrontDeskTaskSchema = z.object({
 +  id: Id,
@@ -88461,15 +89555,54 @@ index d45cd5a..15b2768 100644
 +  progress: z.string().nullable(),
 +  /** The steps so far, oldest first. */
 +  steps: z.array(FrontDeskTaskStepSchema),
++  /**
++   * What the row's second line shows: the command or file it is on while it runs, and the first
++   * line of what came back once it finished.
++   */
++  currentStep: z.string().nullable(),
++  /** How long the work has been going: until it ended, or until now while it still runs. */
++  elapsedMs: z.number().int().nonnegative(),
 +  createdAt: z.string(),
++  updatedAt: z.string(),
 +  completedAt: z.string().nullable(),
 +});
 +export type FrontDeskTask = z.infer<typeof FrontDeskTaskSchema>;
 +
++/** One piece of work opened up: what it is, and every step it has taken, oldest first. */
++export const TaskStepsSchema = z.object({
++  id: Id,
++  runId: Id,
++  title: z.string(),
++  /** The work as the front desk handed it over. */
++  task: z.string(),
++  status: z.string(),
++  slot: z.string(),
++  modelProvider: z.string().nullable(),
++  modelId: z.string().nullable(),
++  /** How many times it has run, and how many times the gate sent it back. */
++  attempt: z.number().int().nonnegative(),
++  redos: z.number().int().nonnegative(),
++  /** What the quality gate said, when one read the work. */
++  reviewVerdict: z.string().nullable(),
++  /** Where it is now, in one line. */
++  currentStep: z.string().nullable(),
++  /** What came back, once it finished. */
++  result: z.string().nullable(),
++  /** Why it failed, if it did. */
++  error: z.string().nullable(),
++  elapsedMs: z.number().int().nonnegative(),
++  createdAt: z.string(),
++  startedAt: z.string().nullable(),
++  updatedAt: z.string(),
++  completedAt: z.string().nullable(),
++  steps: z.array(TaskStepSchema),
++});
++export type TaskSteps = z.infer<typeof TaskStepsSchema>;
++
  export const ThreadSnapshotSchema = z.object({
    threadId: Id,
    cursor: z.number().int().min(-1),
-@@ -1306,6 +1380,11 @@ export const ThreadSnapshotSchema = z.object({
+@@ -1306,6 +1449,11 @@ export const ThreadSnapshotSchema = z.object({
    run: RunSchema.nullable(),
    activeRuns: z.array(RunSchema).optional(),
    computer: ComputerStatusSchema.optional(),
@@ -88737,10 +89870,16 @@ index c1eddc1..6003f82 100644
 +
  export type MessageReaction = z.infer<typeof MessageReactionSchema>;
 diff --git a/packages/contracts/src/rpc.ts b/packages/contracts/src/rpc.ts
-index 94ad5b0..16b7859 100644
+index 94ad5b0..1579b25 100644
 --- a/packages/contracts/src/rpc.ts
 +++ b/packages/contracts/src/rpc.ts
-@@ -107,7 +107,10 @@ import {
+@@ -102,12 +102,16 @@ import {
+   DeploymentSettingsSchema,
+   ExportManifestSchema,
+   ExternalConversationPolicySchema,
++  FrontDeskTaskSchema,
+   GroupDetailSchema,
+   GroupSchema,
    IncomingBotCallSchema,
    IntegrationCatalogResultSchema,
    MemoryDocumentSchema,
@@ -88751,7 +89890,15 @@ index 94ad5b0..16b7859 100644
    MemoryScopeSchema,
    MeSchema,
    MessagingAgentConnectionSchema,
-@@ -160,12 +163,15 @@ import {
+@@ -142,6 +146,7 @@ import {
+   SpaceMemoryConfigSchema,
+   SpaceNavigationSchema,
+   SpaceSchema,
++  TaskStepsSchema,
+   TaughtSkillSchema,
+   TeachRecordingEventSchema,
+   THREAD_MESSAGE_TEXT_MAX_LENGTH,
+@@ -160,12 +165,14 @@ import {
    VoiceStatusSchema,
  } from "./domain.js";
  import { ComputerCommandSchema, ProductEventSchema } from "./events.js";
@@ -88763,11 +89910,10 @@ index 94ad5b0..16b7859 100644
  } from "./integration-settings.js";
  import { LabFeatureSchema } from "./labs.js";
 +import { LinkPreviewInput, LinkPreviewSchema } from "./link-preview.js";
-+import { DiarySchema, DiarySummarySchema } from "./stage-diaries.js";
  import {
    BotMcpServerSchema,
    McpServerConfigInput,
-@@ -208,11 +214,22 @@ import {
+@@ -208,11 +215,23 @@ import {
    RoutineRunCursorSchema,
    RunsListOutputSchema,
  } from "./runs.js";
@@ -88781,6 +89927,7 @@ index 94ad5b0..16b7859 100644
  import { SecurityEventListInputSchema, SecurityEventSchema } from "./security-events.js";
  import { SettingsScopeSchema, SpaceSettingSchema, settingsScopeInput } from "./settings-scope.js";
  import { SpaceAvailabilitySchema } from "./space-availability.js";
++import { DiarySchema, DiarySummarySchema } from "./stage-diaries.js";
  import { VaultImportInput, VaultImportResult } from "./vault-import.js";
 +import {
 +  RealtimeCallPlanInput,
@@ -88790,7 +89937,7 @@ index 94ad5b0..16b7859 100644
  
  const botId = z.object({ botId: Id });
  const groupId = z.object({ groupId: Id });
-@@ -527,6 +544,17 @@ export const appContract = {
+@@ -527,6 +546,17 @@ export const appContract = {
        )
        .output(ModelRoleViewSchema),
      list: oc.output(z.array(ModelCatalogEntrySchema)),
@@ -88808,7 +89955,7 @@ index 94ad5b0..16b7859 100644
      credentials: oc.output(z.array(ModelCredentialSchema)),
      backups: oc.output(z.array(ModelBackupChoiceSchema)),
      setBackups: oc.input(ModelBackupListSchema).output(z.object({ ok: z.literal(true) })),
-@@ -609,8 +637,17 @@ export const appContract = {
+@@ -609,8 +639,17 @@ export const appContract = {
      importCreate: oc.input(AgentImportCreateInput).output(BotSchema),
      importSetupState: oc.input(AgentImportSetupStateInput).output(AgentImportSetupStateSchema),
      templates: oc.output(z.array(BotTemplateListingSchema)),
@@ -88826,7 +89973,39 @@ index 94ad5b0..16b7859 100644
      reorder: oc.input(ReorderBotsInput).output(z.object({ ok: z.literal(true) })),
      update: oc.input(UpdateBotInput).output(BotSchema),
      restoreInstructions: oc
-@@ -720,9 +757,11 @@ export const appContract = {
+@@ -638,6 +677,19 @@ export const appContract = {
+       ),
+     /** Groups this delete removes because fewer than two active bots would remain. */
+     removePreview: oc.input(botId).output(z.array(z.object({ id: Id, name: z.string() }))),
++    /**
++     * The work this bot has handed to the back office lately, newest first: the profile's Tasks
++     * list, across every chat the bot takes part in.
++     */
++    tasks: oc
++      .input(
++        botId.safeExtend({
++          limit: z.number().int().min(1).max(100).optional(),
++          /** Rows created before this time, for the page after the one already shown. */
++          before: z.string().datetime().optional(),
++        }),
++      )
++      .output(z.array(FrontDeskTaskSchema)),
+     emailAddress: oc.input(botId).output(BotEmailAddressSchema),
+     emailAddresses: oc.output(BotEmailAddressesSchema),
+     claimEmailAddress: oc
+@@ -683,6 +735,11 @@ export const appContract = {
+       }),
+     ),
+     get: oc.input(threadTarget).output(ThreadSnapshotSchema),
++    /**
++     * One piece of the chat's back-office work, opened up: every step from the hand-off to where
++     * it is now, in the order it took them. Reads only the caller's own space.
++     */
++    taskSteps: oc.input(z.object({ taskId: Id })).output(TaskStepsSchema),
+     messages: oc
+       .input(
+         threadTarget.safeExtend({
+@@ -720,9 +777,11 @@ export const appContract = {
        )
        .output(z.object({ ok: z.literal(true), runIds: z.array(Id).optional() })),
      stop: oc.input(threadTarget).output(z.object({ ok: z.literal(true) })),
@@ -88840,7 +90019,7 @@ index 94ad5b0..16b7859 100644
        .output(z.object({ ok: z.literal(true) })),
      followUp: oc
        .input(
-@@ -915,6 +954,41 @@ export const appContract = {
+@@ -915,6 +974,41 @@ export const appContract = {
        )
        .output(MemoryDocumentSchema),
      remove: oc.input(z.object({ documentId: Id })).output(z.object({ ok: z.literal(true) })),
@@ -88882,7 +90061,7 @@ index 94ad5b0..16b7859 100644
      exportMarkdown: oc.input(z.object({ botId: Id.optional() })).output(z.string()),
      providerConfig: oc.output(SpaceMemoryConfigSchema.nullable()),
      connectProvider: oc
-@@ -1571,6 +1645,11 @@ export const appContract = {
+@@ -1571,6 +1665,11 @@ export const appContract = {
        // The longest origin: a scheme, a 253-character host name and a port.
        .input(z.object({ origin: z.string().max("https://".length + 253 + ":65535".length) }))
        .output(z.object({ icon: z.string().nullable(), retry: z.boolean().optional() })),
@@ -88894,7 +90073,7 @@ index 94ad5b0..16b7859 100644
    },
    runs: {
      list: oc.input(z.object({ filter: z.enum(["active", "recent"]) })).output(RunsListOutputSchema),
-@@ -1661,6 +1740,13 @@ export const appContract = {
+@@ -1661,6 +1760,13 @@ export const appContract = {
          }),
        )
        .output(z.object({ ready: z.boolean(), utterances: z.array(z.string()) })),

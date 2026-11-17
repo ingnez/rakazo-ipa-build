@@ -35,6 +35,9 @@ test -f apps/mobile/modules/rakazo-document-scanner/ios/RakazoDocumentScannerMod
 # A live call is half native: without this module the phone has no microphone stream to send.
 test -f apps/mobile/modules/rakazo-realtime-audio/ios/RakazoRealtimeAudioModule.swift
 test -f apps/mobile/lib/realtime-call.ts
+# This round's own files: the shelves an app belongs on and the row that shows it.
+test -f apps/mobile/lib/integration-categories.ts
+test -f apps/mobile/components/connect-app-row.tsx
 test -f apps/mobile/assets/fonts/xvf/XVF-Regular.ttf
 test -f apps/mobile/assets/sounds/grok/ping_4_chime_a.wav
 # The phone's own connectors: five frameworks behind one native module, and the usage strings

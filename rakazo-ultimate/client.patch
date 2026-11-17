@@ -77228,7 +77228,7 @@ index cdada5d..0fb11df 100644
  }));
  
 diff --git a/apps/mobile/lib/avatar-life.test.tsx b/apps/mobile/lib/avatar-life.test.tsx
-index 085ed88..c6d6734 100644
+index 085ed88..95146c4 100644
 --- a/apps/mobile/lib/avatar-life.test.tsx
 +++ b/apps/mobile/lib/avatar-life.test.tsx
 @@ -51,7 +51,11 @@ vi.mock("react-native-reanimated", () => {
@@ -77282,19 +77282,17 @@ index 085ed88..c6d6734 100644
    useMobileTokens: () => ({
      mutedForeground: "#888",
      background: "#FFF",
-@@ -370,9 +392,14 @@ describe("activity mark", () => {
+@@ -370,9 +392,13 @@ describe("activity mark", () => {
  
    it("shows each working member of a group in turn, every 2 s", () => {
      render(<ActivityMark bots={bots} atBottom />);
-+    // Each body is filled with its own official gradient; the first stop is its light colour.
++    // Each body is one flat official colour, so the first member shows its own fill — never a
++    // gradient.
      const shown = () => container.querySelector("[data-fill]")?.getAttribute("data-fill");
--    expect(shown()).toBe("#2A92FE");
-+    const light = () =>
-+      container.querySelector("[data-stop-color]")?.getAttribute("data-stop-color");
-+    expect(shown()).toMatch(/^url\(#bot-body-/);
-+    expect(light()).toBe("#459FFE");
+     expect(shown()).toBe("#2A92FE");
++    expect(shown()).not.toMatch(/^url\(/);
      act(() => vi.advanceTimersByTime(2000));
-+    // The second member is a plain-colour bot, so its organic body is filled directly.
++    // The second member is a plain-colour bot, so its official body is filled directly too.
      expect(shown()).toBe("#FF781C");
    });
  
@@ -77419,10 +77417,10 @@ index 33a7172..46abc76 100644
    it("updates native SVG hosts with finite six-value matrices and numeric eye props", () => {
      render("#3EC5A8", "rakazo");
 diff --git a/apps/mobile/lib/bot-avatar.test.ts b/apps/mobile/lib/bot-avatar.test.ts
-index 180908e..e262502 100644
+index 180908e..2794790 100644
 --- a/apps/mobile/lib/bot-avatar.test.ts
 +++ b/apps/mobile/lib/bot-avatar.test.ts
-@@ -1,19 +1,37 @@
+@@ -1,19 +1,51 @@
 -import { shippedBotAvatarShapePath } from "@rakazo/core";
  import { describe, expect, it } from "vitest";
 -import { mobileBotAvatarPresentation } from "./bot-avatar.js";
@@ -77460,7 +77458,21 @@ index 180908e..e262502 100644
 +    expect(shippedBodyKey(-1)).toBe("blob");
 +    for (let index = 0; index < 26; index += 1) {
 +      expect(
-+        ["blob", "cloud", "square", "sparkle", "clover", "heart", "flower", "teardrop", "tablet", "wedge", "house", "star", "hex"],
++        [
++          "blob",
++          "cloud",
++          "square",
++          "sparkle",
++          "clover",
++          "heart",
++          "flower",
++          "teardrop",
++          "tablet",
++          "wedge",
++          "house",
++          "star",
++          "hex",
++        ],
 +        String(index),
 +      ).toContain(shippedBodyKey(index));
 +    }
@@ -98816,7 +98828,7 @@ index 0000000..adc0969
 +export const BABYGROK_DRAW_MARGIN = 1.28;
 +export const BABYGROK_DRAW_VIEWBOX = "-128 -128 256 256";
 diff --git a/packages/core/src/bot-avatar-colors.test.ts b/packages/core/src/bot-avatar-colors.test.ts
-index be9defc..08eac51 100644
+index be9defc..4b8db9d 100644
 --- a/packages/core/src/bot-avatar-colors.test.ts
 +++ b/packages/core/src/bot-avatar-colors.test.ts
 @@ -1,6 +1,14 @@
@@ -98835,7 +98847,7 @@ index be9defc..08eac51 100644
  
  describe("botEyeTone", () => {
    it("cuts eyes in the page color unless the body is nearly white or black", () => {
-@@ -57,10 +65,35 @@ describe("chatUserBubbleColors", () => {
+@@ -57,10 +65,34 @@ describe("chatUserBubbleColors", () => {
    });
  });
  
@@ -98855,7 +98867,7 @@ index be9defc..08eac51 100644
 +  expect(botEyeInk("#FFFFFF", dark)).toBe(BOT_EYE_INK);
 +  // A body as dark as the ink keeps white eyes instead, or the face would vanish into it.
 +  expect(botEyeInk("#000000", dark)).toBe("#FFFFFF");
- });
++});
 +
 +describe("legibleOn", () => {
 +  it("keeps an ink that already clears the threshold, and otherwise takes the better of white and black", () => {
@@ -98873,8 +98885,7 @@ index be9defc..08eac51 100644
 +    expect(botEyeCutout("#000000", "#FFFFFF")).toBe(true);
 +    expect(botEyeCutout("#FFFFFF", "#000000")).toBe(true);
 +  });
-+});
-+
+ });
 diff --git a/packages/core/src/bot-avatar-colors.ts b/packages/core/src/bot-avatar-colors.ts
 index 7916fec..c8cb9f2 100644
 --- a/packages/core/src/bot-avatar-colors.ts

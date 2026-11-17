@@ -62480,7 +62480,7 @@ index e29608b..59ba82a 100644
              <NativeSymbol
                android="chevron-expand"
 diff --git a/apps/mobile/components/bot-avatar.tsx b/apps/mobile/components/bot-avatar.tsx
-index a589810..cf14b31 100644
+index a589810..c6bd477 100644
 --- a/apps/mobile/components/bot-avatar.tsx
 +++ b/apps/mobile/components/bot-avatar.tsx
 @@ -1,48 +1,90 @@
@@ -62747,7 +62747,7 @@ index a589810..cf14b31 100644
  }: {
    color: string;
    size?: number;
-@@ -269,6 +368,10 @@ function LegacyBotAvatar({
+@@ -269,14 +368,22 @@ function LegacyBotAvatar({
    composing?: boolean;
    /** A tap plays a little reaction (the activity mark). */
    pokeable?: boolean;
@@ -62758,18 +62758,21 @@ index a589810..cf14b31 100644
  }) {
    const tokens = useMobileTokens();
    const state = avatarLifeState(status, composing);
-@@ -276,7 +379,9 @@ function LegacyBotAvatar({
+   // The working dot marks a bot at work, not one writing its reply; a running avatar is
    // itself that sign, so it carries none.
    const isWorking = isRunWorking(status) && !composing && motion !== "running";
-   const parsed = mobileBotAvatarPresentation(color);
+-  const parsed = mobileBotAvatarPresentation(color);
 -  const fillColor = parsed.kind === "shape" || parsed.kind === "color" ? parsed.color : color;
++  // The bot's own id decides the body of one that never picked one, so the same bot wears the same
++  // body on every screen and a list is not a column of the same circle.
++  const parsed = mobileBotAvatarPresentation(color, identity ?? "");
 +  const dark = useResolvedAppearance() === "dark";
 +  const fillColor =
 +    parsed.kind === "shape" || parsed.kind === "color" ? botAvatarFill(parsed.color, dark) : color;
    const eyeColor = botEyeInk(fillColor, tokens);
    const onScreen = useAvatarOnScreen();
    const reducedMotion = useReducedMotion();
-@@ -291,8 +396,92 @@ function LegacyBotAvatar({
+@@ -291,8 +398,93 @@ function LegacyBotAvatar({
      reducedMotion,
    });
    const life = useLife(state, clock, size, motion);
@@ -62778,9 +62781,10 @@ index a589810..cf14b31 100644
 +  const tap = usePoke(life, pokeable && clock === "running");
 +  // Picking another body morphs it into the new one, vertex by vertex, on a soft spring;
 +  // the face squints with pleasure while it lands, as the reference app's does.
-+  const bodyKey = parsed.kind === "shape" ? parsed.bodyKey : null;
-+  // A bot with no studio shape (a colour-only avatar, or one saved before the shapes existed)
-+  // wears the reference app's first body, so every screen draws an official face.
++  const bodyKey = "bodyKey" in parsed ? parsed.bodyKey : null;
++  // A bot that never picked a body wears one of the reference app's thirteen, from its own id
++  // (or the circle, for the white one), so every screen draws an official face and no two bots in
++  // a list have to look alike.
 +  const faceBody = bodyKey ?? "blob";
 +  const [morphFrom, setMorphFrom] = useState<string | null>(null);
 +  const settledShape = useRef(bodyKey);
@@ -62864,7 +62868,7 @@ index a589810..cf14b31 100644
    const picture =
      parsed.kind === "image" && parsed.imageUrl ? (
        <View
-@@ -307,27 +496,29 @@ function LegacyBotAvatar({
+@@ -307,27 +499,29 @@ function LegacyBotAvatar({
        >
          <Image source={{ uri: parsed.imageUrl }} style={{ width: size, height: size }} />
        </View>
@@ -62906,7 +62910,7 @@ index a589810..cf14b31 100644
        {picture}
        {parsed.kind !== "image" && clock !== "still" ? (
          <ThinkingDots color={fillColor} size={size} life={life} />
-@@ -386,86 +577,105 @@ function Dot({
+@@ -386,86 +580,105 @@ function Dot({
  
  type BodyStyle = ReturnType<typeof useAnimatedStyle>;
  
@@ -65822,10 +65826,10 @@ index 0000000..6ce9c75
 +}
 diff --git a/apps/mobile/components/home-hero-body.tsx b/apps/mobile/components/home-hero-body.tsx
 new file mode 100644
-index 0000000..7f95425
+index 0000000..b0487e7
 --- /dev/null
 +++ b/apps/mobile/components/home-hero-body.tsx
-@@ -0,0 +1,278 @@
+@@ -0,0 +1,298 @@
 +import type { I18n } from "@lingui/core";
 +import { msg } from "@lingui/core/macro";
 +import type { SpaceBot } from "@rakazo/contracts";
@@ -65840,6 +65844,19 @@ index 0000000..7f95425
 +import { FALLBACK_COLOR } from "./inbox-rows";
 +import type { NativeRowMenu, NativeRowMenuItem } from "./native-row";
 +import { NativeSymbol } from "./native-symbol";
++
++/**
++ * The main bot's footprint, in points.
++ *
++ * A body is drawn at 86% of its footprint (its area is normalised against the other twelve, see
++ * `BABYGROK_VISUAL_SCALES`), so the reference app's 80 pt body — measured off its own home screen
++ * against a 402 pt page — needs this footprint. At 88 the white body came out 71 pt and read a
++ * size small beside it.
++ */
++const HERO_AVATAR_SIZE = 94;
++/** The star badge on the main bot, ring included: the reference's own badge is about a third of
++ * the body across, with the page colour cutting it out of the white. */
++const HERO_BADGE_SIZE = 24;
 +
 +/**
 + * What the home screen's long press on the main bot offers: the same choices its list rows give.
@@ -66020,7 +66037,7 @@ index 0000000..7f95425
 +            // The main bot is the one character on this screen: it keeps moving, breathing, blinking
 +            // and glancing around even when nothing is happening, as the reference app draws it.
 +            motion="live"
-+            size={88}
++            size={HERO_AVATAR_SIZE}
 +            status={bot.status}
 +          />
 +          {/* The star marks the bot that stands at the top of the list. */}
@@ -66040,14 +66057,16 @@ index 0000000..7f95425
 +}
 +
 +export function createHeroStyles() {
++  const tokens = mobileTokens();
 +  return StyleSheet.create({
 +    // Full width, so the body centred inside it is centred on the screen: a shrink-wrapped
 +    // column has nothing to centre against and left-aligns the bot on iOS.
 +    hero: {
 +      width: "100%",
 +      alignItems: "center",
-+      paddingTop: 6,
-+      paddingBottom: 18,
++      // The reference app leaves the main bot this much air above it and this much under its name.
++      paddingTop: 12,
++      paddingBottom: 16,
 +      paddingHorizontal: 20,
 +    },
 +    heroButton: {
@@ -66064,23 +66083,28 @@ index 0000000..7f95425
 +      opacity: 0.7,
 +    },
 +    avatarWrap: {
-+      width: 88,
-+      height: 88,
++      width: HERO_AVATAR_SIZE,
++      height: HERO_AVATAR_SIZE,
 +      alignItems: "center",
 +      justifyContent: "center",
 +      // The avatar's own canvas is already wider than its footprint so its clips have room;
-+      // this must not crop that back to 88 points.
++      // this must not crop that back to the footprint.
 +      overflow: "visible",
 +    },
-+    // A filled orange star at the avatar's bottom-right, with no ring: the reference app's badge
-+    // simply sits over the body, so the body's edge stops at it instead of being outlined.
++    // A filled orange star at the avatar's lower right, ringed in the page's own colour: the
++    // reference app cuts the badge out of the white body with that ring, so the star reads as a
++    // badge sitting on the bot rather than a mark stuck to its edge. The body it sits on is 86% of
++    // the footprint (see `motionShapeScale`), and the badge's centre lands on the body's own edge
++    // at about four o'clock, as it does there.
 +    mainBadge: {
 +      position: "absolute",
-+      end: -2,
-+      bottom: -2,
-+      width: 22,
-+      height: 22,
-+      borderRadius: 11,
++      end: 3,
++      bottom: 10,
++      width: HERO_BADGE_SIZE,
++      height: HERO_BADGE_SIZE,
++      borderRadius: HERO_BADGE_SIZE / 2,
++      borderWidth: 3,
++      borderColor: tokens.background,
 +      alignItems: "center",
 +      justifyContent: "center",
 +      backgroundColor: "#FF9500",
@@ -66218,22 +66242,24 @@ index 0000000..02b8260
 +  },
 +});
 diff --git a/apps/mobile/components/home-styles.ts b/apps/mobile/components/home-styles.ts
-index b22c9bd..634f048 100644
+index b22c9bd..5852fa1 100644
 --- a/apps/mobile/components/home-styles.ts
 +++ b/apps/mobile/components/home-styles.ts
-@@ -3,8 +3,10 @@ import { StyleSheet } from "react-native";
+@@ -3,8 +3,12 @@ import { StyleSheet } from "react-native";
  import { mobileTokens } from "../lib/appearance";
  import { native } from "../lib/native";
  
 -export const INBOX_ROW = { padding: 16, gap: 12, avatarSize: 62 };
-+export const INBOX_ROW = { padding: 16, gap: 14, avatarSize: 48 };
++export const INBOX_ROW = { padding: 16, gap: 14, avatarSize: 50 };
++/** The row's own vertical padding: the avatar plus twice this is the reference's 80 pt row. */
++export const INBOX_ROW_PADDING_Y = 15;
  export const COMPACT_INBOX_ROW = { padding: 12, gap: 10 };
 +/** The reference app's unread mark: a 10 pt disc. */
 +export const UNREAD_DOT_SIZE = 10;
  // Drops the Android create menu below the header pill; the trigger's negative margin keeps the layout.
  export const CREATE_MENU_GAP = 6;
  
-@@ -71,6 +73,19 @@ export function createHomeStyles() {
+@@ -71,6 +75,19 @@ export function createHomeStyles() {
        fontSize: 15,
        fontWeight: "600",
      },
@@ -66253,17 +66279,19 @@ index b22c9bd..634f048 100644
      error: {
        color: native.secondaryLabel,
        paddingHorizontal: 20,
-@@ -93,7 +108,8 @@ export function createHomeStyles() {
+@@ -93,7 +110,10 @@ export function createHomeStyles() {
        flexDirection: "row",
        alignItems: "center",
        paddingHorizontal: INBOX_ROW.padding,
 -      paddingVertical: 14,
-+      // 48 pt of avatar and 16 pt above and below make the reference app's 80 pt row.
-+      paddingVertical: 16,
++      // A body is drawn at 86% of its footprint (see `BABYGROK_VISUAL_SCALES`), so the reference
++      // app's 40 pt body on a row needs a 50 pt footprint; with 15 pt above and below that is still
++      // the reference's 80 pt row, and the list starts in the same place.
++      paddingVertical: INBOX_ROW_PADDING_Y,
        gap: INBOX_ROW.gap,
      },
      rowSelected: {
-@@ -178,10 +194,22 @@ export function createHomeStyles() {
+@@ -178,10 +198,22 @@ export function createHomeStyles() {
        color: native.label,
        fontWeight: "600",
      },
@@ -77417,10 +77445,10 @@ index 33a7172..46abc76 100644
    it("updates native SVG hosts with finite six-value matrices and numeric eye props", () => {
      render("#3EC5A8", "rakazo");
 diff --git a/apps/mobile/lib/bot-avatar.test.ts b/apps/mobile/lib/bot-avatar.test.ts
-index 180908e..2794790 100644
+index 180908e..db880ce 100644
 --- a/apps/mobile/lib/bot-avatar.test.ts
 +++ b/apps/mobile/lib/bot-avatar.test.ts
-@@ -1,19 +1,51 @@
+@@ -1,24 +1,102 @@
 -import { shippedBotAvatarShapePath } from "@rakazo/core";
  import { describe, expect, it } from "vitest";
 -import { mobileBotAvatarPresentation } from "./bot-avatar.js";
@@ -77479,26 +77507,83 @@ index 180908e..2794790 100644
    });
  
    it("draws a color saved as its earlier value as the current one", () => {
+-    expect(mobileBotAvatarPresentation("#8B5CF6")).toEqual({ kind: "color", color: "#A97EFE" });
+-    expect(mobileBotAvatarPresentation("#123456")).toEqual({ kind: "color", color: "#123456" });
++    expect(mobileBotAvatarPresentation("#8B5CF6", "bot-a")).toMatchObject({
++      kind: "color",
++      color: "#A97EFE",
++    });
++    expect(mobileBotAvatarPresentation("#123456", "bot-a")).toMatchObject({
++      kind: "color",
++      color: "#123456",
++    });
++  });
++
++  it("gives a bot that never picked a body one of its own, and keeps it", () => {
++    const first = mobileBotAvatarPresentation("#FF3E51", "bot-life");
++    const again = mobileBotAvatarPresentation("#FF3E51", "bot-life");
++    expect(first.kind === "color" && first.bodyKey).toBeTruthy();
++    expect(again).toEqual(first);
++  });
++
++  it("keeps the reference's white as the circle, for the bot at the top of the home screen", () => {
++    expect(mobileBotAvatarPresentation("#FFFFFF", "bot-main")).toMatchObject({
++      kind: "color",
++      bodyKey: "blob",
++    });
++  });
++
++  it("spreads colour-only bots over the thirteen bodies instead of one circle", () => {
++    const ids = ["b1", "b2", "b3", "b4", "b5", "b6", "b7", "b8", "b9", "b10"];
++    const bodies = ids.map((id) => {
++      const presented = mobileBotAvatarPresentation("#2A92FE", id);
++      return presented.kind === "color" ? presented.bodyKey : "";
++    });
++    expect(new Set(bodies).size).toBeGreaterThan(3);
++    for (const body of bodies) {
++      expect([
++        "blob",
++        "cloud",
++        "square",
++        "sparkle",
++        "clover",
++        "heart",
++        "flower",
++        "teardrop",
++        "tablet",
++        "wedge",
++        "house",
++        "star",
++        "hex",
++      ]).toContain(body);
++    }
+   });
+ 
+   it("still treats data images and remote URLs as before", () => {
 diff --git a/apps/mobile/lib/bot-avatar.ts b/apps/mobile/lib/bot-avatar.ts
-index 9970e53..5a45e0b 100644
+index 9970e53..1554de4 100644
 --- a/apps/mobile/lib/bot-avatar.ts
 +++ b/apps/mobile/lib/bot-avatar.ts
-@@ -1,12 +1,31 @@
+@@ -1,19 +1,53 @@
  import type { ParsedBotAvatar } from "@rakazo/contracts";
  import { parseBotAvatarValue } from "@rakazo/contracts";
 -import { resolvePersonaColorDef, shippedBotAvatarShapePath } from "@rakazo/core";
 +import {
 +  officialFaceBodyKey,
++  officialFaceBodyKeyForColor,
 +  resolvePersonaColorDef,
 +  SHIPPED_BOT_AVATAR_SHAPE_KEYS,
 +} from "@rakazo/core";
  
  export type MobileBotAvatarPresentation =
-   | Exclude<ParsedBotAvatar, { kind: "shape" }>
+-  | Exclude<ParsedBotAvatar, { kind: "shape" }>
 -  | { kind: "shape"; color: string; shapeIndex: number; shapePath: string };
++  | Exclude<ParsedBotAvatar, { kind: "shape" } | { kind: "color" }>
++  | { kind: "color"; color: string; bodyKey: string }
 +  | { kind: "shape"; color: string; shapeIndex: number; bodyKey: string };
  
 -/** Resolve a stored `bots.color` value for native rendering, including shape paths. */
+-export function mobileBotAvatarPresentation(color: string): MobileBotAvatarPresentation {
 +/**
 + * The body a stored shape index wears, in the reference app's thirteen bodies.
 + *
@@ -77514,11 +77599,32 @@ index 9970e53..5a45e0b 100644
 +  return officialFaceBodyKey(SHIPPED_BOT_AVATAR_SHAPE_KEYS[normalized] ?? "blob");
 +}
 +
-+/** Resolve a stored `bots.color` value for native rendering, including its body. */
- export function mobileBotAvatarPresentation(color: string): MobileBotAvatarPresentation {
++/**
++ * Resolve a stored `bots.color` value for native rendering, including its body.
++ *
++ * A bot that carries a stored shape wears it. A bot saved with a colour alone wears the body its
++ * own id is given (`officialFaceBodyKeyForColor`): the reference app's list is a mix of bodies, and
++ * with the first body as everyone's default it was a column of the same circle. `identity` is the
++ * bot's id; without one the colour itself stands in, so a caller that has no id still gets a stable
++ * body rather than a different one on every render.
++ */
++export function mobileBotAvatarPresentation(
++  color: string,
++  identity = "",
++): MobileBotAvatarPresentation {
    const parsed = parseBotAvatarValue(color);
    if (parsed.kind === "color") {
-@@ -21,6 +40,6 @@ export function mobileBotAvatarPresentation(color: string): MobileBotAvatarPrese
+     // A color saved as its earlier, deeper value draws as the color's current one.
++    const resolved = resolvePersonaColorDef("preview", parsed.color).hex;
+     return {
+       ...parsed,
+-      color: resolvePersonaColorDef("preview", parsed.color).hex,
++      color: resolved,
++      bodyKey: officialFaceBodyKeyForColor(resolved, identity),
+     };
+   }
+   if (parsed.kind !== "shape") return parsed;
+@@ -21,6 +55,6 @@ export function mobileBotAvatarPresentation(color: string): MobileBotAvatarPrese
    return {
      ...parsed,
      color: colorDef.hex,
@@ -97396,10 +97502,22 @@ index 5ac17f3..6508156 100644
    };
  }
 diff --git a/packages/core/src/avatar-life.test.ts b/packages/core/src/avatar-life.test.ts
-index 44c91ee..c6387e5 100644
+index 44c91ee..7b4fc03 100644
 --- a/packages/core/src/avatar-life.test.ts
 +++ b/packages/core/src/avatar-life.test.ts
-@@ -265,9 +265,11 @@ function still(pose: AvatarPose): boolean {
+@@ -244,7 +244,10 @@ describe("flat avatar frames", () => {
+     expect(avatarWorkingDot(62)).toMatchObject({ diameter: 12, inset: 0 });
+     expect(avatarWorkingDot(80)).toMatchObject({ diameter: 15, inset: 3 });
+     expect(avatarWorkingDot(96)).toMatchObject({ diameter: 17, inset: 3 });
+-    expect(avatarWorkingDot(100).ring).toBeCloseTo(4.6);
++    // A ring thick enough to cut the dot out of the body behind it: 2.5 pt on a row, and 4–5 pt on
++    // the main bot, which is where the reference app draws it clearly.
++    expect(avatarWorkingDot(48).ring).toBeCloseTo(2.5);
++    expect(avatarWorkingDot(100).ring).toBeCloseTo(5);
+   });
+ });
+ 
+@@ -265,9 +268,11 @@ function still(pose: AvatarPose): boolean {
  }
  
  describe("authored motion", () => {
@@ -97414,7 +97532,7 @@ index 44c91ee..c6387e5 100644
    /** At most this many degrees in 10 ms while looking around, and during the spin. */
    const LOOK_STEP = 4;
    const SPIN_STEP = 12;
-@@ -334,12 +336,15 @@ describe("authored motion", () => {
+@@ -334,12 +339,15 @@ describe("authored motion", () => {
      expect(Math.max(...rolls) - Math.min(...rolls)).toBeGreaterThanOrEqual(360);
      for (let step = 1; step < all.length; step += 1)
        expect(turn(all[step]!, all[step - 1]!)).toBeLessThanOrEqual(SPIN_STEP);
@@ -97433,7 +97551,7 @@ index 44c91ee..c6387e5 100644
        const clip = avatarClip(name);
        expect(clip.blinks?.length, name).toBeGreaterThan(0);
        for (const blink of clip.blinks ?? []) {
-@@ -348,7 +353,7 @@ describe("authored motion", () => {
+@@ -348,7 +356,7 @@ describe("authored motion", () => {
        }
        expect(Math.max(...poses(name).map((pose) => pose.lid)), name).toBeCloseTo(1);
      }
@@ -97442,7 +97560,7 @@ index 44c91ee..c6387e5 100644
    });
  
    it("keeps every avatar at rest still, without a blink, except the call card", () => {
-@@ -374,16 +379,22 @@ describe("authored motion", () => {
+@@ -374,16 +382,22 @@ describe("authored motion", () => {
      for (const name of compactIdle) expect(idle).toContain(name);
    });
  
@@ -97471,7 +97589,7 @@ index 44c91ee..c6387e5 100644
      }
    });
 diff --git a/packages/core/src/avatar-life.ts b/packages/core/src/avatar-life.ts
-index c4fd75d..b7910b0 100644
+index c4fd75d..362c42e 100644
 --- a/packages/core/src/avatar-life.ts
 +++ b/packages/core/src/avatar-life.ts
 @@ -185,6 +185,10 @@ export function avatarSchedulePose(
@@ -97536,6 +97654,21 @@ index c4fd75d..b7910b0 100644
    };
  }
  
+@@ -335,9 +359,13 @@ export function avatarPhotoDot(slot: 0 | 1 | 2, ms: number, typing: boolean): nu
+ /**
+  * The working dot on a busy bot's avatar of `size` pt: a `diameter` pt disc set `inset` pt
+  * in from the avatar's bottom corner, inside a `ring` pt ring of the surface behind it.
++ *
++ * The ring is the page's own colour, and the reference app draws it thick enough to cut the dot
++ * cleanly out of a coloured body: about 2.5 pt on an inbox row, and 4–5 pt on the main bot, where
++ * the disc is nearly half again as wide.
+  */
+ export function avatarWorkingDot(size: number): { diameter: number; inset: number; ring: number } {
+-  const ring = size * 0.046;
++  const ring = size >= 40 ? Math.max(2.5, size * 0.05) : size * 0.046;
+   if (size <= 40) return { diameter: 10, inset: 0.5, ring };
+   if (size < 80) return { diameter: 12, inset: 0, ring };
+   return { diameter: size < 96 ? 15 : 17, inset: 3, ring };
 diff --git a/packages/core/src/avatar-shape.ts b/packages/core/src/avatar-shape.ts
 index 7f72426..abb48c2 100644
 --- a/packages/core/src/avatar-shape.ts
@@ -97557,12 +97690,14 @@ index 7f72426..abb48c2 100644
  
 diff --git a/packages/core/src/babygrok-face.test.ts b/packages/core/src/babygrok-face.test.ts
 new file mode 100644
-index 0000000..44b9642
+index 0000000..d9084ea
 --- /dev/null
 +++ b/packages/core/src/babygrok-face.test.ts
-@@ -0,0 +1,330 @@
+@@ -0,0 +1,375 @@
 +import { describe, expect, it } from "vitest";
++import type { BabygrokEyeSpec } from "./babygrok-face.js";
 +import {
++  BABYGROK_BASE_SPEC,
 +  babygrokBodyPath,
 +  babygrokEyeLoops,
 +  babygrokEyes,
@@ -97665,7 +97800,9 @@ index 0000000..44b9642
 +
 +describe("a body morphing into another", () => {
 +  it("draws the old body at 0, the new one at 1, and a mix in between", () => {
-+    expect(babygrokBodyPath(hex.ring, tablet.ring, 0)).toBe(babygrokBodyPath(hex.ring, hex.ring, 1));
++    expect(babygrokBodyPath(hex.ring, tablet.ring, 0)).toBe(
++      babygrokBodyPath(hex.ring, hex.ring, 1),
++    );
 +    const start = points(babygrokBodyPath(hex.ring, tablet.ring, 0));
 +    const end = points(babygrokBodyPath(hex.ring, tablet.ring, 1));
 +    const middle = points(babygrokBodyPath(hex.ring, tablet.ring, 0.5));
@@ -97732,9 +97869,10 @@ index 0000000..44b9642
 +          lid: 1,
 +        });
 +        for (const value of eyes.d.match(/-?\d+\.?\d*/g) ?? []) {
-+          expect(Math.abs(Number(value)), `${BABYGROK_BODY_KEYS[index]} at mood ${mood}`).toBeLessThan(
-+            100,
-+          );
++          expect(
++            Math.abs(Number(value)),
++            `${BABYGROK_BODY_KEYS[index]} at mood ${mood}`,
++          ).toBeLessThan(100);
 +        }
 +      }
 +    }
@@ -97839,6 +97977,26 @@ index 0000000..44b9642
 +      spec: spec(face),
 +      mood,
 +    });
++  /** The same face on another body, or with a spec stated outright. */
++  const loopsOn = (body: (typeof BABYGROK_BODIES)[string], lidSpec: BabygrokEyeSpec) =>
++    babygrokEyeLoops({
++      body,
++      morphFrom: null,
++      morphTo: body,
++      morph: 1,
++      gazeX: 0,
++      gazeY: 0,
++      turn: 0,
++      lid: 1,
++      spec: lidSpec,
++      mood: 0,
++    });
++  /** Where each of the two loops starts, which is enough to read the pair's lean. */
++  const loopStarts = (d: string) =>
++    d
++      .split("M")
++      .slice(1)
++      .map((loop) => loop.split("Q")[0]!.split(" ").map(Number) as [number, number]);
 +
 +  it("draws both eyes as two closed loops", () => {
 +    const d = loops("neutral");
@@ -97849,12 +98007,32 @@ index 0000000..44b9642
 +  });
 +
 +  it("carries the reference's nine lid curves", () => {
-+    const shapes = new Set(
-+      Object.keys(MOTION_FACES).map((face) => loops(face).replace(/-?\d+\.?\d*/g, "#")),
-+    );
-+    // Nine canonical faces, and every one of them is a shape of its own.
++    const shapes = new Set(Object.keys(MOTION_FACES).map((face) => loops(face)));
++    // Nine canonical faces. Two of them draw alike on purpose: `inspecting` is the reference's
++    // "keep the body's own eye", and `neutral` is that same eye at the lean the body was drawn
++    // with; every other face is a lid of its own. The paths are compared as they are: stripping
++    // the numbers out of them left every face with the same skeleton.
 +    expect(Object.keys(MOTION_FACES)).toHaveLength(9);
-+    expect(shapes.size).toBe(9);
++    expect(shapes.size).toBe(8);
++    expect(loops("neutral")).toBe(loops("inspecting"));
++  });
++
++  it("draws its neutral face as the body's own two eyes, lean and all", () => {
++    for (const key of BABYGROK_BODY_KEYS) {
++      const body = BABYGROK_BODIES[key]!;
++      // The reference's neutral lid is exactly the body's authored pair, so the face it draws and
++      // the body's own eye are the same drawing — this is what makes its bots look to the side.
++      expect(loopsOn(body, spec("neutral")), key).toBe(loopsOn(body, BABYGROK_BASE_SPEC));
++    }
++    // A body drawn with the pair on a slant keeps it: on the blob the two eyes start at different
++    // heights, which is the glance off to the upper right the reference's own bots have.
++    const [left, right] = loopStarts(loopsOn(BABYGROK_BODIES.blob!, spec("neutral")));
++    expect(left![1]).not.toBeCloseTo(right![1]!, 1);
++  });
++
++  it("draws a lid that lies across the face level, whatever the body's lean", () => {
++    const [left, right] = loopStarts(loopsOn(BABYGROK_BODIES.blob!, spec("calm")));
++    expect(left![1]).toBeCloseTo(right![1]!, 1);
 +  });
 +
 +  it("keeps every eye inside the body's box on every face", () => {
@@ -97893,10 +98071,10 @@ index 0000000..44b9642
 +});
 diff --git a/packages/core/src/babygrok-face.ts b/packages/core/src/babygrok-face.ts
 new file mode 100644
-index 0000000..b664982
+index 0000000..8d67805
 --- /dev/null
 +++ b/packages/core/src/babygrok-face.ts
-@@ -0,0 +1,434 @@
+@@ -0,0 +1,439 @@
 +import type { BabygrokBody } from "./babygrok-geometry.js";
 +
 +/**
@@ -98018,11 +98196,7 @@ index 0000000..b664982
 +}
 +
 +/** How far the eye pair may move from where it sits, along the way it is being pushed. */
-+export function babygrokGazeReach(
-+  budget: readonly number[],
-+  x: number,
-+  y: number,
-+): number {
++export function babygrokGazeReach(budget: readonly number[], x: number, y: number): number {
 +  "worklet";
 +  const count = budget.length;
 +  const turn = Math.atan2(y, x) / (Math.PI * 2);
@@ -98133,7 +98307,8 @@ index 0000000..b664982
 +  "worklet";
 +  const from = morphFrom?.eyes ?? morphTo.eyes;
 +  const to = morphTo.eyes;
-+  const eye = (index: number) => from[index]! + (to[index]! - from[index]!) * (morphFrom ? morph : 1);
++  const eye = (index: number) =>
++    from[index]! + (to[index]! - from[index]!) * (morphFrom ? morph : 1);
 +  const pairX = eye(0);
 +  const pairY = eye(1);
 +  const gap = eye(2) * (1 - TURN_CLOSE * Math.abs(turn));
@@ -98158,6 +98333,14 @@ index 0000000..b664982
 +      Math.abs(spec.p2[1]) <
 +    1e-6;
 +  const shape = authored ? BABYGROK_BASE_SPEC : spec;
++  // A lid whose two ends share an x runs up the face, as the body's own eye does; one that spreads
++  // wider than that lies across the face, as an arch or a squint does.
++  const upright = Math.abs(shape.p0[0] - shape.p2[0]) < 0.02;
++  // The reference app draws its lids in the body's own frame, so a lid that runs up the face keeps
++  // the body's authored lean: its neutral face is exactly the body's own pair of eyes, which is why
++  // its bots look up and to the side rather than dead ahead. A lid that runs across the face is
++  // drawn level, as the reference's arches and squints are.
++  const inBodyFrame = authored || upright;
 +  const pleased = mood > 0.001;
 +  const chosen: BabygrokEyeSpec = pleased
 +    ? {
@@ -98176,11 +98359,11 @@ index 0000000..b664982
 +        isArc: true,
 +      }
 +    : shape;
-+  // A face from the reference carries its own orientation, so it is drawn level; only the
-+  // all-zero face keeps the body's authored tilt, which is what the body was drawn with.
-+  const tilt = (((authored ? eye(5) - 90 : 0) + TURN_LEAN * turn * 0.4) * Math.PI) / 180;
++  // A lid that lies across the face is drawn level; one that runs up it keeps the body's authored
++  // tilt, which is what the body was drawn with.
++  const tilt = (((inBodyFrame ? eye(5) - 90 : 0) + TURN_LEAN * turn * 0.4) * Math.PI) / 180;
 +  const radius = thickness * 0.5 * (chosen.isArc ? ARC_THIN : 1) * Math.max(lid, LOOP_LID_KEEP);
-+  const pairTilt = (((authored ? eye(6) : 0) + TURN_LEAN * turn) * Math.PI) / 180;
++  const pairTilt = (((inBodyFrame ? eye(6) : 0) + TURN_LEAN * turn) * Math.PI) / 180;
 +  const half = gap / 2;
 +  let d = "";
 +  for (const side of [-1, 1]) {
@@ -98299,7 +98482,8 @@ index 0000000..b664982
 +  "worklet";
 +  const from = morphFrom?.eyes ?? morphTo.eyes;
 +  const to = morphTo.eyes;
-+  const eye = (index: number) => from[index]! + (to[index]! - from[index]!) * (morphFrom ? morph : 1);
++  const eye = (index: number) =>
++    from[index]! + (to[index]! - from[index]!) * (morphFrom ? morph : 1);
 +  const pairX = eye(0);
 +  const pairY = eye(1);
 +  const gap = eye(2) * (1 + HAPPY_WIDEN * mood) * (1 - TURN_CLOSE * Math.abs(turn));
@@ -98311,7 +98495,7 @@ index 0000000..b664982
 +  // level on it, hump up, as the reference draws it. Bent about the capsule's own axis the arch
 +  // would stand on its side, so the shape swings out of that lean as `mood` rises, and arrives
 +  // level at 1 without the straight eye ever jumping.
-+  const archTilt = ((eye(5) * (1 - mood)) * Math.PI) / 180;
++  const archTilt = (eye(5) * (1 - mood) * Math.PI) / 180;
 +  // The pair the body authored leans with the face, but a pleased pair sits level, as the
 +  // reference's does; a turned head still leans it.
 +  const pairTilt = ((eye(6) * (1 - mood) + TURN_LEAN * turn) * Math.PI) / 180;
@@ -98330,7 +98514,6 @@ index 0000000..b664982
 +  }
 +  return { d, width: Math.max(thickness * Math.max(lid, LID_KEEP), 0.4) };
 +}
-+
 diff --git a/packages/core/src/babygrok-geometry.json b/packages/core/src/babygrok-geometry.json
 new file mode 100644
 index 0000000..f95b92a
@@ -99086,7 +99269,7 @@ index 5bbda30..d93ab56 100644
  
    it("emits path geometry only", () => {
 diff --git a/packages/core/src/bot-avatar-shapes.ts b/packages/core/src/bot-avatar-shapes.ts
-index 0607200..9f102a2 100644
+index 0607200..782f006 100644
 --- a/packages/core/src/bot-avatar-shapes.ts
 +++ b/packages/core/src/bot-avatar-shapes.ts
 @@ -5,13 +5,18 @@ export const SHIPPED_BOT_AVATAR_CENTER = 114.2705;
@@ -99148,7 +99331,7 @@ index 0607200..9f102a2 100644
  };
  
  export const SHIPPED_BOT_AVATAR_SHAPE_KEYS = [
-@@ -38,10 +72,136 @@ export const SHIPPED_BOT_AVATAR_SHAPE_KEYS = [
+@@ -38,10 +72,165 @@ export const SHIPPED_BOT_AVATAR_SHAPE_KEYS = [
    "blob",
    "teardrop",
    "cloud",
@@ -99249,6 +99432,35 @@ index 0607200..9f102a2 100644
 +  leaf: "heart",
 +  pumpkin: "blob",
 +};
++
++/**
++ * The body a bot wears when it never picked one, from its own id.
++ *
++ * A bot saved with a colour alone used to wear the first body on every screen, which turned a list
++ * of six of them into a column of the same circle. The reference app's own list mixes hexagons,
++ * squircles and circles, so the thirteen bodies are handed out by the id: the same bot keeps the
++ * same body on every screen and through a restart, and a list reads as different characters. The
++ * white body is the reference's own default and stays the circle; the caller keeps it for the bot
++ * that stands at the top of the home screen (see `officialFaceBodyKeyForColor`).
++ */
++export function defaultBodyKeyForIdentity(identity: string): string {
++  // FNV-1a, so a short id and a long one spread the same way, and the answer never changes.
++  let hash = 0x811c9dc5;
++  for (let index = 0; index < identity.length; index += 1) {
++    hash ^= identity.charCodeAt(index);
++    hash = Math.imul(hash, 0x01000193) >>> 0;
++  }
++  return OFFICIAL_FACE_SHAPE_KEYS[hash % OFFICIAL_FACE_SHAPE_KEYS.length] ?? "blob";
++}
++
++/**
++ * The body a colour-only bot wears: the circle for the reference's own white, and a body of its own
++ * for every other colour.
++ */
++export function officialFaceBodyKeyForColor(color: string, identity: string): string {
++  if (color.toUpperCase() === "#FFFFFF" || color.toUpperCase() === "#FFF") return "blob";
++  return defaultBodyKeyForIdentity(identity || color);
++}
 +
 +/**
 + * The body a stored shape name is drawn as: its own when the reference picker offers it, the

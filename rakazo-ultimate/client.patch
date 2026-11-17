@@ -2253,10 +2253,10 @@ index 9187fee..1d678eb 100644
          <SettingsRow
            key="routines"
 diff --git a/apps/mobile/app/bot-settings.tsx b/apps/mobile/app/bot-settings.tsx
-index 408ddab..e52d908 100644
+index 408ddab..9b07863 100644
 --- a/apps/mobile/app/bot-settings.tsx
 +++ b/apps/mobile/app/bot-settings.tsx
-@@ -23,6 +23,7 @@ import type { Voice } from "expo-speech";
+@@ -23,9 +23,11 @@ import type { Voice } from "expo-speech";
  import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
  import type { ScrollViewInstance } from "react-native";
  import { Alert, Modal, Pressable, ScrollView, Share, StyleSheet, Text, View } from "react-native";
@@ -2264,7 +2264,19 @@ index 408ddab..e52d908 100644
  import { BotAvatar } from "../components/bot-avatar";
  import { BotContextCards } from "../components/bot-context-cards";
  import { BotLookPicker } from "../components/bot-look-picker";
-@@ -62,6 +63,7 @@ import { stopVoicePlayback } from "../lib/voice";
++import { BotSoulField } from "../components/bot-soul-field";
+ import { useComputerMaintenanceRows } from "../components/computer-maintenance-actions";
+ import { ComputerModePicker } from "../components/computer-mode-picker";
+ import { glassHeaderOptions } from "../components/glass-title";
+@@ -43,6 +45,7 @@ import {
+   SettingsSwitch,
+ } from "../components/settings-group";
+ import { currentApiBase, rpc, selectedSpaceId } from "../lib/api";
++import { soulEdits, soulIsDirty, soulOf } from "../lib/bot-soul";
+ import { deviceVoices, setVoiceForBot, voiceForBot, voiceLabel } from "../lib/bot-voices";
+ import { CallKeyboardContext } from "../lib/call-keyboard-context";
+ import { chatModelPickerChoices } from "../lib/chat-model";
+@@ -62,6 +65,7 @@ import { stopVoicePlayback } from "../lib/voice";
  export default function BotSettingsScreen() {
    const rootAvoidsKeyboard = useContext(CallKeyboardContext);
    const sideInsets = useSideInsets();
@@ -2272,7 +2284,68 @@ index 408ddab..e52d908 100644
    const tokens = useMobileTokens();
    const { t } = useLingui();
    const router = useRouter();
-@@ -853,44 +855,67 @@ export default function BotSettingsScreen() {
+@@ -76,6 +80,7 @@ export default function BotSettingsScreen() {
+   const threadId = useRef<string | undefined>(undefined);
+   const [name, setName] = useState("");
+   const [description, setDescription] = useState("");
++  const [soul, setSoul] = useState("");
+   const [instructions, setInstructions] = useState("");
+   const [color, setColor] = useState<string>(DEFAULT_BOT_AVATAR_COLOR);
+   const [computerMode, setComputerMode] = useState<ComputerMode>("team");
+@@ -202,6 +207,7 @@ export default function BotSettingsScreen() {
+         nameSave.reset(next.name);
+         notifySave.reset(next.notifyOnFinish ?? true);
+         setDescription(next.description ?? "");
++        setSoul(soulOf(next));
+         setInstructions(next.instructions ?? "");
+         setColor(next.color);
+         setAvatarSet(resolveBotAvatarSet(next.avatarSet));
+@@ -407,6 +413,7 @@ export default function BotSettingsScreen() {
+         description?: string;
+         instructions?: string;
+         expectedInstructions?: string;
++        soul?: string;
+         color?: string;
+         avatarSet?: BotAvatarSet;
+         modelProvider?: string | null;
+@@ -421,6 +428,8 @@ export default function BotSettingsScreen() {
+         input.instructions = instructions;
+         input.expectedInstructions = bot.instructions;
+       }
++      // The soul is saved on its own terms: an emptied field is sent as "", so it can be cleared.
++      Object.assign(input, soulEdits(bot, soul));
+       if (color !== bot.color) input.color = color;
+       if (avatarSet !== resolveBotAvatarSet(bot.avatarSet)) input.avatarSet = avatarSet;
+       const modelChanged =
+@@ -452,6 +461,8 @@ export default function BotSettingsScreen() {
+         // does not resend them.
+         const { botId: _botId, expectedInstructions: _expected, ...saved } = input;
+         setBot((prev) => (prev ? { ...prev, ...saved, ...updated } : prev));
++        // A server from before this field answers without it; the field keeps what was typed.
++        if (updated.soul !== undefined) setSoul(soulOf(updated));
+       }
+       await Promise.all([
+         dailyCheckInsSave.flush(),
+@@ -473,6 +484,7 @@ export default function BotSettingsScreen() {
+   const dirty =
+     bot &&
+     (description.trim() !== (bot.description ?? "") ||
++      soulIsDirty(bot, soul) ||
+       instructions !== (bot.instructions ?? "") ||
+       color !== bot.color ||
+       avatarSet !== resolveBotAvatarSet(bot.avatarSet) ||
+@@ -700,6 +712,10 @@ export default function BotSettingsScreen() {
+                 value={replyMode}
+               />
+             </SettingsGroup>
++            <View style={{ gap: 7 }}>
++              <SettingsLabel>{t`Soul`}</SettingsLabel>
++              <BotSoulField editable={!pending} value={soul} onChange={setSoul} />
++            </View>
+             <View style={{ gap: 7 }}>
+               <View
+                 style={{
+@@ -853,44 +869,67 @@ export default function BotSettingsScreen() {
            presentationStyle="pageSheet"
            onRequestClose={() => setAvatarOpen(false)}
          >
@@ -2374,7 +2447,7 @@ index 408ddab..e52d908 100644
          </Modal>
        ) : null}
      </>
-@@ -900,4 +925,34 @@ export default function BotSettingsScreen() {
+@@ -900,4 +939,34 @@ export default function BotSettingsScreen() {
  const styles = StyleSheet.create({
    cardContent: { padding: 16 },
    voiceError: { flexShrink: 1, fontSize: 17 },
@@ -63258,6 +63331,108 @@ index 0000000..38a7758
 +  hookText: { fontSize: 12, flexShrink: 1 },
 +  jumpRow: { flexDirection: "row", alignItems: "center", gap: 5, paddingTop: 2 },
 +});
+diff --git a/apps/mobile/components/bot-soul-field.tsx b/apps/mobile/components/bot-soul-field.tsx
+new file mode 100644
+index 0000000..3d4c071
+--- /dev/null
++++ b/apps/mobile/components/bot-soul-field.tsx
+@@ -0,0 +1,96 @@
++import { useLingui } from "@lingui/react/macro";
++import { BOT_SOUL_MAX_LENGTH } from "@rakazo/contracts";
++import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
++import { botSoulPresets, soulAfterPresetTap, soulPresetFor } from "../lib/bot-soul";
++import { native, useMobileTokens } from "../lib/native";
++import { GrowingTextInput } from "./growing-text-input";
++
++/**
++ * How the bot talks: a row of ready ways of speaking and the field they write into. The presets are
++ * only text — tapping one fills the field, tapping it again empties it — so a person can start from
++ * one and keep editing, or write their own from nothing.
++ */
++export function BotSoulField({
++  value,
++  onChange,
++  editable = true,
++}: {
++  value: string;
++  onChange: (value: string) => void;
++  editable?: boolean;
++}) {
++  const { t } = useLingui();
++  const tokens = useMobileTokens();
++  const presets = botSoulPresets();
++  const active = soulPresetFor(value, presets);
++
++  return (
++    <View style={{ gap: 10 }}>
++      <ScrollView
++        horizontal
++        showsHorizontalScrollIndicator={false}
++        keyboardShouldPersistTaps="handled"
++        contentContainerStyle={styles.chips}
++      >
++        {presets.map((preset) => {
++          const selected = preset.key === active?.key;
++          return (
++            <Pressable
++              key={preset.key}
++              accessibilityRole="button"
++              accessibilityLabel={preset.label}
++              accessibilityHint={
++                selected ? t`Tap again to clear it` : t`Tap to use this way of talking`
++              }
++              accessibilityState={{ selected }}
++              disabled={!editable}
++              onPress={() => onChange(soulAfterPresetTap(value, preset))}
++              style={({ pressed }) => [
++                styles.chip,
++                { backgroundColor: selected ? tokens.primary : native.fill },
++                pressed && { opacity: 0.6 },
++              ]}
++            >
++              <Text
++                numberOfLines={1}
++                style={[
++                  styles.chipLabel,
++                  { color: selected ? tokens.primaryForeground : native.label },
++                ]}
++              >
++                {preset.label}
++              </Text>
++            </Pressable>
++          );
++        })}
++      </ScrollView>
++      <Text style={[styles.hint, { color: tokens.mutedForeground }]}>
++        {t`Tap one to start, then make it yours below.`}
++      </Text>
++      <GrowingTextInput
++        label={t`Soul`}
++        maxLength={BOT_SOUL_MAX_LENGTH}
++        value={value}
++        editable={editable}
++        onChangeText={onChange}
++        placeholder={t`Its temper, its pace, the words it likes — how it talks to you.`}
++        backgroundColor={native.groupedCell}
++        fontSize={17}
++      />
++    </View>
++  );
++}
++
++const styles = StyleSheet.create({
++  // The row starts under the group's own label, so it is not inset a second time.
++  chips: { flexDirection: "row", alignItems: "center", gap: 8, paddingEnd: 16 },
++  chip: {
++    flexGrow: 0,
++    flexShrink: 0,
++    paddingVertical: 6,
++    paddingHorizontal: 12,
++    borderRadius: 999,
++  },
++  chipLabel: { fontSize: 13, fontWeight: "600" },
++  hint: { fontSize: 13, paddingStart: 16, paddingEnd: 16 },
++});
 diff --git a/apps/mobile/components/bottom-fade.tsx b/apps/mobile/components/bottom-fade.tsx
 new file mode 100644
 index 0000000..929a7e1
@@ -75993,6 +76168,379 @@ index 947cca0..720427f 100644
    });
  
    it("expands Advanced for a native model deep link", async () => {
+diff --git a/apps/mobile/lib/bot-soul-field.test.tsx b/apps/mobile/lib/bot-soul-field.test.tsx
+new file mode 100644
+index 0000000..221df8d
+--- /dev/null
++++ b/apps/mobile/lib/bot-soul-field.test.tsx
+@@ -0,0 +1,173 @@
++// @vitest-environment jsdom
++import type { ReactNode } from "react";
++import { act } from "react";
++import type { Root } from "react-dom/client";
++import { createRoot } from "react-dom/client";
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++import { BotSoulField } from "../components/bot-soul-field";
++import { botSoulPresets } from "./bot-soul";
++
++vi.mock("../lib/native", () => ({
++  useMobileTokens: () => ({
++    background: "#FFFFFF",
++    foreground: "#000000",
++    card: "#FFFFFF",
++    secondary: "#EEEEEE",
++    primary: "#0A84FF",
++    primaryForeground: "#FFFFFF",
++    mutedForeground: "#8E8E93",
++    destructive: "#FF3B30",
++  }),
++  native: { label: "#000000", fill: "#EEEEEE", groupedCell: "#FFFFFF", tertiaryLabel: "#8E8E93" },
++}));
++
++vi.mock("react-native", () => {
++  const Container = ({ children }: { children?: ReactNode }) => <div>{children}</div>;
++  return {
++    Platform: { OS: "ios" },
++    StyleSheet: { create: (value: object) => value },
++    View: Container,
++    ScrollView: Container,
++    Text: ({ children }: { children?: ReactNode }) => <span>{children}</span>,
++    TextInput: ({
++      accessibilityLabel,
++      value,
++      onChangeText,
++      placeholder,
++      editable,
++    }: {
++      accessibilityLabel?: string;
++      value?: string;
++      onChangeText?: (value: string) => void;
++      placeholder?: string;
++      editable?: boolean;
++    }) => (
++      <textarea
++        aria-label={accessibilityLabel}
++        value={value}
++        placeholder={placeholder}
++        readOnly={editable === false}
++        onChange={(event) => onChangeText?.(event.target.value)}
++      />
++    ),
++    Pressable: ({
++      children,
++      onPress,
++      accessibilityLabel,
++      accessibilityState,
++      disabled,
++    }: {
++      children?: ReactNode;
++      onPress?: () => void;
++      accessibilityLabel?: string;
++      accessibilityState?: { selected?: boolean };
++      disabled?: boolean;
++    }) => (
++      <button
++        type="button"
++        aria-label={accessibilityLabel}
++        aria-pressed={accessibilityState?.selected === true}
++        disabled={disabled}
++        onClick={onPress}
++      >
++        {children}
++      </button>
++    ),
++  };
++});
++
++const presets = botSoulPresets();
++
++let root: Root;
++let host: HTMLElement;
++
++function render(value: string, onChange = vi.fn()) {
++  act(() => {
++    root.render(<BotSoulField value={value} onChange={onChange} />);
++  });
++  return onChange;
++}
++
++function button(label: string): HTMLButtonElement {
++  const found = [...host.querySelectorAll("button")].find(
++    (element) => element.getAttribute("aria-label") === label,
++  );
++  if (!found) throw new Error(`no button named ${label}`);
++  return found as HTMLButtonElement;
++}
++
++function tap(label: string) {
++  act(() => {
++    button(label).click();
++  });
++}
++
++function field(): HTMLTextAreaElement {
++  const found = host.querySelector("textarea");
++  if (!found) throw new Error("no soul field");
++  return found;
++}
++
++beforeEach(() => {
++  host = document.createElement("div");
++  document.body.appendChild(host);
++  root = createRoot(host);
++});
++
++afterEach(() => {
++  act(() => root.unmount());
++  host.remove();
++});
++
++describe("BotSoulField", () => {
++  it("offers every preset as a tap, above the field it writes into", () => {
++    render("");
++    expect(
++      presets.map((preset) => preset.label).filter((label) => host.contains(button(label))),
++    ).toEqual(presets.map((preset) => preset.label));
++    expect(host.textContent).toContain("Tap one to start, then make it yours below.");
++    expect(field().value).toBe("");
++  });
++
++  it("writes a whole way of talking into the field on one tap", () => {
++    const onChange = render("");
++    tap("Brisk");
++    expect(onChange).toHaveBeenCalledWith(presets[0]!.soul);
++  });
++
++  it("marks the preset the field already holds, and a second tap clears it", () => {
++    const onChange = render(presets[1]!.soul);
++    expect(button("Gentle").getAttribute("aria-pressed")).toBe("true");
++    expect(button("Brisk").getAttribute("aria-pressed")).toBe("false");
++    tap("Gentle");
++    expect(onChange).toHaveBeenCalledWith("");
++  });
++
++  it("keeps a personality of one's own from looking like a preset", () => {
++    render("You are the night-shift colleague who never panics.");
++    expect(
++      presets.every((preset) => button(preset.label).getAttribute("aria-pressed") === "false"),
++    ).toBe(true);
++  });
++
++  it("hands every keystroke back, so the page can save it", () => {
++    const onChange = render("");
++    act(() => {
++      const input = field();
++      // React's controlled input reads the native value setter, not a plain assignment.
++      const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
++      setValue?.call(input, "Speak in short sentences.");
++      input.dispatchEvent(new Event("input", { bubbles: true }));
++    });
++    expect(onChange).toHaveBeenCalledWith("Speak in short sentences.");
++  });
++
++  it("cannot be tapped or typed into while a save is running", () => {
++    act(() => {
++      const onChange = vi.fn();
++      root.render(<BotSoulField value="" onChange={onChange} editable={false} />);
++    });
++    expect(button("Gentle").disabled).toBe(true);
++    expect(field().readOnly).toBe(true);
++  });
++});
+diff --git a/apps/mobile/lib/bot-soul.test.ts b/apps/mobile/lib/bot-soul.test.ts
+new file mode 100644
+index 0000000..8270943
+--- /dev/null
++++ b/apps/mobile/lib/bot-soul.test.ts
+@@ -0,0 +1,101 @@
++import { readFileSync } from "node:fs";
++import { describe, expect, it } from "vitest";
++import {
++  botSoulPresets,
++  soulAfterPresetTap,
++  soulEdits,
++  soulIsDirty,
++  soulOf,
++  soulPresetFor,
++} from "./bot-soul";
++
++const presets = botSoulPresets();
++
++describe("bot soul", () => {
++  it("offers one-tap ways of talking, each a whole personality", () => {
++    expect(presets.map((preset) => preset.key)).toEqual([
++      "brisk",
++      "gentle",
++      "witty",
++      "composed",
++      "friend",
++    ]);
++    for (const preset of presets) {
++      expect(preset.label.length).toBeGreaterThan(0);
++      // A preset is worth tapping only if it says enough to change how the bot talks.
++      expect(preset.soul.length).toBeGreaterThan(80);
++      expect(preset.soul.trim()).toBe(preset.soul);
++    }
++    expect(new Set(presets.map((preset) => preset.soul)).size).toBe(presets.length);
++  });
++
++  it("reads a bot from before the field, and a cleared one, as no soul at all", () => {
++    expect(soulOf(null)).toBe("");
++    expect(soulOf(undefined)).toBe("");
++    expect(soulOf({})).toBe("");
++    expect(soulOf({ soul: null })).toBe("");
++    expect(soulOf({ soul: "   " })).toBe("   ");
++    expect(soulOf({ soul: "Calm and precise." })).toBe("Calm and precise.");
++  });
++
++  it("recognises the preset whose words the field holds", () => {
++    expect(soulPresetFor("")?.key).toBeUndefined();
++    expect(soulPresetFor("   ")?.key).toBeUndefined();
++    expect(soulPresetFor(`  ${presets[1]!.soul}\n`)?.key).toBe("gentle");
++    expect(soulPresetFor("You are a night-shift ICU colleague.")?.key).toBeUndefined();
++  });
++
++  it("fills the field on a tap, and empties it when that preset is already in it", () => {
++    expect(soulAfterPresetTap("", presets[0]!)).toBe(presets[0]!.soul);
++    expect(soulAfterPresetTap("Something of my own.", presets[2]!)).toBe(presets[2]!.soul);
++    expect(soulAfterPresetTap(presets[2]!.soul, presets[2]!)).toBe("");
++    // Whitespace the field picked up on the way in does not stop the second tap clearing it.
++    expect(soulAfterPresetTap(` ${presets[3]!.soul} `, presets[3]!)).toBe("");
++  });
++
++  it("sends the soul only when it differs from the saved one", () => {
++    expect(soulEdits({ soul: null }, "")).toEqual({});
++    expect(soulEdits({}, "  ")).toEqual({});
++    expect(soulEdits({ soul: "Calm." }, " Calm. ")).toEqual({});
++    expect(soulEdits({ soul: "Calm." }, presets[0]!.soul)).toEqual({ soul: presets[0]!.soul });
++    // Clearing a saved soul is a real edit: the empty string goes out so the server drops it.
++    expect(soulEdits({ soul: "Calm." }, "")).toEqual({ soul: "" });
++    expect(soulEdits({ soul: "Calm." }, "   ")).toEqual({ soul: "" });
++  });
++
++  it("turns the save button on for exactly the edits it would send", () => {
++    expect(soulIsDirty({ soul: null }, "")).toBe(false);
++    expect(soulIsDirty({ soul: "Calm." }, " Calm. ")).toBe(false);
++    expect(soulIsDirty({ soul: "Calm." }, presets[4]!.soul)).toBe(true);
++    expect(soulIsDirty({ soul: "Calm." }, "")).toBe(true);
++    expect(soulIsDirty({}, presets[0]!.soul)).toBe(true);
++  });
++
++  it("speaks each preset in the app's Chinese", () => {
++    const po = readFileSync(
++      new URL("../../../packages/i18n/locales/zh-CN/messages.po", import.meta.url),
++      "utf8",
++    );
++    const translation = (msgid: string): string | undefined => {
++      const entry = po
++        .split("\n\n")
++        .find((block) =>
++          block.split("\n").some((line) => line === `msgid "${msgid.replace(/"/g, '\\"')}"`),
++        );
++      return entry
++        ?.split("\n")
++        .filter((line) => line.startsWith("msgstr "))
++        .map((line) => JSON.parse(line.slice("msgstr ".length)) as string)
++        .join("");
++    };
++    for (const label of ["Soul", ...presets.map((preset) => preset.label)]) {
++      expect(translation(label), label).toMatch(/[\u4e00-\u9fff]/);
++    }
++    for (const preset of presets) {
++      const chinese = translation(preset.soul);
++      // The long bodies are one PO string, so they must be translated as a whole.
++      expect(chinese, preset.key).toBeTruthy();
++      expect(chinese, preset.key).toMatch(/[\u4e00-\u9fff]/);
++    }
++  });
++});
+diff --git a/apps/mobile/lib/bot-soul.ts b/apps/mobile/lib/bot-soul.ts
+new file mode 100644
+index 0000000..f60740c
+--- /dev/null
++++ b/apps/mobile/lib/bot-soul.ts
+@@ -0,0 +1,81 @@
++import { t } from "@lingui/core/macro";
++
++/**
++ * A bot's soul is how it talks — its temper, its pace, the words it reaches for — kept apart from
++ * what it is told to do. These presets are starting points: one tap writes a whole way of speaking
++ * into the field, where it stays an ordinary string the person can rewrite or empty.
++ */
++export type BotSoulPreset = { key: string; label: string; soul: string };
++
++export function botSoulPresets(): BotSoulPreset[] {
++  return [
++    {
++      key: "brisk",
++      label: t`Brisk`,
++      soul: t`You are upbeat and quick. You talk with energy, give the answer first and the details after, and push things forward without being asked. Short, warm sentences; no pleasantries, and never a call-centre script.`,
++    },
++    {
++      key: "gentle",
++      label: t`Gentle`,
++      soul: t`You are gentle and patient. You notice how the other person feels and answer that first, then get to the matter. Softer, shorter sentences; no lectures and no empty comfort — you stay with them and help them sort it out.`,
++    },
++    {
++      key: "witty",
++      label: t`Sharp wit`,
++      soul: t`You are quick-tongued and funny. A well-placed joke or a little teasing keeps the conversation alive, but never at the other person's expense and never instead of the answer. Serious things still get said plainly.`,
++    },
++    {
++      key: "composed",
++      label: t`Composed`,
++      soul: t`You are calm and precise, the steady professional in the room. Plain words, the facts first and your judgement after; you say so when you are unsure and never oversell. Few exclamation marks, no small talk.`,
++    },
++    {
++      key: "friend",
++      label: t`Straight-talking friend`,
++      soul: t`You talk like an old friend: direct, everyday words, no circling around. Honest but considerate — you say the awkward thing when it matters, and you drop the lecture.`,
++    },
++  ];
++}
++
++/**
++ * The soul the page edits: a server from before this field answers without it, and null means the
++ * person cleared it. Both read as empty here, so nothing on the page has to guard against them.
++ */
++export function soulOf(bot: { soul?: string | null } | null | undefined): string {
++  return bot?.soul ?? "";
++}
++
++/** The preset the field holds word for word, if any; a preset is recognised by its text. */
++export function soulPresetFor(
++  soul: string,
++  presets: BotSoulPreset[] = botSoulPresets(),
++): BotSoulPreset | undefined {
++  const text = soul.trim();
++  if (!text) return undefined;
++  return presets.find((preset) => preset.soul.trim() === text);
++}
++
++/** A tap fills the field with that way of speaking, or empties it when it is already that one. */
++export function soulAfterPresetTap(current: string, preset: BotSoulPreset): string {
++  return current.trim() === preset.soul.trim() ? "" : preset.soul;
++}
++
++/**
++ * What the page sends for the soul: the field trimmed, and nothing at all while it still reads as
++ * the saved one. One rule for both the save button's own state and the `bots/update` payload, so
++ * the button can never offer a save the payload would leave out.
++ */
++export function soulEdits(
++  bot: { soul?: string | null } | null | undefined,
++  soul: string,
++): { soul?: string } {
++  const text = soul.trim();
++  return text === soulOf(bot).trim() ? {} : { soul: text };
++}
++
++export function soulIsDirty(
++  bot: { soul?: string | null } | null | undefined,
++  soul: string,
++): boolean {
++  return "soul" in soulEdits(bot, soul);
++}
 diff --git a/apps/mobile/lib/bot-template-share.ts b/apps/mobile/lib/bot-template-share.ts
 new file mode 100644
 index 0000000..0292bf8
@@ -90254,10 +90802,22 @@ index eca1f50..2fdde1f 100644
    "generate_secret",
    "list_secrets",
 diff --git a/packages/contracts/src/domain.ts b/packages/contracts/src/domain.ts
-index d45cd5a..5649d44 100644
+index d45cd5a..ac3b0cc 100644
 --- a/packages/contracts/src/domain.ts
 +++ b/packages/contracts/src/domain.ts
-@@ -100,6 +100,12 @@ export const BotSchema = z.object({
+@@ -89,6 +89,11 @@ export const BotSchema = z.object({
+   title: z.string(),
+   description: z.string(),
+   instructions: z.string(),
++  /**
++   * How it talks — its temper, its pace, the words it reaches for. Optional because a server from
++   * before this field answers without it, and the app treats a missing soul as an empty one.
++   */
++  soul: z.string().nullable().optional(),
+   instructionHistory: z.array(InstructionVersionSchema).optional(),
+   color: z.string(),
+   avatarSet: BotAvatarSetSchema.optional(),
+@@ -100,6 +105,12 @@ export const BotSchema = z.object({
    /** Hidden from the viewer's chat list until then; past, the chat has just woken. */
    snoozedUntil: z.string().nullable().optional(),
    parentBotId: Id.nullable(),
@@ -90270,7 +90830,33 @@ index d45cd5a..5649d44 100644
    memoryScope: MemoryScopeSchema.nullable(),
    threadId: Id,
    preview: z.string(),
-@@ -845,6 +851,49 @@ export function isDeletableMemoryDocument(path: string): boolean {
+@@ -442,6 +453,8 @@ export type SpaceNavigation = z.infer<typeof SpaceNavigationSchema>;
+ export const BOT_NAME_MAX_LENGTH = 80;
+ export const BOT_DESCRIPTION_MAX_LENGTH = 4000;
+ export const BOT_INSTRUCTIONS_MAX_LENGTH = 20000;
++/** The bot's personality and way of speaking, kept apart from what it is told to do. */
++export const BOT_SOUL_MAX_LENGTH = 2000;
+ 
+ export const CreateBotInput = z.object({
+   /** Optional reserved identity so a creation preview uses the final bot seed. */
+@@ -452,6 +465,7 @@ export const CreateBotInput = z.object({
+   name: z.string().trim().min(1).max(BOT_NAME_MAX_LENGTH),
+   description: z.string().max(BOT_DESCRIPTION_MAX_LENGTH).default(""),
+   instructions: z.string().max(BOT_INSTRUCTIONS_MAX_LENGTH).default(""),
++  soul: z.string().trim().max(BOT_SOUL_MAX_LENGTH).nullable().optional(),
+   notifyOnFinish: z.boolean().default(true),
+   dailyCheckIns: z.boolean().optional(),
+   fleetManagement: z.boolean().optional(),
+@@ -473,6 +487,8 @@ export const UpdateBotInput = z
+     description: z.string().trim().max(BOT_DESCRIPTION_MAX_LENGTH).optional(),
+     instructions: z.string().trim().max(BOT_INSTRUCTIONS_MAX_LENGTH).optional(),
+     expectedInstructions: z.string().max(BOT_INSTRUCTIONS_MAX_LENGTH).optional(),
++    /** An empty string clears the personality; it is saved apart from the instructions. */
++    soul: z.string().trim().max(BOT_SOUL_MAX_LENGTH).nullable().optional(),
+     /** Ignored; installed mobile apps may still send it. */
+     selfUpdateInstructions: z.boolean().optional(),
+     notifyOnFinish: z.boolean().optional(),
+@@ -845,6 +861,49 @@ export function isDeletableMemoryDocument(path: string): boolean {
    return path !== MEMORY_INDEX_PATH;
  }
  
@@ -90320,7 +90906,7 @@ index d45cd5a..5649d44 100644
  export const ConnectionSchema = z.object({
    id: Id,
    connectorId: z.string(),
-@@ -1294,6 +1343,100 @@ export const ThreadMessagePageSchema = z.object({
+@@ -1294,6 +1353,100 @@ export const ThreadMessagePageSchema = z.object({
  });
  export type ThreadMessagePage = z.infer<typeof ThreadMessagePageSchema>;
  
@@ -90421,7 +91007,7 @@ index d45cd5a..5649d44 100644
  export const ThreadSnapshotSchema = z.object({
    threadId: Id,
    cursor: z.number().int().min(-1),
-@@ -1306,6 +1449,11 @@ export const ThreadSnapshotSchema = z.object({
+@@ -1306,6 +1459,11 @@ export const ThreadSnapshotSchema = z.object({
    run: RunSchema.nullable(),
    activeRuns: z.array(RunSchema).optional(),
    computer: ComputerStatusSchema.optional(),
@@ -95196,7 +95782,7 @@ index 73652a3..5a4a900 100644
 +msgid "Same as Everyday help"
 +msgstr "Günlük yardımla aynı"
 diff --git a/packages/i18n/locales/zh-CN/messages.po b/packages/i18n/locales/zh-CN/messages.po
-index 422c5af..54c814b 100644
+index 422c5af..22b69e4 100644
 --- a/packages/i18n/locales/zh-CN/messages.po
 +++ b/packages/i18n/locales/zh-CN/messages.po
 @@ -2898,6 +2898,14 @@ msgstr "已连接 {0}。"
@@ -95296,7 +95882,7 @@ index 422c5af..54c814b 100644
  #. js-lingui-explicit-id
  #: packages/i18n/src/run-error.ts
  msgid "The model hit its output limit before finishing its reply."
-@@ -11755,3 +11803,215 @@ msgstr "你的语音提供商拒绝了该密钥。"
+@@ -11755,3 +11803,275 @@ msgstr "你的语音提供商拒绝了该密钥。"
  #: apps/web/src/components/vault/VaultItemEditor.tsx
  msgid "ZIP or postal code"
  msgstr "邮政编码"
@@ -95512,6 +96098,66 @@ index 422c5af..54c814b 100644
 +#: apps/mobile/components/thread/file-attachment-card.tsx
 +msgid "Archive file"
 +msgstr "压缩包"
++
++#: apps/mobile/lib/bot-soul.ts
++msgid "Soul"
++msgstr "性格 / 说话风格"
++
++#: apps/mobile/lib/bot-soul.ts
++msgid "Brisk"
++msgstr "元气干练"
++
++#: apps/mobile/lib/bot-soul.ts
++msgid "You are upbeat and quick. You talk with energy, give the answer first and the details after, and push things forward without being asked. Short, warm sentences; no pleasantries, and never a call-centre script."
++msgstr "你是个精神足、动作快的人。说话带着劲儿，先把结论说清楚，再补必要的细节；事情不等催就往前推一步。句子短、语气暖，不绕客套，也别像客服念稿。"
++
++#: apps/mobile/lib/bot-soul.ts
++msgid "Gentle"
++msgstr "温柔体贴"
++
++#: apps/mobile/lib/bot-soul.ts
++msgid "You are gentle and patient. You notice how the other person feels and answer that first, then get to the matter. Softer, shorter sentences; no lectures and no empty comfort — you stay with them and help them sort it out."
++msgstr "你温和、有耐心。先接住对方的情绪，再谈事情；句子短一点、语气软一点。不说教，也不空泛安慰，而是一句一句陪着把事理清。"
++
++#: apps/mobile/lib/bot-soul.ts
++msgid "Sharp wit"
++msgstr "幽默毒舌"
++
++#: apps/mobile/lib/bot-soul.ts
++msgid "You are quick-tongued and funny. A well-placed joke or a little teasing keeps the conversation alive, but never at the other person's expense and never instead of the answer. Serious things still get said plainly."
++msgstr "你嘴快，爱开玩笑，吐槽恰到好处但不刻薄、不伤人。正经事照样说清楚，玩笑点到为止，不刷梗、不自嗨，也不拿对方的短处当笑料。"
++
++#: apps/mobile/lib/bot-soul.ts
++msgid "Composed"
++msgstr "冷静专业"
++
++#: apps/mobile/lib/bot-soul.ts
++msgid "You are calm and precise, the steady professional in the room. Plain words, the facts first and your judgement after; you say so when you are unsure and never oversell. Few exclamation marks, no small talk."
++msgstr "你沉稳、克制，像一个让人放心的专业人士。用词平实，先讲事实和依据，再给判断；不确定就直说，不夸大、不卖关子。少用感叹号，不寒暄。"
++
++#: apps/mobile/lib/bot-soul.ts
++msgid "Straight-talking friend"
++msgstr "直爽朋友"
++
++#: apps/mobile/lib/bot-soul.ts
++msgid "You talk like an old friend: direct, everyday words, no circling around. Honest but considerate — you say the awkward thing when it matters, and you drop the lecture."
++msgstr "你像认识多年的朋友：说话直接，用日常口语，不绕弯子。有话直说但留分寸，该提醒就提醒，该拦就拦；不说教，也不敷衍。"
++
++#: apps/mobile/components/bot-soul-field.tsx
++msgid "Tap again to clear it"
++msgstr "再点一次清空"
++
++#: apps/mobile/components/bot-soul-field.tsx
++msgid "Tap to use this way of talking"
++msgstr "点一下套用这个说话风格"
++
++#: apps/mobile/components/bot-soul-field.tsx
++msgid "Tap one to start, then make it yours below."
++msgstr "点一个先套上，下面再改成你自己的话。"
++
++#: apps/mobile/components/bot-soul-field.tsx
++msgid "Its temper, its pace, the words it likes — how it talks to you."
++msgstr "它的性子、说话的节奏、爱用的词——它就是这么说给你听的。"
 diff --git a/packages/i18n/locales/zh-TW/messages.po b/packages/i18n/locales/zh-TW/messages.po
 index 796df87..d90c130 100644
 --- a/packages/i18n/locales/zh-TW/messages.po

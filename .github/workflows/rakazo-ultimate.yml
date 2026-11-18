@@ -1,0 +1,14 @@
+name: Rakazo Ultimate iOS
+# Branch copy for grokbot-* review builds: runs on the self-hosted Mac (Mac-58) and builds the
+# branch it was dispatched on, not a fixed branch. Dispatch only: nothing runs on push.
+on: [workflow_dispatch]
+concurrency: { group: mac-58-ios, cancel-in-progress: false }
+jobs:
+  build:
+    runs-on: [self-hosted, macOS, ARM64]
+    timeout-minutes: 240
+    steps:
+      - { uses: actions/checkout@v4, with: { ref: "${{ github.ref }}" } }
+      - { run: bash rakazo-ultimate/build.sh }
+      - { if: always(), uses: actions/upload-artifact@v4, with: { name: rakazo-ultimate-ipa, path: rakazo-ultimate/Rakazo-unsigned.ipa, if-no-files-found: warn, retention-days: 30 } }
+      - { if: always(), uses: actions/upload-artifact@v4, with: { name: rakazo-ultimate-log, path: rakazo-ultimate/xcodebuild.log, if-no-files-found: warn, retention-days: 30 } }

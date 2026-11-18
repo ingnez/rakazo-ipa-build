@@ -40,6 +40,11 @@ test -f apps/mobile/lib/integration-categories.ts
 test -f apps/mobile/components/connect-app-row.tsx
 test -f apps/mobile/assets/fonts/xvf/XVF-Regular.ttf
 test -f apps/mobile/assets/sounds/grok/ping_4_chime_a.wav
+# This round's own page and the numbers it is read from: a patch that lost either must fail here.
+test -f "apps/mobile/app/(settings)/usage.tsx"
+test -f apps/mobile/lib/usage-display.ts
+grep -q 'usage/details' "apps/mobile/app/(settings)/usage.tsx"
+grep -q 'USAGE_DETAIL_WINDOWS' packages/contracts/src/domain.ts
 # The phone's own connectors: five frameworks behind one native module, and the usage strings
 # iOS shows when the person turns one on. A patch that lost any of them must fail here.
 test -f apps/mobile/modules/rakazo-connectors/ios/RakazoConnectorsModule.swift

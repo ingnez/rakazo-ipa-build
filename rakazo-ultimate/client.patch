@@ -327,7 +327,7 @@ index d0e8069..b5ca36f 100644
    }
  }
 diff --git a/apps/mobile/app/(settings)/_layout.tsx b/apps/mobile/app/(settings)/_layout.tsx
-index 59a5262..8483d3c 100644
+index 59a5262..4c7d9c1 100644
 --- a/apps/mobile/app/(settings)/_layout.tsx
 +++ b/apps/mobile/app/(settings)/_layout.tsx
 @@ -109,7 +109,8 @@ export default function SettingsLayout() {
@@ -350,8 +350,17 @@ index 59a5262..8483d3c 100644
        <Stack.Screen name="skills" options={glassHeaderOptions(t`Skills`)} />
        <Stack.Screen name="bot-templates" options={glassHeaderOptions(t`Bot templates`)} />
        {/* The template's name heads the page itself. */}
-@@ -159,6 +161,13 @@ export default function SettingsLayout() {
+@@ -157,8 +159,22 @@ export default function SettingsLayout() {
+           contentStyle: { backgroundColor: native.groupedPage },
+         }}
        />
++      <Stack.Screen
++        name="usage"
++        options={{
++          ...glassHeaderOptions(t`用量详情`),
++          contentStyle: { backgroundColor: native.groupedPage },
++        }}
++      />
        {/* Titled by the screen once the note loads. */}
        <Stack.Screen name="memory-note" options={glassHeaderOptions("")} />
 +      <Stack.Screen
@@ -365,7 +374,7 @@ index 59a5262..8483d3c 100644
          name="plugin"
          // Named after the plugin it opened.
 diff --git a/apps/mobile/app/(settings)/account.tsx b/apps/mobile/app/(settings)/account.tsx
-index a6a012f..4321ac8 100644
+index a6a012f..23c5ffe 100644
 --- a/apps/mobile/app/(settings)/account.tsx
 +++ b/apps/mobile/app/(settings)/account.tsx
 @@ -7,7 +7,7 @@ import type { Href } from "expo-router";
@@ -386,8 +395,11 @@ index a6a012f..4321ac8 100644
  import { useApprovalSettings } from "../../lib/approval-settings";
  import { replaceWithSignIn } from "../../lib/auth-routing";
  import { endCallBeforeSessionEnd } from "../../lib/call-session";
-@@ -33,6 +33,9 @@ import { openStoreListing, useStoreUpdateAvailable } from "../../lib/store-updat
+@@ -31,8 +31,12 @@ import { ACCOUNT_SETTINGS } from "../../lib/settings-target";
+ import { useSideInsets } from "../../lib/side-insets";
+ import { openStoreListing, useStoreUpdateAvailable } from "../../lib/store-update";
  import { confirmUnsentSendLoss } from "../../lib/unsent-send-warning";
++import { formatCompactTokens } from "../../lib/usage-display";
  import { errorText } from "../../lib/user-error";
  
 +// Where the app came from, shown under the version so its licence and history stay reachable.
@@ -396,7 +408,7 @@ index a6a012f..4321ac8 100644
  type Icon = Pick<ComponentProps<typeof NativeSymbol>, "ios" | "android">;
  type SettingsLink = { title: string; href: Href; icon: Icon };
  
-@@ -46,6 +49,7 @@ export default function Account() {
+@@ -46,6 +50,7 @@ export default function Account() {
    const { focus } = useLocalSearchParams<{ focus?: string }>();
    const [me, setMe] = useState<MobileMe | null>(null);
    const account = accountDisplay(me ?? {}, t`Your account`);
@@ -404,7 +416,7 @@ index a6a012f..4321ac8 100644
    const [signingOut, setSigningOut] = useState(false);
    // Held from the tap, so a second tap while the unsent-message check runs starts nothing.
    const signOutStarted = useRef(false);
-@@ -59,8 +63,7 @@ export default function Account() {
+@@ -59,8 +64,7 @@ export default function Account() {
    const stacked = useStackedSettings();
    const styles = useThemedStyles(createAccountStyles);
    const versionInfo = getAppVersionInfo();
@@ -414,7 +426,26 @@ index a6a012f..4321ac8 100644
    const storeUpdateAvailable = useStoreUpdateAvailable();
    const approvals = useApprovalSettings(ACCOUNT_SETTINGS);
    const spending = useSpendingStatus();
-@@ -218,12 +221,8 @@ export default function Account() {
+@@ -144,14 +148,16 @@ export default function Account() {
+   const usageBlock = (
+     <SettingsRow
+       key="usage"
+-      accessible
++      accessibilityRole="button"
++      chevron="right"
+       title={t`Usage`}
+       detail={
+         usage
+-          ? t`${ph({ runs: count.format(usage.runs) })} runs, ${ph({ tokens: tokenCount(usage.totalTokens) })} tokens`
++          ? t`${ph({ runs: count.format(usage.runs) })} runs, ${ph({ tokens: formatCompactTokens(usage.totalTokens) })} tokens`
+           : undefined
+       }
+       value={cost(usage?.costUsd)}
++      onPress={() => router.push("/usage")}
+     />
+   );
+   const creditsRow =
+@@ -218,12 +224,8 @@ export default function Account() {
      }
    }
  
@@ -428,7 +459,7 @@ index a6a012f..4321ac8 100644
      {
        title: t`Skills`,
        href: "/skills",
-@@ -262,6 +261,7 @@ export default function Account() {
+@@ -262,6 +264,7 @@ export default function Account() {
              {usageModels}
            </>
          ) : null}
@@ -436,7 +467,7 @@ index a6a012f..4321ac8 100644
          <SettingsGroup>
            <SettingsRow
              key="profile"
-@@ -269,35 +269,84 @@ export default function Account() {
+@@ -269,35 +272,84 @@ export default function Account() {
              chevron="right"
              detail={me?.email && account.label !== me.email ? me.email : undefined}
              disabled={signingOut}
@@ -528,7 +559,7 @@ index a6a012f..4321ac8 100644
            />
            {approvals.ruleCount ? (
              <ApprovalRulesRow
-@@ -308,11 +357,16 @@ export default function Account() {
+@@ -308,11 +360,16 @@ export default function Account() {
                onPress={() => router.push("/approvals")}
              />
            ) : null}
@@ -550,7 +581,7 @@ index a6a012f..4321ac8 100644
            {me?.paymentWalletProvider
              ? settingsLink({
                  title: t`Wallet`,
-@@ -328,36 +382,6 @@ export default function Account() {
+@@ -328,36 +385,6 @@ export default function Account() {
                leading={icon({ ios: "dollarsign.circle", android: "cash-outline" })}
              />
            ) : null}
@@ -587,7 +618,7 @@ index a6a012f..4321ac8 100644
          </SettingsGroup>
  
          <SettingsGroup>
-@@ -409,18 +433,26 @@ export default function Account() {
+@@ -409,18 +436,26 @@ export default function Account() {
  
          <View style={styles.about}>
            <AppMark />
@@ -619,7 +650,7 @@ index a6a012f..4321ac8 100644
            {storeUpdateAvailable ? (
              <NativeActionButton
                label={t`Update`}
-@@ -439,6 +471,19 @@ export default function Account() {
+@@ -439,6 +474,19 @@ export default function Account() {
  function createAccountStyles() {
    return StyleSheet.create({
      ...createSettingsPageStyles(),
@@ -639,7 +670,7 @@ index a6a012f..4321ac8 100644
      about: {
        alignItems: "center",
        gap: 16,
-@@ -448,6 +493,18 @@ function createAccountStyles() {
+@@ -448,6 +496,18 @@ function createAccountStyles() {
      versionFooter: {
        alignItems: "center",
      },
@@ -2686,6 +2717,533 @@ index 5353060..37aeab1 100644
              />
              {/* Connections are the account's in every Space, so a Space's override lists only its models. */}
              {target.scope === "account" ? (
+diff --git a/apps/mobile/app/(settings)/usage.tsx b/apps/mobile/app/(settings)/usage.tsx
+new file mode 100644
+index 0000000..533cfdb
+--- /dev/null
++++ b/apps/mobile/app/(settings)/usage.tsx
+@@ -0,0 +1,521 @@
++import { ph, t } from "@lingui/core/macro";
++import type {
++  UsageBotBreakdown,
++  UsageDeskBreakdown,
++  UsageDetailCall,
++  UsageDetailWindow,
++  UsageModelBreakdown,
++} from "@rakazo/contracts";
++import { USAGE_DETAIL_DEFAULT_WINDOW, USAGE_DETAIL_WINDOWS } from "@rakazo/contracts";
++import { useQuery } from "@tanstack/react-query";
++import { useFocusEffect } from "expo-router";
++import { useCallback, useState } from "react";
++import {
++  ActivityIndicator,
++  Pressable,
++  RefreshControl,
++  ScrollView,
++  StyleSheet,
++  Text,
++  View,
++} from "react-native";
++import { SafeAreaView } from "react-native-safe-area-context";
++import { NativeSegmentedControl } from "../../components/native-segmented-control";
++import { Chevron } from "../../components/row-accessories";
++import { SettingsGroup, SettingsLabel, useStackedSettings } from "../../components/settings-group";
++import { mobileTokens } from "../../lib/appearance";
++import { dateLocaleForUi, useUiLocale } from "../../lib/i18n";
++import { native, useMobileTokens, useThemedStyles } from "../../lib/native";
++import { accountRpcQuery, queryClient } from "../../lib/query";
++import { useSideInsets } from "../../lib/side-insets";
++import { errorText } from "../../lib/user-error";
++import type { UsageTag, UsageTagKey } from "../../lib/usage-display";
++import {
++  formatCompactTokens,
++  formatCount,
++  formatElapsed,
++  formatExactTokens,
++  formatPercent,
++  formatWindowRange,
++  modelLabel,
++  thinkingLabel,
++  usageTags,
++} from "../../lib/usage-display";
++
++/**
++ * What the Bot has spent over one rolling window, told apart by who it was working for: the front
++ * desk that answers the person, the back office that does the work handed to it, and the routines,
++ * reports and context tidying that are neither. The window is chosen at the top, and every figure
++ * below it covers that window alone.
++ */
++
++/** The count of recent calls the page asks for; the totals above cover the whole window. */
++const RECENT_CALLS = 50;
++
++/** The three sides of the split, in the order the page reads them. */
++const DESK_GROUPS = ["front_desk", "backoffice", "other"] as const;
++
++/** The words a window is offered under, shortest first. */
++const WINDOW_LABELS: Record<UsageDetailWindow, () => string> = {
++  "1h": () => t`1 小时`,
++  "6h": () => t`6 小时`,
++  "24h": () => t`24 小时`,
++  "7d": () => t`7 天`,
++  "30d": () => t`30 天`,
++};
++
++const DESK_LABELS: Record<(typeof DESK_GROUPS)[number], () => string> = {
++  front_desk: () => t`前台模型（对话 / 语音）`,
++  backoffice: () => t`后台模型（执行任务）`,
++  other: () => t`其他（汇报 / 定时 / 整理）`,
++};
++
++const DESK_FOOTERS: Record<(typeof DESK_GROUPS)[number], () => string> = {
++  front_desk: () => t`回答你、接你电话用的模型。`,
++  backoffice: () => t`接手你交出去的活、在后台干活的模型。`,
++  other: () => t`定时任务、后台回话和上下文整理用掉的量。`,
++};
++
++export default function UsageScreen() {
++  const locale = useUiLocale();
++  const sideInsets = useSideInsets();
++  const stacked = useStackedSettings();
++  const tokens = useMobileTokens();
++  const styles = useThemedStyles(createStyles);
++  const [window, setWindow] = useState<UsageDetailWindow>(USAGE_DETAIL_DEFAULT_WINDOW);
++  const [openCall, setOpenCall] = useState<string | null>(null);
++  const [refreshing, setRefreshing] = useState(false);
++
++  const read = accountRpcQuery("usage/details", { window, limit: RECENT_CALLS });
++  const { data, error: failure, isLoading, refetch } = useQuery(read, queryClient);
++  const error = failure ? errorText(failure, t`读取用量失败`) : null;
++  const details = data?.summary ? data : null;
++
++  // The window keeps moving, and calls keep arriving, so a visit reads it again.
++  useFocusEffect(
++    useCallback(() => {
++      void refetch();
++    }, [refetch]),
++  );
++
++  async function refresh() {
++    setRefreshing(true);
++    await refetch();
++    setRefreshing(false);
++  }
++
++  const number = new Intl.NumberFormat(dateLocaleForUi(locale));
++  const timeOf = (iso: string) => {
++    const date = new Date(iso);
++    if (Number.isNaN(date.getTime())) return "";
++    const stamp = new Intl.DateTimeFormat(dateLocaleForUi(locale), {
++      ...(date.toDateString() === new Date().toDateString()
++        ? { hour: "2-digit", minute: "2-digit", second: "2-digit" }
++        : { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }),
++      hour12: false,
++    });
++    return stamp.format(date);
++  };
++
++  const tagLabels: Record<UsageTagKey, string> = {
++    front_desk: t`前台`,
++    backoffice: t`后台`,
++    routine: t`定时`,
++    voice: t`语音`,
++    compaction: t`压缩`,
++    other_desk: t`其他`,
++    retry: t`重试`,
++    failed: t`失败`,
++  };
++  const toneOf = (tone: UsageTag["tone"]) =>
++    tone === "danger"
++      ? tokens.destructive
++      : tone === "warning"
++        ? tokens.warning
++        : native.secondaryLabel;
++
++  /** One figure with its name under it, in the two-column grid a card of numbers is read from. */
++  const chart = (cells: { label: string; value: string }[]) => (
++    <View style={styles.grid}>
++      {cells.map((cell) => (
++        <View key={cell.label} style={styles.cell}>
++          <Text numberOfLines={1} style={styles.cellValue}>
++            {cell.value}
++          </Text>
++          <Text numberOfLines={1} style={styles.cellLabel}>
++            {cell.label}
++          </Text>
++        </View>
++      ))}
++    </View>
++  );
++
++  /** One model's share of a desk: what it spent, how it cached and how fast it answered. */
++  const modelRow = (model: UsageModelBreakdown) => (
++    <View key={`${model.provider}:${model.model}`} style={styles.modelRow}>
++      <View style={styles.modelHeading}>
++        <Text numberOfLines={1} style={styles.modelName}>
++          {modelLabel(model.model)}
++        </Text>
++        <Text style={styles.modelTotal}>{formatCompactTokens(model.totalTokens)}</Text>
++      </View>
++      <Text style={styles.modelMeta}>
++        {t`${ph({ calls: formatCount(model.calls) })} 次调用 · 思考 ${ph({ thinking: formatCompactTokens(model.reasoningTokens) })} · 缓存 ${ph({ cache: formatPercent(model.cacheHitRate) })}`}
++      </Text>
++      <Text style={styles.modelMeta}>
++        {t`首字 ${ph({ first: formatElapsed(model.avgFirstResponseMs) })} · 总耗时 ${ph({ duration: formatElapsed(model.avgDurationMs) })}`}
++      </Text>
++    </View>
++  );
++
++  /** One bot's window, with how its calls split between the two desks. */
++  const botRow = (bot: UsageBotBreakdown) => (
++    <View key={bot.botId} style={styles.modelRow}>
++      <View style={styles.modelHeading}>
++        <Text numberOfLines={1} style={styles.modelName}>
++          {bot.botName ?? t`未命名 Bot`}
++        </Text>
++        <Text style={styles.modelTotal}>{formatCompactTokens(bot.totalTokens)}</Text>
++      </View>
++      <Text style={styles.modelMeta}>
++        {t`${ph({ calls: formatCount(bot.calls) })} 次调用 · 前台 ${ph({ front: formatCount(bot.frontDeskCalls) })} · 后台 ${ph({ back: formatCount(bot.backofficeCalls) })} · 缓存 ${ph({ cache: formatPercent(bot.cacheHitRate) })}`}
++      </Text>
++      <Text style={styles.modelMeta}>
++        {t`首字 ${ph({ first: formatElapsed(bot.avgFirstResponseMs) })} · 总耗时 ${ph({ duration: formatElapsed(bot.avgDurationMs) })}`}
++      </Text>
++    </View>
++  );
++
++  /** One recorded call: what it was and what it cost, opening into its own exact figures. */
++  const callRow = (call: UsageDetailCall) => {
++    const open = openCall === call.id;
++    const tags = usageTags(call);
++    const thinking = thinkingLabel(call.thinkingLevel);
++    const exact = [
++      { label: t`输入`, value: formatExactTokens(call.inputTokens) },
++      { label: t`输出`, value: formatExactTokens(call.outputTokens) },
++      { label: t`思考`, value: formatExactTokens(call.reasoningTokens) },
++      { label: t`缓存读`, value: formatExactTokens(call.cacheReadTokens) },
++      { label: t`缓存写`, value: formatExactTokens(call.cacheWriteTokens) },
++      { label: t`总计`, value: formatExactTokens(call.totalTokens) },
++    ];
++    return (
++      <View key={call.id}>
++        <Pressable
++          accessibilityHint={open ? t`收起这条调用的细项` : t`展开这条调用的细项`}
++          accessibilityLabel={`${call.botName ?? t`未命名 Bot`} · ${modelLabel(call.model)}`}
++          accessibilityRole="button"
++          accessibilityState={{ expanded: open }}
++          onPress={() => setOpenCall(open ? null : call.id)}
++          style={({ pressed }) => [styles.callRow, pressed && styles.pressed]}
++        >
++          <View style={styles.callHeading}>
++            <Text numberOfLines={1} style={styles.callTitle}>
++              {call.botName ?? t`未命名 Bot`} · {modelLabel(call.model)}
++            </Text>
++            <Text style={styles.callTime}>{timeOf(call.createdAt)}</Text>
++            <Chevron expanded={open} />
++          </View>
++          <View style={styles.tagLine}>
++            {tags.map((tag) => (
++              <Text key={tag.key} style={[styles.tag, { color: toneOf(tag.tone) }]}>
++                {tagLabels[tag.key]}
++              </Text>
++            ))}
++            {thinking ? <Text style={styles.tag}>{t`思考 ${ph({ level: thinking })}`}</Text> : null}
++          </View>
++          <Text style={styles.callMeta}>
++            {t`总 ${ph({ total: formatCompactTokens(call.totalTokens) })} · 思考 ${ph({ thinking: formatCompactTokens(call.reasoningTokens) })} · 缓存 ${ph({ cache: formatPercent(cacheRateOf(call)) })}`}
++          </Text>
++          <Text style={styles.callMeta}>
++            {t`排队 ${ph({ queue: formatElapsed(call.queueWaitMs) })} · 首字 ${ph({ first: formatElapsed(call.firstResponseMs) })} · 总耗时 ${ph({ duration: formatElapsed(call.durationMs) })}`}
++          </Text>
++        </Pressable>
++        {open ? (
++          <View style={styles.callDetail}>
++            {exact.map((pair) => (
++              <View key={pair.label} style={styles.detailRow}>
++                <Text style={styles.detailLabel}>{pair.label}</Text>
++                <Text style={styles.detailValue}>{pair.value}</Text>
++              </View>
++            ))}
++            <View style={styles.detailRow}>
++              <Text style={styles.detailLabel}>{t`运行状态`}</Text>
++              <Text style={styles.detailValue}>{statusLabel(call.status)}</Text>
++            </View>
++            <View style={styles.detailRow}>
++              <Text style={styles.detailLabel}>{t`发起方式`}</Text>
++              <Text style={styles.detailValue}>{triggerLabel(call.trigger)}</Text>
++            </View>
++            {call.error ? (
++              <Text accessibilityRole="alert" style={styles.detailError}>
++                {call.error}
++              </Text>
++            ) : null}
++          </View>
++        ) : null}
++      </View>
++    );
++  };
++
++  return (
++    <SafeAreaView edges={["bottom"]} style={styles.screen}>
++      <ScrollView
++        style={sideInsets}
++        contentContainerStyle={[styles.content, stacked && styles.compactContent]}
++        contentInsetAdjustmentBehavior="automatic"
++        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
++      >
++        <View accessibilityLabel={t`时间范围`} style={styles.section}>
++          <SettingsLabel>{t`时间范围`}</SettingsLabel>
++          <NativeSegmentedControl
++            accessibilityLabel={t`时间范围`}
++            onChange={(next) => {
++              setOpenCall(null);
++              setWindow(next);
++            }}
++            options={USAGE_DETAIL_WINDOWS.map((value) => ({
++              value,
++              label: WINDOW_LABELS[value](),
++            }))}
++            value={window}
++          />
++        </View>
++
++        {error ? (
++          <Text accessibilityRole="alert" style={styles.error}>
++            {error}
++          </Text>
++        ) : null}
++
++        {isLoading && !details ? (
++          <View style={styles.loading}>
++            <ActivityIndicator />
++          </View>
++        ) : null}
++
++        {details ? (
++          <>
++            <SettingsGroup
++              label={t`总览`}
++              footer={
++                formatWindowRange(
++                  details.window,
++                  details.since,
++                  details.until,
++                  dateLocaleForUi(locale),
++                ) || undefined
++              }
++            >
++              {chart([
++                { label: t`运行次数`, value: formatCount(details.summary.runs) },
++                { label: t`调用次数`, value: formatCount(details.summary.calls) },
++                { label: t`总 Token`, value: formatCompactTokens(details.summary.totalTokens) },
++                {
++                  label: t`思考 Token`,
++                  value: formatCompactTokens(details.summary.reasoningTokens),
++                },
++                { label: t`输入 Token`, value: formatCompactTokens(details.summary.inputTokens) },
++                { label: t`输出 Token`, value: formatCompactTokens(details.summary.outputTokens) },
++                { label: t`缓存命中率`, value: formatPercent(details.summary.cacheHitRate) },
++                {
++                  label: t`缓存已省`,
++                  value: formatCompactTokens(details.summary.cacheReadTokens),
++                },
++              ])}
++            </SettingsGroup>
++
++            {DESK_GROUPS.map((group) => {
++              const desk: UsageDeskBreakdown =
++                group === "front_desk"
++                  ? details.byDesk.frontDesk
++                  : group === "backoffice"
++                    ? details.byDesk.backoffice
++                    : details.byDesk.other;
++              if (!desk.calls && !desk.runs) return null;
++              return (
++                <SettingsGroup
++                  key={group}
++                  label={DESK_LABELS[group]()}
++                  footer={DESK_FOOTERS[group]()}
++                >
++                  {chart([
++                    { label: t`调用次数`, value: formatCount(desk.calls) },
++                    { label: t`运行次数`, value: formatCount(desk.runs) },
++                    { label: t`总 Token`, value: formatCompactTokens(desk.totalTokens) },
++                    { label: t`缓存命中率`, value: formatPercent(desk.cacheHitRate) },
++                    { label: t`平均首字`, value: formatElapsed(desk.avgFirstResponseMs) },
++                    { label: t`平均总耗时`, value: formatElapsed(desk.avgDurationMs) },
++                  ])}
++                  {desk.models.map((model) => modelRow(model))}
++                </SettingsGroup>
++              );
++            })}
++
++            {details.byBot.length ? (
++              <SettingsGroup
++                label={t`按 Bot 统计`}
++                footer={t`这个时间段里每个 Bot 自己花掉的调用与 Token。`}
++              >
++                {details.byBot.map((bot) => botRow(bot))}
++              </SettingsGroup>
++            ) : null}
++
++            {details.records.length ? (
++              <SettingsGroup
++                label={t`最近调用`}
++                footer={t`最近 ${ph({ count: number.format(RECENT_CALLS) })} 次调用，点一条看它自己的细项。`}
++              >
++                {details.records.map((call) => callRow(call))}
++              </SettingsGroup>
++            ) : null}
++
++            {!details.summary.calls ? (
++              <Text style={styles.empty}>{t`这个时间段还没有产生用量。`}</Text>
++            ) : null}
++          </>
++        ) : null}
++      </ScrollView>
++    </SafeAreaView>
++  );
++}
++
++/** The share of one call's prompt that came from the cache, on the same rule the server uses. */
++function cacheRateOf(call: UsageDetailCall): number | null {
++  const prompt = call.inputTokens + call.cacheReadTokens;
++  if (prompt <= 0) return null;
++  return call.cacheReadTokens / prompt;
++}
++
++/** A run's own word for who started it, in the words the page is read in. */
++function triggerLabel(trigger: string | null): string {
++  switch (trigger) {
++    case "user":
++      return t`你发来的消息`;
++    case "call_end":
++      return t`通话结束`;
++    case "routine":
++      return t`定时任务`;
++    case "backoffice":
++      return t`后台接手`;
++    case "follow_up":
++      return t`追问`;
++    case "reaction":
++      return t`表情回应`;
++    case "messaging":
++      return t`聊天应用`;
++    case "webhook":
++      return t`网页钩子`;
++    case "skill":
++      return t`技能`;
++    default:
++      return trigger ?? t`未记录`;
++  }
++}
++
++function statusLabel(status: string | null): string {
++  switch (status) {
++    case "completed":
++      return t`已完成`;
++    case "failed":
++    case "error":
++      return t`失败`;
++    case "running":
++      return t`进行中`;
++    case "canceled":
++      return t`已取消`;
++    default:
++      return status ?? t`未记录`;
++  }
++}
++
++function createStyles() {
++  const tokens = mobileTokens();
++  return StyleSheet.create({
++    screen: { flex: 1, backgroundColor: native.groupedPage },
++    content: {
++      flexGrow: 1,
++      paddingHorizontal: 16,
++      paddingTop: 16,
++      paddingBottom: 32,
++      gap: 24,
++    },
++    compactContent: { paddingHorizontal: 8 },
++    section: { gap: 7 },
++    loading: { paddingVertical: 48, alignItems: "center" },
++    empty: {
++      color: native.secondaryLabel,
++      fontSize: 15,
++      textAlign: "center",
++      paddingTop: 8,
++    },
++    error: {
++      color: tokens.destructive,
++      fontSize: 15,
++      paddingHorizontal: 16,
++    },
++    // A card of figures: two to a line, the number over its own name.
++    grid: {
++      flexDirection: "row",
++      flexWrap: "wrap",
++      paddingVertical: 8,
++      paddingHorizontal: 4,
++    },
++    cell: {
++      width: "50%",
++      paddingHorizontal: 12,
++      paddingVertical: 8,
++      gap: 1,
++    },
++    cellValue: { color: native.label, fontSize: 21, fontWeight: "600" },
++    cellLabel: { color: native.secondaryLabel, fontSize: 12.5 },
++    // One model, or one bot: its name and total on a line, then what it spent and how fast.
++    modelRow: {
++      paddingStart: 16,
++      paddingEnd: 16,
++      paddingVertical: 10,
++      gap: 3,
++    },
++    modelHeading: {
++      flexDirection: "row",
++      alignItems: "center",
++      justifyContent: "space-between",
++      gap: 12,
++    },
++    modelName: { flexShrink: 1, color: native.label, fontSize: 16 },
++    modelTotal: { color: native.label, fontSize: 16, fontVariant: ["tabular-nums"] },
++    modelMeta: { color: native.secondaryLabel, fontSize: 12.5, fontVariant: ["tabular-nums"] },
++    // One call: what it was, its labels, and what it cost.
++    callRow: {
++      paddingStart: 16,
++      paddingEnd: 12,
++      paddingVertical: 10,
++      gap: 3,
++    },
++    callHeading: { flexDirection: "row", alignItems: "center", gap: 8 },
++    callTitle: { flex: 1, color: native.label, fontSize: 15, fontWeight: "500" },
++    callTime: {
++      color: native.secondaryLabel,
++      fontSize: 12.5,
++      fontVariant: ["tabular-nums"],
++    },
++    tagLine: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
++    tag: { color: native.secondaryLabel, fontSize: 12 },
++    callMeta: { color: native.secondaryLabel, fontSize: 12.5, fontVariant: ["tabular-nums"] },
++    callDetail: {
++      gap: 6,
++      paddingStart: 16,
++      paddingEnd: 16,
++      paddingBottom: 12,
++    },
++    detailRow: { flexDirection: "row", justifyContent: "space-between", gap: 12 },
++    detailLabel: { color: native.secondaryLabel, fontSize: 12.5 },
++    detailValue: {
++      color: native.label,
++      fontSize: 12.5,
++      fontVariant: ["tabular-nums"],
++    },
++    detailError: { color: tokens.destructive, fontSize: 12.5 },
++    pressed: { backgroundColor: native.fillPressed },
++  });
++}
 diff --git a/apps/mobile/app/(settings)/vault.tsx b/apps/mobile/app/(settings)/vault.tsx
 index c938f4e..725c94c 100644
 --- a/apps/mobile/app/(settings)/vault.tsx
@@ -86192,6 +86750,26 @@ index 5d72f75..b1c5203 100644
    });
  });
  
+diff --git a/apps/mobile/lib/settings-sheet.ts b/apps/mobile/lib/settings-sheet.ts
+index 8b29c08..63f25da 100644
+--- a/apps/mobile/lib/settings-sheet.ts
++++ b/apps/mobile/lib/settings-sheet.ts
+@@ -18,6 +18,7 @@ const settingsScreens = new Set([
+   "general",
+   "integration-setup",
+   "integrations",
++  "import-memory",
+   "labs",
+   "messaging",
+   "language",
+@@ -34,6 +35,7 @@ const settingsScreens = new Set([
+   "space",
+   "spending-limit",
+   "team-conversation",
++  "usage",
+   "vault",
+   "voice",
+   "wallet",
 diff --git a/apps/mobile/lib/startup.ts b/apps/mobile/lib/startup.ts
 index eef99b9..1866719 100644
 --- a/apps/mobile/lib/startup.ts
@@ -87236,6 +87814,711 @@ index 0000000..1122b91
 +    }
 +  })();
 +}
+diff --git a/apps/mobile/lib/usage-display.test.ts b/apps/mobile/lib/usage-display.test.ts
+new file mode 100644
+index 0000000..ce083d8
+--- /dev/null
++++ b/apps/mobile/lib/usage-display.test.ts
+@@ -0,0 +1,144 @@
++import { describe, expect, it } from "vitest";
++import {
++  formatCompactTokens,
++  formatCount,
++  formatElapsed,
++  formatExactTokens,
++  formatPercent,
++  formatWindowRange,
++  modelLabel,
++  thinkingLabel,
++  usageTags,
++} from "./usage-display";
++
++describe("formatCompactTokens", () => {
++  it("writes a small total as its own figures", () => {
++    expect(formatCompactTokens(0)).toBe("0");
++    expect(formatCompactTokens(512)).toBe("512");
++    expect(formatCompactTokens(999)).toBe("999");
++  });
++
++  it("cuts thousands to one decimal", () => {
++    expect(formatCompactTokens(1_000)).toBe("1.0K");
++    expect(formatCompactTokens(38_581)).toBe("38.6K");
++    expect(formatCompactTokens(999_499)).toBe("999.5K");
++  });
++
++  it("cuts millions to two decimals", () => {
++    expect(formatCompactTokens(1_000_000)).toBe("1.00M");
++    expect(formatCompactTokens(1_250_000)).toBe("1.25M");
++    expect(formatCompactTokens(456_072_752)).toBe("456.07M");
++  });
++
++  it("never prints a thousand thousands", () => {
++    expect(formatCompactTokens(999_999)).toBe("1.00M");
++    expect(formatCompactTokens(999_950)).toBe("1.00M");
++    expect(formatCompactTokens(999_949)).toBe("999.9K");
++  });
++
++  it("shows a figure it never had as a dash", () => {
++    expect(formatCompactTokens(null)).toBe("—");
++    expect(formatCompactTokens(undefined)).toBe("—");
++  });
++});
++
++describe("formatExactTokens", () => {
++  it("groups every figure of a total", () => {
++    expect(formatExactTokens(456_072_752)).toBe("456,072,752");
++    expect(formatExactTokens(999)).toBe("999");
++    expect(formatExactTokens(0)).toBe("0");
++    expect(formatExactTokens(null)).toBe("—");
++  });
++
++  it("counts a whole number the same way", () => {
++    expect(formatCount(1_234)).toBe("1,234");
++  });
++});
++
++describe("formatPercent", () => {
++  it("reads a fraction of the prompt as a percentage", () => {
++    expect(formatPercent(0.7235)).toBe("72.4%");
++    expect(formatPercent(0)).toBe("0.0%");
++    expect(formatPercent(1)).toBe("100%");
++    expect(formatPercent(null)).toBe("—");
++  });
++});
++
++describe("formatElapsed", () => {
++  it("picks the unit the wait belongs to", () => {
++    expect(formatElapsed(820)).toBe("820ms");
++    expect(formatElapsed(1_234)).toBe("1.2s");
++    expect(formatElapsed(59_400)).toBe("59.4s");
++    expect(formatElapsed(125_000)).toBe("2m 5s");
++    expect(formatElapsed(120_000)).toBe("2m");
++    expect(formatElapsed(3_900_000)).toBe("1h 5m");
++    expect(formatElapsed(null)).toBe("—");
++  });
++});
++
++describe("formatWindowRange", () => {
++  it("writes the hours a short window covers", () => {
++    const same = formatWindowRange("1h", "2026-11-18T12:23:00Z", "2026-11-18T13:23:00Z", "en-US");
++    expect(same).toContain("–");
++    expect(same).toContain(":");
++  });
++
++  it("writes nothing when the server sent no window", () => {
++    expect(formatWindowRange("24h", "", "", "en-US")).toBe("");
++  });
++});
++
++describe("usageTags", () => {
++  const call = (over: Partial<Parameters<typeof usageTags>[0]> = {}) => ({
++    desk: "front_desk" as const,
++    trigger: "user",
++    operationKind: "answer" as string | null,
++    status: "completed" as string | null,
++    isRetry: false,
++    ...over,
++  });
++
++  it("names the desk a call spent its tokens on", () => {
++    expect(usageTags(call())).toEqual([{ key: "front_desk", tone: "neutral" }]);
++    expect(usageTags(call({ desk: "backoffice", trigger: "backoffice" }))).toEqual([
++      { key: "backoffice", tone: "neutral" },
++    ]);
++    expect(usageTags(call({ desk: "other", trigger: "routine" }))).toEqual([
++      { key: "routine", tone: "neutral" },
++    ]);
++    expect(usageTags(call({ desk: "other", trigger: "created" }))).toEqual([
++      { key: "other_desk", tone: "neutral" },
++    ]);
++  });
++
++  it("calls a call that answered a finished call a voice call", () => {
++    expect(usageTags(call({ trigger: "call_end" }))).toEqual([{ key: "voice", tone: "neutral" }]);
++  });
++
++  it("names a compaction as one, whatever started it", () => {
++    expect(usageTags(call({ operationKind: "compaction" }))).toEqual([
++      { key: "compaction", tone: "neutral" },
++    ]);
++  });
++
++  it("marks a retry and a failure after the desk", () => {
++    expect(usageTags(call({ isRetry: true, status: "failed" }))).toEqual([
++      { key: "front_desk", tone: "neutral" },
++      { key: "retry", tone: "warning" },
++      { key: "failed", tone: "danger" },
++    ]);
++  });
++});
++
++describe("labels", () => {
++  it("keeps a thinking level the run named", () => {
++    expect(thinkingLabel("max")).toBe("max");
++    expect(thinkingLabel("  ")).toBeNull();
++    expect(thinkingLabel(null)).toBeNull();
++  });
++
++  it("drops a provider's prefix from a model's name", () => {
++    expect(modelLabel("openai/gpt-6.1-sol")).toBe("gpt-6.1-sol");
++    expect(modelLabel("hydrogen")).toBe("hydrogen");
++  });
++});
+diff --git a/apps/mobile/lib/usage-display.ts b/apps/mobile/lib/usage-display.ts
+new file mode 100644
+index 0000000..9a315cf
+--- /dev/null
++++ b/apps/mobile/lib/usage-display.ts
+@@ -0,0 +1,142 @@
++import type { UsageDetailCall, UsageDesk, UsageDetailWindow } from "@rakazo/contracts";
++
++/**
++ * How the usage screens write a number down: short enough to sit beside a label, exact enough to
++ * be read at a glance. A token total is a person's own spend, so it is grouped and cut to
++ * millions rather than shown as an eight-digit run of figures.
++ */
++
++/** A figure that never came back reads as a dash, not as a zero it was not. */
++const MISSING = "—";
++
++/**
++ * A token total as a person reads it: `456.07M`, `38.6K`, `512`.
++ *
++ * Millions keep two decimals so the column lines up and a figure that moved shows it; thousands
++ * keep one. The last fifty figures of the thousands band are written in millions instead: they
++ * would otherwise round to `1000.0K`.
++ */
++export function formatCompactTokens(value: number | null | undefined): string {
++  if (value == null || !Number.isFinite(value)) return MISSING;
++  const tokens = Math.max(0, Math.round(value));
++  if (tokens >= 999_950) return `${(tokens / 1_000_000).toFixed(2)}M`;
++  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(1)}K`;
++  return String(tokens);
++}
++
++/** The same total with every figure kept, for the place a person checks one call by hand. */
++export function formatExactTokens(value: number | null | undefined): string {
++  if (value == null || !Number.isFinite(value)) return MISSING;
++  return String(Math.round(value)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
++}
++
++/** A whole count, grouped: `1,234`. */
++export function formatCount(value: number | null | undefined): string {
++  if (value == null || !Number.isFinite(value)) return MISSING;
++  return formatExactTokens(value);
++}
++
++/** A share of a prompt that came from the cache: `72.4%`. */
++export function formatPercent(rate: number | null | undefined): string {
++  if (rate == null || !Number.isFinite(rate)) return MISSING;
++  const percent = Math.min(100, Math.max(0, rate * 100));
++  if (percent >= 100) return "100%";
++  return `${percent.toFixed(1)}%`;
++}
++
++/** A wait or a duration: `820ms`, `1.2s`, `2m 5s`, `1h 4m`. */
++export function formatElapsed(ms: number | null | undefined): string {
++  if (ms == null || !Number.isFinite(ms)) return MISSING;
++  const value = Math.max(0, Math.round(ms));
++  if (value < 1_000) return `${value}ms`;
++  if (value < 60_000) return `${(value / 1_000).toFixed(1)}s`;
++  const minutes = Math.floor(value / 60_000);
++  if (minutes < 60) {
++    const seconds = Math.round((value % 60_000) / 1_000);
++    return seconds === 0 ? `${minutes}m` : `${minutes}m ${seconds}s`;
++  }
++  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
++}
++
++/** How far back a window reaches, for the line under the overview. */
++export function formatWindowRange(
++  window: UsageDetailWindow,
++  since: string,
++  until: string,
++  locale: string,
++): string {
++  const from = new Date(since);
++  const to = new Date(until);
++  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return "";
++  const sameDay = from.toDateString() === to.toDateString();
++  const clock = new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" });
++  const stamp = new Intl.DateTimeFormat(locale, {
++    month: "2-digit",
++    day: "2-digit",
++    hour: "2-digit",
++    minute: "2-digit",
++    hour12: false,
++  });
++  const short = window === "1h" || window === "6h" || window === "24h";
++  if (short && sameDay) return `${clock.format(from)} – ${clock.format(to)}`;
++  return `${stamp.format(from)} – ${stamp.format(to)}`;
++}
++
++/**
++ * The labels one recorded call carries. The desk says which side of the split spent the tokens; a
++ * call that answered the person in a call says so instead, and one that tidied its own context is
++ * named as a compaction rather than as work nobody asked for.
++ */
++export type UsageTagTone = "neutral" | "warning" | "danger";
++export type UsageTagKey =
++  | "front_desk"
++  | "backoffice"
++  | "routine"
++  | "voice"
++  | "compaction"
++  | "other_desk"
++  | "retry"
++  | "failed";
++
++export type UsageTag = { key: UsageTagKey; tone: UsageTagTone };
++
++type TaggedCall = Pick<
++  UsageDetailCall,
++  "desk" | "trigger" | "operationKind" | "status" | "isRetry"
++>;
++
++export function usageTags(call: TaggedCall): UsageTag[] {
++  const deskTag: UsageTagKey =
++    call.operationKind === "compaction"
++      ? "compaction"
++      : call.desk === "front_desk"
++        ? call.trigger === "call_end"
++          ? "voice"
++          : "front_desk"
++        : call.desk === "backoffice"
++          ? "backoffice"
++          : call.trigger === "routine"
++            ? "routine"
++            : "other_desk";
++  const tags: UsageTag[] = [{ key: deskTag, tone: "neutral" }];
++  if (call.isRetry) tags.push({ key: "retry", tone: "warning" });
++  if (call.status === "failed" || call.status === "error") {
++    tags.push({ key: "failed", tone: "danger" });
++  }
++  return tags;
++}
++
++/** Which desk a group stands for, in the order the page shows them. */
++export const USAGE_DESK_ORDER: readonly UsageDesk[] = ["front_desk", "backoffice", "other"];
++
++/** A thinking level as the tag writes it: `max`, `high`, `off`; nothing when the run named none. */
++export function thinkingLabel(level: string | null | undefined): string | null {
++  const trimmed = level?.trim();
++  return trimmed ? trimmed : null;
++}
++
++/** The model's own name, cut to the part a person recognises when a provider prefixes it. */
++export function modelLabel(model: string): string {
++  const slash = model.lastIndexOf("/");
++  return slash === -1 ? model : model.slice(slash + 1);
++}
+diff --git a/apps/mobile/lib/usage-screen.test.tsx b/apps/mobile/lib/usage-screen.test.tsx
+new file mode 100644
+index 0000000..f0c51a4
+--- /dev/null
++++ b/apps/mobile/lib/usage-screen.test.tsx
+@@ -0,0 +1,401 @@
++// @vitest-environment jsdom
++
++import type { UsageDetails } from "@rakazo/contracts";
++import type { ReactNode } from "react";
++import { act, createElement } from "react";
++import type { Root } from "react-dom/client";
++import { createRoot } from "react-dom/client";
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++import UsageScreen from "../app/(settings)/usage";
++
++const { element, query } = vi.hoisted(() => {
++  const element = (tag: string) => {
++    const Component = ({
++      children,
++      accessibilityLabel,
++      accessibilityRole,
++      accessibilityState,
++      onPress,
++    }: {
++      children?: ReactNode;
++      accessibilityLabel?: string;
++      accessibilityRole?: string;
++      accessibilityState?: { expanded?: boolean };
++      onPress?: () => void;
++    }) =>
++      createElement(
++        tag,
++        {
++          "aria-label": accessibilityLabel,
++          "aria-expanded": accessibilityState?.expanded,
++          role: accessibilityRole,
++          onClick: onPress,
++        },
++        children,
++      );
++    return Component;
++  };
++  return { element, query: { answer: null as UsageDetails | null, windows: [] as unknown[] } };
++});
++
++/** One window's answer, shaped as the server sends it. */
++function details(over: Partial<UsageDetails> = {}): UsageDetails {
++  const emptyDesk = {
++    calls: 0,
++    runs: 0,
++    totalTokens: 0,
++    inputTokens: 0,
++    outputTokens: 0,
++    reasoningTokens: 0,
++    cacheReadTokens: 0,
++    cacheHitRate: null,
++    avgFirstResponseMs: null,
++    avgDurationMs: null,
++    models: [],
++  };
++  return {
++    window: "24h",
++    since: "2026-11-17T13:23:00.000Z",
++    until: "2026-11-18T13:23:00.000Z",
++    summary: {
++      runs: 662,
++      calls: 1_234,
++      totalTokens: 456_072_752,
++      inputTokens: 1_000_000,
++      outputTokens: 250_000,
++      reasoningTokens: 38_581,
++      cacheReadTokens: 12_000_000,
++      cacheWriteTokens: 800_000,
++      cacheHitRate: 0.9231,
++    },
++    byDesk: {
++      frontDesk: {
++        ...emptyDesk,
++        calls: 900,
++        runs: 600,
++        totalTokens: 300_000_000,
++        reasoningTokens: 20_000,
++        cacheHitRate: 0.9,
++        avgFirstResponseMs: 1_234,
++        avgDurationMs: 8_400,
++        models: [
++          {
++            provider: "magic",
++            model: "gemini/hydrogen",
++            calls: 900,
++            totalTokens: 300_000_000,
++            inputTokens: 1_000_000,
++            outputTokens: 250_000,
++            reasoningTokens: 20_000,
++            cacheReadTokens: 12_000_000,
++            cacheHitRate: 0.9,
++            avgFirstResponseMs: 1_234,
++            avgDurationMs: 8_400,
++          },
++        ],
++      },
++      backoffice: {
++        ...emptyDesk,
++        calls: 334,
++        runs: 62,
++        totalTokens: 156_072_752,
++        reasoningTokens: 18_581,
++        cacheHitRate: 0.7,
++        avgFirstResponseMs: 2_000,
++        avgDurationMs: 120_000,
++        models: [
++          {
++            provider: "magic",
++            model: "gpt-6.1-sol",
++            calls: 334,
++            totalTokens: 156_072_752,
++            inputTokens: 2_000_000,
++            outputTokens: 400_000,
++            reasoningTokens: 18_581,
++            cacheReadTokens: 9_000_000,
++            cacheHitRate: 0.7,
++            avgFirstResponseMs: 2_000,
++            avgDurationMs: 120_000,
++          },
++        ],
++      },
++      other: emptyDesk,
++    },
++    byBot: [
++      {
++        botId: "bot-1",
++        botName: "小猪包",
++        calls: 1_234,
++        runs: 662,
++        frontDeskCalls: 900,
++        backofficeCalls: 334,
++        totalTokens: 456_072_752,
++        reasoningTokens: 38_581,
++        cacheReadTokens: 12_000_000,
++        cacheHitRate: 0.9231,
++        avgFirstResponseMs: 1_500,
++        avgDurationMs: 20_000,
++      },
++    ],
++    records: [
++      {
++        id: "call-1",
++        createdAt: "2026-11-18T05:06:15.000Z",
++        botId: "bot-1",
++        botName: "小猪包",
++        desk: "front_desk",
++        trigger: "user",
++        operationKind: "answer",
++        provider: "magic",
++        model: "gemini/hydrogen",
++        thinkingLevel: "max",
++        status: "completed",
++        error: null,
++        inputTokens: 120_000,
++        outputTokens: 3_400,
++        reasoningTokens: 9_000,
++        cacheReadTokens: 88_000,
++        cacheWriteTokens: 1_200,
++        totalTokens: 220_000,
++        queueWaitMs: 120,
++        firstResponseMs: 1_240,
++        durationMs: 9_000,
++        isRetry: false,
++      },
++      {
++        id: "call-2",
++        createdAt: "2026-11-18T04:02:00.000Z",
++        botId: "bot-1",
++        botName: "小猪包",
++        desk: "backoffice",
++        trigger: "backoffice",
++        operationKind: "subagent",
++        provider: "magic",
++        model: "gpt-6.1-sol",
++        thinkingLevel: "high",
++        status: "failed",
++        error: "The model refused the request.",
++        inputTokens: 900,
++        outputTokens: 10,
++        reasoningTokens: 0,
++        cacheReadTokens: 0,
++        cacheWriteTokens: 0,
++        totalTokens: 910,
++        queueWaitMs: null,
++        firstResponseMs: null,
++        durationMs: null,
++        isRetry: true,
++      },
++    ],
++    ...over,
++  };
++}
++
++vi.mock("./query", () => ({
++  queryClient: {},
++  accountRpcQuery: (proc: string, input?: unknown) => {
++    query.windows.push(input);
++    return { queryKey: [proc, input] };
++  },
++}));
++// The page reads one window at a time and only uses what the read returned, so the hook stands in
++// for the cache: the answer is already there when it renders.
++vi.mock("@tanstack/react-query", () => ({
++  useQuery: () => ({
++    data: query.answer,
++    error: null,
++    isLoading: false,
++    refetch: async () => undefined,
++  }),
++}));
++vi.mock("./side-insets", () => ({ useSideInsets: () => ({}) }));
++vi.mock("./i18n", () => ({
++  dateLocaleForUi: () => "en-US",
++  useUiLocale: () => "zh-CN",
++}));
++vi.mock("./appearance", () => ({ mobileTokens: () => ({ destructive: "red", warning: "orange" }) }));
++vi.mock("./native", () => ({
++  native: {
++    groupedPage: "#fff",
++    label: "#000",
++    secondaryLabel: "#888",
++    fillPressed: "#eee",
++  },
++  useMobileTokens: () => ({ destructive: "red", warning: "orange" }),
++  useThemedStyles: <T,>(factory: () => T) => factory(),
++}));
++vi.mock("react-native", () => ({
++  ActivityIndicator: () => null,
++  Pressable: element("button"),
++  RefreshControl: () => null,
++  ScrollView: element("div"),
++  StyleSheet: { create: <T,>(styles: T) => styles, hairlineWidth: 1 },
++  Text: element("span"),
++  View: element("div"),
++}));
++vi.mock("expo-router", () => ({ useFocusEffect: () => undefined }));
++vi.mock("react-native-safe-area-context", () => ({ SafeAreaView: element("div") }));
++vi.mock("../components/native-segmented-control", () => ({
++  NativeSegmentedControl: ({
++    value,
++    options,
++    onChange,
++  }: {
++    value: string;
++    options: { value: string; label: string }[];
++    onChange: (value: string) => void;
++  }) =>
++    createElement(
++      "div",
++      { "data-window": value },
++      options.map((option) =>
++        createElement(
++          "button",
++          {
++            type: "button",
++            key: option.value,
++            "aria-pressed": value === option.value,
++            onClick: () => onChange(option.value),
++          },
++          option.label,
++        ),
++      ),
++    ),
++}));
++vi.mock("../components/row-accessories", () => ({ Chevron: () => null }));
++vi.mock("../components/settings-group", () => ({
++  SettingsLabel: element("span"),
++  SettingsGroup: ({
++    label,
++    footer,
++    children,
++  }: {
++    label?: string;
++    footer?: string;
++    children?: ReactNode;
++  }) =>
++    createElement(
++      "section",
++      { "data-group": label },
++      label ? createElement("h2", null, label) : null,
++      children,
++      footer ? createElement("p", { "data-footer": "" }, footer) : null,
++    ),
++  useStackedSettings: () => false,
++}));
++
++let container: HTMLDivElement;
++let root: Root | null = null;
++
++async function render() {
++  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
++  container = document.createElement("div");
++  document.body.append(container);
++  root = createRoot(container);
++  await act(async () => root?.render(createElement(UsageScreen)));
++  return container;
++}
++
++const text = (node: ParentNode = container) => node.textContent ?? "";
++const group = (label: string) =>
++  Array.from(container.querySelectorAll("section")).find(
++    (section) => section.getAttribute("data-group") === label,
++  );
++const button = (name: string) =>
++  Array.from(container.querySelectorAll("button")).find((node) => node.textContent === name);
++
++beforeEach(() => {
++  query.answer = details();
++  query.windows.length = 0;
++});
++
++afterEach(() => {
++  act(() => root?.unmount());
++  root = null;
++  container?.remove();
++});
++
++describe("usage page", () => {
++  it("offers the five windows and reads the day first", async () => {
++    await render();
++    expect(query.windows).toEqual([{ window: "24h", limit: 50 }]);
++    expect(container.querySelector("[data-window]")?.getAttribute("data-window")).toBe("24h");
++    expect(text()).toContain("1 小时");
++    expect(text()).toContain("30 天");
++  });
++
++  it("reads the new window when another is picked", async () => {
++    await render();
++    await act(async () => button("1 小时")?.click());
++    expect(query.windows.at(-1)).toEqual({ window: "1h", limit: 50 });
++  });
++
++  it("writes the window's totals in millions, not digits", async () => {
++    await render();
++    const overview = group("总览")!;
++    expect(text(overview)).toContain("456.07M");
++    expect(text(overview)).toContain("662");
++    expect(text(overview)).toContain("38.6K");
++    expect(text(overview)).toContain("92.3%");
++  });
++
++  it("splits the front desk from the back office, model by model", async () => {
++    await render();
++    const front = group("前台模型（对话 / 语音）")!;
++    expect(text(front)).toContain("hydrogen");
++    expect(text(front)).toContain("300.00M");
++    expect(text(front)).toContain("900 次调用");
++    expect(text(front)).toContain("1.2s");
++    const back = group("后台模型（执行任务）")!;
++    expect(text(back)).toContain("gpt-6.1-sol");
++    expect(text(back)).toContain("156.07M");
++    expect(text(back)).toContain("18.6K");
++    // A desk nobody spent on is not drawn at all.
++    expect(group("其他（汇报 / 定时 / 整理）")).toBeUndefined();
++  });
++
++  it("counts each bot's own calls and tokens", async () => {
++    await render();
++    const bots = group("按 Bot 统计")!;
++    expect(text(bots)).toContain("小猪包");
++    expect(text(bots)).toContain("前台 900");
++    expect(text(bots)).toContain("后台 334");
++  });
++
++  it("labels every recent call with its desk, thinking level and failure", async () => {
++    await render();
++    const recent = group("最近调用")!;
++    const calls = Array.from(recent.querySelectorAll("button"));
++    expect(text(calls[0]!)).toContain("小猪包 · hydrogen");
++    expect(text(calls[0]!)).toContain("前台");
++    expect(text(calls[0]!)).toContain("思考 max");
++    expect(text(calls[1]!)).toContain("后台");
++    expect(text(calls[1]!)).toContain("重试");
++    expect(text(calls[1]!)).toContain("失败");
++  });
++
++  it("keeps the exact figures for the call that is opened", async () => {
++    await render();
++    const recent = group("最近调用")!;
++    expect(text(recent)).not.toContain("88,000");
++    await act(async () => Array.from(recent.querySelectorAll("button"))[0]!.click());
++    expect(text(recent)).toContain("88,000");
++    expect(text(recent)).toContain("220,000");
++    expect(text(recent)).toContain("已完成");
++    expect(text(recent)).toContain("你发来的消息");
++    // One call opens at a time.
++    await act(async () => Array.from(recent.querySelectorAll("button"))[1]!.click());
++    expect(text(recent)).not.toContain("88,000");
++    expect(text(recent)).toContain("The model refused the request.");
++  });
++
++  it("says so when the window is empty", async () => {
++    const empty = details();
++    empty.summary.calls = 0;
++    empty.records = [];
++    empty.byBot = [];
++    query.answer = empty;
++    await render();
++    expect(text()).toContain("这个时间段还没有产生用量。");
++  });
++});
 diff --git a/apps/mobile/lib/use-home-header.ts b/apps/mobile/lib/use-home-header.tsx
 similarity index 62%
 rename from apps/mobile/lib/use-home-header.ts
@@ -95883,7 +97166,7 @@ index eca1f50..2fdde1f 100644
    "generate_secret",
    "list_secrets",
 diff --git a/packages/contracts/src/domain.ts b/packages/contracts/src/domain.ts
-index d45cd5a..ac3b0cc 100644
+index d45cd5a..c120894 100644
 --- a/packages/contracts/src/domain.ts
 +++ b/packages/contracts/src/domain.ts
 @@ -89,6 +89,11 @@ export const BotSchema = z.object({
@@ -95987,7 +97270,151 @@ index d45cd5a..ac3b0cc 100644
  export const ConnectionSchema = z.object({
    id: Id,
    connectorId: z.string(),
-@@ -1294,6 +1353,100 @@ export const ThreadMessagePageSchema = z.object({
+@@ -1161,7 +1220,10 @@ export const UsageRecordSchema = z.object({
+   createdAt: z.string(),
+ });
+ 
+-/** Token and cost totals are null when any counted call lacks that figure. */
++/**
++ * Token totals add up what the recorded calls spent, so a call missing a figure makes the total
++ * smaller, not unknown. A cost total is null when any counted call lacks a price.
++ */
+ const UsageTotalsSchema = z.object({
+   inputTokens: z.number().nullable(),
+   outputTokens: z.number().nullable(),
+@@ -1177,6 +1239,131 @@ export const UsageSummarySchema = UsageTotalsSchema.extend({
+ });
+ export type UsageSummary = z.infer<typeof UsageSummarySchema>;
+ 
++/** The rolling windows `usage/details` reports over. */
++export const USAGE_DETAIL_WINDOWS = ["1h", "6h", "24h", "7d", "30d"] as const;
++export const UsageDetailWindowSchema = z.enum(USAGE_DETAIL_WINDOWS);
++export type UsageDetailWindow = z.infer<typeof UsageDetailWindowSchema>;
++/** What the call takes when it names no window. */
++export const USAGE_DETAIL_DEFAULT_WINDOW: UsageDetailWindow = "24h";
++/** How many recent calls `usage/details` lists when the caller names no count, and the most it takes. */
++export const USAGE_DETAIL_DEFAULT_LIMIT = 50;
++export const USAGE_DETAIL_MAX_LIMIT = 100;
++
++/**
++ * Which side of the front desk / back office split a call spent its tokens on: answering the
++ * person, work handed to the back office, or neither (a routine, a report back, a compaction).
++ */
++export const USAGE_DESKS = ["front_desk", "backoffice", "other"] as const;
++export const UsageDeskSchema = z.enum(USAGE_DESKS);
++export type UsageDesk = z.infer<typeof UsageDeskSchema>;
++
++/** One model's share of a window: what it spent, how it cached, and how fast it answered. */
++export const UsageModelBreakdownSchema = z.object({
++  provider: z.string(),
++  model: z.string(),
++  calls: z.number().int(),
++  totalTokens: z.number().int(),
++  inputTokens: z.number().int(),
++  outputTokens: z.number().int(),
++  reasoningTokens: z.number().int(),
++  cacheReadTokens: z.number().int(),
++  /** `cacheReadTokens / (inputTokens + cacheReadTokens)`, as a fraction of the prompt; null with no prompt. */
++  cacheHitRate: z.number().nullable(),
++  avgFirstResponseMs: z.number().nullable(),
++  avgDurationMs: z.number().nullable(),
++});
++export type UsageModelBreakdown = z.infer<typeof UsageModelBreakdownSchema>;
++
++/** One desk's share of a window, with the models it spent on. */
++export const UsageDeskBreakdownSchema = z.object({
++  calls: z.number().int(),
++  runs: z.number().int(),
++  totalTokens: z.number().int(),
++  inputTokens: z.number().int(),
++  outputTokens: z.number().int(),
++  reasoningTokens: z.number().int(),
++  cacheReadTokens: z.number().int(),
++  cacheHitRate: z.number().nullable(),
++  avgFirstResponseMs: z.number().nullable(),
++  avgDurationMs: z.number().nullable(),
++  models: z.array(UsageModelBreakdownSchema),
++});
++export type UsageDeskBreakdown = z.infer<typeof UsageDeskBreakdownSchema>;
++
++/** One bot's share of a window, split by desk. */
++export const UsageBotBreakdownSchema = z.object({
++  botId: Id,
++  botName: z.string().nullable(),
++  calls: z.number().int(),
++  runs: z.number().int(),
++  frontDeskCalls: z.number().int(),
++  backofficeCalls: z.number().int(),
++  totalTokens: z.number().int(),
++  reasoningTokens: z.number().int(),
++  cacheReadTokens: z.number().int(),
++  cacheHitRate: z.number().nullable(),
++  avgFirstResponseMs: z.number().nullable(),
++  avgDurationMs: z.number().nullable(),
++});
++export type UsageBotBreakdown = z.infer<typeof UsageBotBreakdownSchema>;
++
++/** One recorded call, read back with the run behind it. */
++export const UsageDetailCallSchema = z.object({
++  id: Id,
++  createdAt: z.string(),
++  botId: Id.nullable(),
++  botName: z.string().nullable(),
++  desk: UsageDeskSchema,
++  trigger: z.string().nullable(),
++  operationKind: z.string().nullable(),
++  provider: z.string(),
++  model: z.string(),
++  thinkingLevel: z.string().nullable(),
++  status: z.string().nullable(),
++  error: z.string().nullable(),
++  inputTokens: z.number().int(),
++  outputTokens: z.number().int(),
++  reasoningTokens: z.number().int(),
++  cacheReadTokens: z.number().int(),
++  cacheWriteTokens: z.number().int(),
++  totalTokens: z.number().int(),
++  /** How long the run waited before it started. */
++  queueWaitMs: z.number().nullable(),
++  /** How long the run took to say its first visible word. */
++  firstResponseMs: z.number().nullable(),
++  /** How long the run worked, from its start to its end. */
++  durationMs: z.number().nullable(),
++  /** The run retries an earlier failed run. */
++  isRetry: z.boolean(),
++});
++export type UsageDetailCall = z.infer<typeof UsageDetailCallSchema>;
++
++/** What one window of usage spent, split by desk and by bot, with its latest calls. */
++export const UsageDetailsSchema = z.object({
++  window: UsageDetailWindowSchema,
++  since: z.string(),
++  until: z.string(),
++  summary: z.object({
++    runs: z.number().int(),
++    calls: z.number().int(),
++    totalTokens: z.number().int(),
++    inputTokens: z.number().int(),
++    outputTokens: z.number().int(),
++    reasoningTokens: z.number().int(),
++    cacheReadTokens: z.number().int(),
++    cacheWriteTokens: z.number().int(),
++    cacheHitRate: z.number().nullable(),
++  }),
++  byDesk: z.object({
++    frontDesk: UsageDeskBreakdownSchema,
++    backoffice: UsageDeskBreakdownSchema,
++    other: UsageDeskBreakdownSchema,
++  }),
++  byBot: z.array(UsageBotBreakdownSchema),
++  records: z.array(UsageDetailCallSchema),
++});
++export type UsageDetails = z.infer<typeof UsageDetailsSchema>;
++
+ /** One rolling allowance of a model subscription the member signed in with. */
+ export const PlanLimitWindowSchema = z.object({
+   period: z.enum(["session", "week", "month"]),
+@@ -1294,6 +1481,100 @@ export const ThreadMessagePageSchema = z.object({
  });
  export type ThreadMessagePage = z.infer<typeof ThreadMessagePageSchema>;
  
@@ -96088,7 +97515,7 @@ index d45cd5a..ac3b0cc 100644
  export const ThreadSnapshotSchema = z.object({
    threadId: Id,
    cursor: z.number().int().min(-1),
-@@ -1306,6 +1459,11 @@ export const ThreadSnapshotSchema = z.object({
+@@ -1306,6 +1587,11 @@ export const ThreadSnapshotSchema = z.object({
    run: RunSchema.nullable(),
    activeRuns: z.array(RunSchema).optional(),
    computer: ComputerStatusSchema.optional(),
@@ -96576,7 +98003,7 @@ index c1eddc1..6003f82 100644
 +
  export type MessageReaction = z.infer<typeof MessageReactionSchema>;
 diff --git a/packages/contracts/src/rpc.ts b/packages/contracts/src/rpc.ts
-index 94ad5b0..1579b25 100644
+index 94ad5b0..dfc8645 100644
 --- a/packages/contracts/src/rpc.ts
 +++ b/packages/contracts/src/rpc.ts
 @@ -102,12 +102,16 @@ import {
@@ -96604,7 +98031,19 @@ index 94ad5b0..1579b25 100644
    TaughtSkillSchema,
    TeachRecordingEventSchema,
    THREAD_MESSAGE_TEXT_MAX_LENGTH,
-@@ -160,12 +165,14 @@ import {
+@@ -152,6 +157,11 @@ import {
+   UpdateBotInput,
+   UpdateExternalConversationPolicyInput,
+   UpdateGroupInput,
++  USAGE_DETAIL_DEFAULT_LIMIT,
++  USAGE_DETAIL_DEFAULT_WINDOW,
++  USAGE_DETAIL_MAX_LIMIT,
++  UsageDetailWindowSchema,
++  UsageDetailsSchema,
+   UsageRecordSchema,
+   UsageSummarySchema,
+   VoiceCatalogEntrySchema,
+@@ -160,12 +170,14 @@ import {
    VoiceStatusSchema,
  } from "./domain.js";
  import { ComputerCommandSchema, ProductEventSchema } from "./events.js";
@@ -96619,7 +98058,7 @@ index 94ad5b0..1579b25 100644
  import {
    BotMcpServerSchema,
    McpServerConfigInput,
-@@ -208,11 +215,23 @@ import {
+@@ -208,11 +220,23 @@ import {
    RoutineRunCursorSchema,
    RunsListOutputSchema,
  } from "./runs.js";
@@ -96643,7 +98082,7 @@ index 94ad5b0..1579b25 100644
  
  const botId = z.object({ botId: Id });
  const groupId = z.object({ groupId: Id });
-@@ -527,6 +546,17 @@ export const appContract = {
+@@ -527,6 +551,17 @@ export const appContract = {
        )
        .output(ModelRoleViewSchema),
      list: oc.output(z.array(ModelCatalogEntrySchema)),
@@ -96661,7 +98100,7 @@ index 94ad5b0..1579b25 100644
      credentials: oc.output(z.array(ModelCredentialSchema)),
      backups: oc.output(z.array(ModelBackupChoiceSchema)),
      setBackups: oc.input(ModelBackupListSchema).output(z.object({ ok: z.literal(true) })),
-@@ -609,8 +639,17 @@ export const appContract = {
+@@ -609,8 +644,17 @@ export const appContract = {
      importCreate: oc.input(AgentImportCreateInput).output(BotSchema),
      importSetupState: oc.input(AgentImportSetupStateInput).output(AgentImportSetupStateSchema),
      templates: oc.output(z.array(BotTemplateListingSchema)),
@@ -96679,7 +98118,7 @@ index 94ad5b0..1579b25 100644
      reorder: oc.input(ReorderBotsInput).output(z.object({ ok: z.literal(true) })),
      update: oc.input(UpdateBotInput).output(BotSchema),
      restoreInstructions: oc
-@@ -638,6 +677,19 @@ export const appContract = {
+@@ -638,6 +682,19 @@ export const appContract = {
        ),
      /** Groups this delete removes because fewer than two active bots would remain. */
      removePreview: oc.input(botId).output(z.array(z.object({ id: Id, name: z.string() }))),
@@ -96699,7 +98138,7 @@ index 94ad5b0..1579b25 100644
      emailAddress: oc.input(botId).output(BotEmailAddressSchema),
      emailAddresses: oc.output(BotEmailAddressesSchema),
      claimEmailAddress: oc
-@@ -683,6 +735,11 @@ export const appContract = {
+@@ -683,6 +740,11 @@ export const appContract = {
        }),
      ),
      get: oc.input(threadTarget).output(ThreadSnapshotSchema),
@@ -96711,7 +98150,7 @@ index 94ad5b0..1579b25 100644
      messages: oc
        .input(
          threadTarget.safeExtend({
-@@ -720,9 +777,11 @@ export const appContract = {
+@@ -720,9 +782,11 @@ export const appContract = {
        )
        .output(z.object({ ok: z.literal(true), runIds: z.array(Id).optional() })),
      stop: oc.input(threadTarget).output(z.object({ ok: z.literal(true) })),
@@ -96725,7 +98164,7 @@ index 94ad5b0..1579b25 100644
        .output(z.object({ ok: z.literal(true) })),
      followUp: oc
        .input(
-@@ -915,6 +974,41 @@ export const appContract = {
+@@ -915,6 +979,41 @@ export const appContract = {
        )
        .output(MemoryDocumentSchema),
      remove: oc.input(z.object({ documentId: Id })).output(z.object({ ok: z.literal(true) })),
@@ -96767,7 +98206,33 @@ index 94ad5b0..1579b25 100644
      exportMarkdown: oc.input(z.object({ botId: Id.optional() })).output(z.string()),
      providerConfig: oc.output(SpaceMemoryConfigSchema.nullable()),
      connectProvider: oc
-@@ -1571,6 +1665,11 @@ export const appContract = {
+@@ -1473,6 +1572,25 @@ export const appContract = {
+   usage: {
+     list: oc.output(z.array(UsageRecordSchema)),
+     summary: oc.output(UsageSummarySchema),
++    /**
++     * One rolling window of the caller's own spend, split by desk and by bot, with the latest
++     * calls. `records` lists at most `limit`, defaulting to 50; the totals cover the window.
++     */
++    details: oc
++      .input(
++        z
++          .strictObject({
++            window: UsageDetailWindowSchema.default(USAGE_DETAIL_DEFAULT_WINDOW),
++            limit: z
++              .number()
++              .int()
++              .min(1)
++              .max(USAGE_DETAIL_MAX_LIMIT)
++              .default(USAGE_DETAIL_DEFAULT_LIMIT),
++          })
++          .optional(),
++      )
++      .output(UsageDetailsSchema),
+     /** Subscription sign-ins whose allowance could be read; others are left out. */
+     limits: oc.output(z.array(PlanLimitsSchema)),
+   },
+@@ -1571,6 +1689,11 @@ export const appContract = {
        // The longest origin: a scheme, a 253-character host name and a port.
        .input(z.object({ origin: z.string().max("https://".length + 253 + ":65535".length) }))
        .output(z.object({ icon: z.string().nullable(), retry: z.boolean().optional() })),
@@ -96779,7 +98244,7 @@ index 94ad5b0..1579b25 100644
    },
    runs: {
      list: oc.input(z.object({ filter: z.enum(["active", "recent"]) })).output(RunsListOutputSchema),
-@@ -1661,6 +1760,13 @@ export const appContract = {
+@@ -1661,6 +1784,13 @@ export const appContract = {
          }),
        )
        .output(z.object({ ready: z.boolean(), utterances: z.array(z.string()) })),

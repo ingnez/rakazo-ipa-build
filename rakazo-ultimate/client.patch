@@ -223,7 +223,7 @@ index 18ed00e..e056c69 100644
    }
  }
 diff --git a/apps/mobile/app.json b/apps/mobile/app.json
-index d0e8069..b5ca36f 100644
+index d0e8069..8edc608 100644
 --- a/apps/mobile/app.json
 +++ b/apps/mobile/app.json
 @@ -7,8 +7,21 @@
@@ -257,7 +257,7 @@ index d0e8069..b5ca36f 100644
              "backgroundColor": "#141414"
            }
          }
-@@ -104,19 +118,34 @@
+@@ -104,19 +118,35 @@
        "bundleIdentifier": "com.rakazo.app",
        "buildNumber": "1",
        "supportsTablet": true,
@@ -291,11 +291,12 @@ index d0e8069..b5ca36f 100644
 +        "NSRemindersUsageDescription": "Bot 查看和新建提醒事项，好替你记住要做的事。",
 +        "NSRemindersFullAccessUsageDescription": "Bot 查看和修改提醒事项，好替你记住并完成要做的事。",
 +        "NSContactsUsageDescription": "Bot 按姓名或号码查找联系人，好替你找到要联系的人。",
-+        "NSLocationWhenInUseUsageDescription": "Bot 读取你手机当前的位置，好告诉你身边有什么、怎么走。"
++        "NSLocationWhenInUseUsageDescription": "Bot 读取你手机当前的位置，好告诉你身边有什么、怎么走。",
++        "UIStatusBarStyle": "UIStatusBarStyleDarkContent"
        },
        "entitlements": {
          "com.apple.developer.usernotifications.time-sensitive": true,
-@@ -127,7 +156,7 @@
+@@ -127,7 +157,7 @@
        "package": "com.rakazo.app",
        "versionCode": 10,
        "softwareKeyboardLayoutMode": "resize",
@@ -304,7 +305,7 @@ index d0e8069..b5ca36f 100644
        "adaptiveIcon": {
          "foregroundImage": "./assets/adaptive-icon.png",
          "monochromeImage": "./assets/monochrome-icon.png",
-@@ -154,7 +183,9 @@
+@@ -154,7 +184,9 @@
                    "targetName": "expo-sharing-extension",
                    "bundleIdentifier": "com.rakazo.app.expo-sharing-extension",
                    "entitlements": {
@@ -315,7 +316,7 @@ index d0e8069..b5ca36f 100644
                    }
                  },
                  {
-@@ -174,7 +205,9 @@
+@@ -174,7 +206,9 @@
        "policy": "appVersion"
      },
      "updates": {
@@ -3545,7 +3546,7 @@ index c938f4e..725c94c 100644
      addLabel: { color: native.label, fontSize: 17 },
      tile: {
 diff --git a/apps/mobile/app/_layout.tsx b/apps/mobile/app/_layout.tsx
-index e65118b..5085198 100644
+index e65118b..8942ffc 100644
 --- a/apps/mobile/app/_layout.tsx
 +++ b/apps/mobile/app/_layout.tsx
 @@ -24,7 +24,7 @@ import type { ReactNode } from "react";
@@ -3650,7 +3651,18 @@ index e65118b..5085198 100644
                    <SplitFrame>
                      <Stack
                        screenLayout={({ navigation, options, children }) => (
-@@ -432,10 +454,13 @@ function LayoutContent() {
+@@ -422,6 +444,10 @@ function LayoutContent() {
+                         headerShadowVisible: false,
+                         headerBackButtonDisplayMode: "minimal",
+                         contentStyle: { backgroundColor: String(native.page) },
++                        // The screen's own controller states the bar's colour, so it follows the
++                        // app's appearance and not the phone's: a white page in a phone set to
++                        // dark was drawing white time and battery on it (`IMG_2913`).
++                        statusBarStyle: resolved === "dark" ? "light" : "dark",
+                       }}
+                     >
+                       <Stack.Screen
+@@ -432,10 +458,13 @@ function LayoutContent() {
                          name="search"
                          options={{
                            headerShown: false,
@@ -3668,7 +3680,7 @@ index e65118b..5085198 100644
                          }}
                        />
                        <Stack.Screen name="share" options={{ headerShown: false }} />
-@@ -452,12 +477,13 @@ function LayoutContent() {
+@@ -452,12 +481,13 @@ function LayoutContent() {
                          name="(settings)"
                          options={{
                            headerShown: false,
@@ -3688,7 +3700,7 @@ index e65118b..5085198 100644
                            contentStyle: { backgroundColor: native.groupedPage },
                          }}
                        />
-@@ -484,7 +510,11 @@ function LayoutContent() {
+@@ -484,7 +514,11 @@ function LayoutContent() {
                          name="new-bot"
                          options={{
                            title: t`New bot`,
@@ -3701,7 +3713,7 @@ index e65118b..5085198 100644
                            gestureEnabled: true,
                            headerBackVisible: false,
                          }}
-@@ -532,11 +562,13 @@ function LayoutContent() {
+@@ -532,11 +566,13 @@ function LayoutContent() {
                          name="page"
                          options={{
                            headerShown: false,
@@ -3719,7 +3731,7 @@ index e65118b..5085198 100644
                          }}
                        />
                        <Stack.Screen
-@@ -594,14 +626,15 @@ function LayoutContent() {
+@@ -594,14 +630,15 @@ function LayoutContent() {
                        />
                      </Stack>
                    </SplitFrame>
@@ -72496,15 +72508,19 @@ index 0000000..7ac181d
 +});
 diff --git a/apps/mobile/components/thread/file-preview-paper.tsx b/apps/mobile/components/thread/file-preview-paper.tsx
 new file mode 100644
-index 0000000..2cfa6e8
+index 0000000..49960f2
 --- /dev/null
 +++ b/apps/mobile/components/thread/file-preview-paper.tsx
-@@ -0,0 +1,174 @@
+@@ -0,0 +1,196 @@
 +import { useEffect, useRef, useState } from "react";
 +import { Image, StyleSheet, Text, View } from "react-native";
 +import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 +import type { MobileArtifactTarget } from "../../lib/artifact-open";
-+import { pdfArtifactThumbnail, previewTextMobileArtifact } from "../../lib/artifact-open";
++import {
++  officeArtifactThumbnail,
++  pdfArtifactThumbnail,
++  previewTextMobileArtifact,
++} from "../../lib/artifact-open";
 +import type { PreviewBlock } from "../../lib/file-preview";
 +import {
 +  PREVIEW_PAPER_HEIGHT,
@@ -72513,6 +72529,7 @@ index 0000000..2cfa6e8
 +  previewBlocks,
 +  previewMaxBytes,
 +} from "../../lib/file-preview";
++import { officeThumbnailAvailable } from "../../lib/office-thumbnail";
 +import { pdfThumbnailAvailable } from "../../lib/pdf-thumbnail";
 +import { APP_MONO_FONT_FAMILY } from "../../lib/app-font";
 +import { useMobileTokens } from "../../lib/native";
@@ -72521,10 +72538,11 @@ index 0000000..2cfa6e8
 +const PAGE_ASPECT_RATIO = 1 / 1.414;
 +
 +/**
-+ * What a file holds, drawn on the card itself: a text file's opening set like a page, or a PDF's
-+ * first page. It is decoration over a card that opens the real file, so it takes no touches and
-+ * says nothing to VoiceOver; a file it cannot show — or one too big to read for a card — draws
-+ * nothing at all, and the card keeps the compact file row it had.
++ * What a file holds, drawn on the card itself: a text file's opening set like a page, a PDF's first
++ * page, or the first page of an Office document as the system's own reader draws it. It is
++ * decoration over a card that opens the real file, so it takes no touches and says nothing to
++ * VoiceOver; a file it cannot show — or one too big to read for a card — draws nothing at all, and
++ * the card keeps the compact file row it had.
 + */
 +export function FilePreviewPaper({
 +  target,
@@ -72546,7 +72564,8 @@ index 0000000..2cfa6e8
 +  const tokens = useMobileTokens();
 +  const kind = filePreviewKind(mimeType, name);
 +  const [blocks, setBlocks] = useState<PreviewBlock[] | null>(null);
-+  const [page, setPage] = useState<string | null>(null);
++  // A page already drawn, and the shape of the paper it came on: a slide is not a sheet of A4.
++  const [page, setPage] = useState<{ uri: string; aspect?: number } | null>(null);
 +  const [failed, setFailed] = useState(false);
 +  // The target is a fresh object on every render of the bubble; the read is keyed on its identity
 +  // as a string so a re-render does not ask the server again.
@@ -72578,13 +72597,26 @@ index 0000000..2cfa6e8
 +          else setFailed(true);
 +          return;
 +        }
++        if (kind === "office") {
++          // The page is drawn by the system's reader, never read as bytes: a workbook or a deck
++          // printed as text is exactly the mojibake a card must not show.
++          if (!officeThumbnailAvailable()) {
++            if (active) setFailed(true);
++            return;
++          }
++          const sheet = await officeArtifactThumbnail(targetRef.current, artifactId, mimeType, 640);
++          if (!active) return;
++          if (sheet) setPage({ uri: sheet.uri, aspect: sheet.width / sheet.height });
++          else setFailed(true);
++          return;
++        }
 +        if (!pdfThumbnailAvailable()) {
 +          if (active) setFailed(true);
 +          return;
 +        }
 +        const uri = await pdfArtifactThumbnail(targetRef.current, artifactId, mimeType, 420);
 +        if (!active) return;
-+        if (uri) setPage(uri);
++        if (uri) setPage({ uri });
 +        else setFailed(true);
 +      } catch {
 +        if (active) setFailed(true);
@@ -72605,13 +72637,15 @@ index 0000000..2cfa6e8
 +      accessibilityElementsHidden
 +      style={styles.paper}
 +    >
-+      {kind === "pdf" ? (
++      {kind === "pdf" || kind === "office" ? (
 +        page ? (
 +          <Image
 +            accessibilityIgnoresInvertColors
 +            resizeMode="contain"
-+            source={{ uri: page }}
-+            style={styles.page}
++            source={{ uri: page.uri }}
++            // A deck's page is wide and a letter's is tall: the picture keeps the proportions the
++            // reader drew it with, and the fold cuts whatever runs past the paper's height.
++            style={[styles.page, page.aspect ? { aspectRatio: page.aspect } : null]}
 +          />
 +        ) : null
 +      ) : (
@@ -77865,7 +77899,7 @@ index 4e7a309..66e7d82 100644
  
  it("offers a retry in the row when the first load fails", async () => {
 diff --git a/apps/mobile/lib/artifact-open.test.ts b/apps/mobile/lib/artifact-open.test.ts
-index 6edeafb..2d612ec 100644
+index 6edeafb..761581c 100644
 --- a/apps/mobile/lib/artifact-open.test.ts
 +++ b/apps/mobile/lib/artifact-open.test.ts
 @@ -55,6 +55,9 @@ vi.mock("expo-secure-store", () => ({
@@ -77878,7 +77912,7 @@ index 6edeafb..2d612ec 100644
  vi.mock("react-native", () => ({ Image: { getSize: state.getSize } }));
  vi.mock("expo-sharing", () => ({ isAvailableAsync: vi.fn(), shareAsync: vi.fn() }));
  vi.mock("./session", () => ({
-@@ -259,4 +262,27 @@ describe("artifact preview caches", () => {
+@@ -259,4 +262,37 @@ describe("artifact preview caches", () => {
      await api.imageArtifactUri(target, "art-2", "image/png");
      expect(artifactFetches()).toBe(3);
    });
@@ -77905,21 +77939,33 @@ index 6edeafb..2d612ec 100644
 +    expect(await api.pdfArtifactThumbnail(target, "art-1", "application/pdf", 420)).toBeNull();
 +    expect(artifactFetches()).toBe(1);
 +  });
++
++  it("draws no Office page in a build without the module, and downloads only once", async () => {
++    // An older build has the card but not the reader: the card must keep its compact row rather
++    // than show a blank sheet, and it must not fetch the document twice to find that out.
++    const api = await load();
++    const mime = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
++    expect(await api.officeArtifactThumbnail(target, "art-9", mime, 640)).toBeNull();
++    expect(await api.officeArtifactThumbnail(target, "art-9", mime, 640)).toBeNull();
++    expect(artifactFetches()).toBe(1);
++  });
  });
 diff --git a/apps/mobile/lib/artifact-open.ts b/apps/mobile/lib/artifact-open.ts
-index 6ae6a34..5c46db7 100644
+index 6ae6a34..478a80b 100644
 --- a/apps/mobile/lib/artifact-open.ts
 +++ b/apps/mobile/lib/artifact-open.ts
-@@ -9,6 +9,8 @@ import { artifactCacheFileName, artifactShareFileName } from "./artifact-file";
+@@ -9,6 +9,10 @@ import { artifactCacheFileName, artifactShareFileName } from "./artifact-file";
  import { ARTIFACT_DOWNLOAD_TIMEOUT_MS } from "./artifacts";
  import type { ImageSize } from "./inline-image";
  import { createKeyedPromiseCache } from "./inline-image";
++import type { OfficePageThumbnail } from "./office-thumbnail";
++import { officeThumbnailPage } from "./office-thumbnail";
 +import { pdfThumbnailUri } from "./pdf-thumbnail";
 +import { openInQuickLook, quickLookOpens } from "./quick-look";
  import { currentSessionGeneration, loadSessionToken } from "./session";
  
  export type MobileArtifactTarget = { botId: string } | { groupId: string };
-@@ -146,6 +148,42 @@ export async function textMobileArtifact(
+@@ -146,6 +150,42 @@ export async function textMobileArtifact(
    return (await cacheMobileArtifact(target, artifactId, mimeType)).text();
  }
  
@@ -77962,7 +78008,7 @@ index 6ae6a34..5c46db7 100644
  /** Local playback URI using the same authenticated, session-scoped artifact cache. */
  export async function audioArtifactUri(
    target: MobileArtifactTarget,
-@@ -155,6 +193,10 @@ export async function audioArtifactUri(
+@@ -155,6 +195,10 @@ export async function audioArtifactUri(
    return (await cacheMobileArtifact(target, artifactId, mimeType)).uri;
  }
  
@@ -77973,7 +78019,7 @@ index 6ae6a34..5c46db7 100644
  export async function openMobileArtifact(
    target: MobileArtifactTarget,
    artifactId: string,
-@@ -162,7 +204,20 @@ export async function openMobileArtifact(
+@@ -162,7 +206,41 @@ export async function openMobileArtifact(
    mimeType: string,
  ): Promise<void> {
    const file = await cacheMobileArtifact(target, artifactId, mimeType);
@@ -77992,10 +78038,31 @@ index 6ae6a34..5c46db7 100644
 +    return;
 +  }
 +  throw new Error(t`Saved ${name} locally`);
++}
++
++const officeThumbnails = createKeyedPromiseCache<OfficePageThumbnail | null>(async (key) => {
++  const [uri, width] = JSON.parse(key) as [string, number];
++  return officeThumbnailPage(uri, width);
++});
++
++/**
++ * The first page of an Office document as a local image, for its card. The file comes through the
++ * same authenticated cache the viewer fills, and the system's Quick Look reader draws the page;
++ * concurrent cards showing one document share a single render.
++ */
++export async function officeArtifactThumbnail(
++  target: MobileArtifactTarget,
++  artifactId: string,
++  mimeType: string,
++  width: number,
++): Promise<OfficePageThumbnail | null> {
++  const file = await cacheMobileArtifact(target, artifactId, mimeType);
++  const page = await officeThumbnails.get(JSON.stringify([file.uri, Math.round(width)]));
++  return page && new File(page.uri).exists ? page : null;
  }
  
  const imageArtifactUris = createKeyedPromiseCache<string>(async (key) => {
-@@ -236,15 +291,24 @@ export async function shareLocalFile(uri: string, mimeType: string, name: string
+@@ -236,15 +314,24 @@ export async function shareLocalFile(uri: string, mimeType: string, name: string
    await shareNamedFile(new File(uri), mimeType, name);
  }
  
@@ -81993,10 +82060,10 @@ index 0000000..6557c13
 +}
 diff --git a/apps/mobile/lib/file-preview.test.ts b/apps/mobile/lib/file-preview.test.ts
 new file mode 100644
-index 0000000..0cdd7f1
+index 0000000..e6f2a0a
 --- /dev/null
 +++ b/apps/mobile/lib/file-preview.test.ts
-@@ -0,0 +1,149 @@
+@@ -0,0 +1,182 @@
 +import { describe, expect, it } from "vitest";
 +import {
 +  fileExtension,
@@ -82028,10 +82095,42 @@ index 0000000..0cdd7f1
 +    expect(filePreviewKind("application/octet-stream", "run.log")).toBe("text");
 +    expect(filePreviewKind("", "script.py")).toBe("text");
 +    expect(filePreviewKind("application/octet-stream", "archive.zip")).toBe("none");
-+    expect(filePreviewKind("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "表.xlsx")).toBe(
-+      "none",
-+    );
 +    expect(filePreviewKind("application/x-ios-app", "Bot.ipa")).toBe("none");
++  });
++
++  it("gives an Office document its first page, drawn by the system's reader", () => {
++    // A deck or a workbook is a zip of XML: printed as text it is mojibake, so the card draws the
++    // page Quick Look renders instead of reading a byte of it.
++    expect(filePreviewKind("application/msword", "指南.doc")).toBe("office");
++    expect(
++      filePreviewKind(
++        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
++        "指南.docx",
++      ),
++    ).toBe("office");
++    expect(
++      filePreviewKind("application/vnd.ms-powerpoint", "指南.ppt"),
++    ).toBe("office");
++    expect(
++      filePreviewKind(
++        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
++        "脓毒症指南历年更新情况分析.pptx",
++      ),
++    ).toBe("office");
++    expect(filePreviewKind("application/vnd.ms-excel", "表.xls")).toBe("office");
++    expect(
++      filePreviewKind("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "表.xlsx"),
++    ).toBe("office");
++    expect(filePreviewKind("application/vnd.apple.pages", "信.pages")).toBe("office");
++    expect(filePreviewKind("application/vnd.apple.numbers", "账.numbers")).toBe("office");
++    expect(filePreviewKind("application/vnd.apple.keynote", "讲.key")).toBe("office");
++    expect(filePreviewKind("application/vnd.oasis.opendocument.text", "稿.odt")).toBe("office");
++  });
++
++  it("takes the name for a document the sender called plain bytes", () => {
++    expect(filePreviewKind("application/octet-stream", "讲义.pptx")).toBe("office");
++    expect(filePreviewKind("", "表格.xlsx")).toBe("office");
++    expect(filePreviewKind("application/octet-stream", "slides")).toBe("none");
 +  });
 +
 +  it("does not take a version number for a format", () => {
@@ -82044,6 +82143,7 @@ index 0000000..0cdd7f1
 +  it("reads a short document, not a log that happens to end in .md", () => {
 +    expect(previewMaxBytes("text")).toBe(512 * 1024);
 +    expect(previewMaxBytes("pdf")).toBe(8 * 1024 * 1024);
++    expect(previewMaxBytes("office")).toBe(16 * 1024 * 1024);
 +  });
 +});
 +
@@ -82148,20 +82248,21 @@ index 0000000..0cdd7f1
 +});
 diff --git a/apps/mobile/lib/file-preview.ts b/apps/mobile/lib/file-preview.ts
 new file mode 100644
-index 0000000..4037f30
+index 0000000..b3c3deb
 --- /dev/null
 +++ b/apps/mobile/lib/file-preview.ts
-@@ -0,0 +1,303 @@
+@@ -0,0 +1,360 @@
 +import { artifactPreviewKind } from "@rakazo/contracts";
 +import { splitFileName } from "./file-name";
 +
 +/**
 + * What a chat's file card can show of the file itself before it is opened: the opening of a text
-+ * file set like a page, or the first page of a PDF. A file whose bytes are not words — an
-+ * installer, an archive, a spreadsheet — answers `none` and keeps the compact card it had, so the
-+ * chat never shows a blank white sheet or a line of mojibake.
++ * file set like a page, the first page of a PDF, or the first page of an Office document drawn by
++ * the system's own reader. A file whose bytes are not words — an installer, an archive — answers
++ * `none` and keeps the compact card it had, so the chat never shows a blank white sheet or a line
++ * of mojibake.
 + */
-+export type FilePreviewKind = "text" | "pdf" | "none";
++export type FilePreviewKind = "text" | "pdf" | "office" | "none";
 +
 +/**
 + * How much of a text file the card reads. The paper shows about a dozen lines, and a fourth of
@@ -82174,6 +82275,52 @@ index 0000000..4037f30
 +
 +/** A PDF is read as a whole file before its first page can be drawn, so its own ceiling is low. */
 +export const PREVIEW_PDF_MAX_BYTES = 8 * 1024 * 1024;
++
++/**
++ * A deck or a workbook is opened by the system's reader to draw one page, which is slower and
++ * hungrier than a PDF page, so a document past this size keeps its compact row.
++ */
++export const PREVIEW_OFFICE_MAX_BYTES = 16 * 1024 * 1024;
++
++/**
++ * The documents Quick Look draws a page of, by type and by name. Only the first page is drawn:
++ * the card is a preview, and the tap opens the file itself in the system viewer.
++ */
++const OFFICE_MIME_TYPES = new Set([
++  "application/msword",
++  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
++  "application/vnd.ms-excel",
++  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
++  "application/vnd.ms-powerpoint",
++  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
++  "application/vnd.oasis.opendocument.text",
++  "application/vnd.oasis.opendocument.spreadsheet",
++  "application/vnd.oasis.opendocument.presentation",
++  "application/vnd.apple.pages",
++  "application/vnd.apple.numbers",
++  "application/vnd.apple.keynote",
++]);
++
++const OFFICE_EXTENSIONS = new Set([
++  "doc",
++  "docx",
++  "dot",
++  "dotx",
++  "ppt",
++  "pptx",
++  "pps",
++  "ppsx",
++  "xls",
++  "xlsx",
++  "xlsm",
++  "pages",
++  "numbers",
++  "key",
++  "odt",
++  "ods",
++  "odp",
++  "rtf",
++]);
 +
 +/** How much of a document the card shows, in points: roughly twelve lines on the paper. */
 +export const PREVIEW_PAPER_HEIGHT = 236;
@@ -82310,13 +82457,23 @@ index 0000000..4037f30
 +    case "video":
 +      return "none";
 +    case "none":
++      // The server calls a document plain bytes, which is right: its content is not words. Its
++      // page still can be drawn, so a deck or a workbook keeps the card that shows one.
++      if (isOfficeMimeType(mimeType) || OFFICE_EXTENSIONS.has(extension)) return "office";
 +      return TEXT_EXTENSIONS.has(extension) ? "text" : "none";
 +  }
 +}
 +
++/** Whether this file is one the system's reader draws a page of. */
++export function isOfficeMimeType(mimeType: string): boolean {
++  return OFFICE_MIME_TYPES.has(mimeType.split(";")[0]?.trim().toLowerCase() ?? "");
++}
++
 +/** The most bytes a card will read for this kind of preview; past it the card stays compact. */
 +export function previewMaxBytes(kind: FilePreviewKind): number {
-+  return kind === "pdf" ? PREVIEW_PDF_MAX_BYTES : PREVIEW_TEXT_MAX_BYTES;
++  if (kind === "pdf") return PREVIEW_PDF_MAX_BYTES;
++  if (kind === "office") return PREVIEW_OFFICE_MAX_BYTES;
++  return PREVIEW_TEXT_MAX_BYTES;
 +}
 +
 +/**
@@ -84860,39 +85017,159 @@ index 6ff9437..dd75df8 100644
            expect(modifiers).toContainEqual({
              name: "foregroundStyle",
              value: tokensForAppearance(scheme).primaryForeground,
+diff --git a/apps/mobile/lib/office-thumbnail.test.ts b/apps/mobile/lib/office-thumbnail.test.ts
+new file mode 100644
+index 0000000..cdc57cc
+--- /dev/null
++++ b/apps/mobile/lib/office-thumbnail.test.ts
+@@ -0,0 +1,49 @@
++import { describe, expect, it, vi } from "vitest";
++
++const state = vi.hoisted(() => ({
++  page: null as { uri: string; width: number; height: number } | null,
++  calls: 0,
++  error: null as Error | null,
++}));
++
++// The native side is a phone away; what a card does with the page it hands back is what is tested.
++vi.mock("./optional-native", () => ({
++  optionalNativeModule: () => ({
++    officeThumbnail: async (uri: string, maxWidth: number) => {
++      state.calls += 1;
++      void uri;
++      void maxWidth;
++      if (state.error) throw state.error;
++      return state.page;
++    },
++  }),
++}));
++
++import { officeThumbnailAvailable, officeThumbnailPage } from "./office-thumbnail";
++
++describe("an Office document's first page", () => {
++  it("is available when the build carries the reader", () => {
++    expect(officeThumbnailAvailable()).toBe(true);
++  });
++
++  it("comes back with the shape the reader drew it in", async () => {
++    state.page = { uri: "file:///caches/office-page-thumbnails/abc.png", width: 640, height: 360 };
++    expect(await officeThumbnailPage("file:///caches/art.pptx", 640)).toEqual(state.page);
++    expect(state.calls).toBe(1);
++  });
++
++  it("is nothing at all when the reader draws no page", async () => {
++    state.page = null;
++    expect(await officeThumbnailPage("file:///caches/broken.docx", 640)).toBeNull();
++    // A page without a size cannot be stood on the paper without squashing it.
++    state.page = { uri: "file:///caches/empty.png", width: 0, height: 0 };
++    expect(await officeThumbnailPage("file:///caches/empty.xlsx", 640)).toBeNull();
++  });
++
++  it("passes a reader that fails on to the card, which shows its compact row", async () => {
++    state.page = null;
++    state.error = new Error("unreadable");
++    await expect(officeThumbnailPage("file:///caches/locked.doc", 640)).rejects.toThrow("unreadable");
++    state.error = null;
++  });
++});
+diff --git a/apps/mobile/lib/office-thumbnail.ts b/apps/mobile/lib/office-thumbnail.ts
+new file mode 100644
+index 0000000..8228f91
+--- /dev/null
++++ b/apps/mobile/lib/office-thumbnail.ts
+@@ -0,0 +1,45 @@
++/**
++ * An Office document's first page, drawn by the system's own reader.
++ *
++ * A `.docx`, a deck or a workbook has no lines to read: its bytes are a zip of XML, and printing
++ * them on a card is how a chat ends up showing mojibake. Quick Look renders the page instead, and
++ * the card shows that picture; a build made before the function existed — or a document the system
++ * cannot render — answers `null`, and the card keeps the compact row it had.
++ */
++import { optionalNativeModule } from "./optional-native";
++
++export type OfficePageThumbnail = { uri: string; width: number; height: number };
++
++type OfficeThumbnailNative = {
++  officeThumbnail?: (uri: string, maxWidth: number) => Promise<OfficePageThumbnail | null>;
++};
++
++let found: OfficeThumbnailNative | null | undefined;
++
++/** The module, asked for the first time a card has a document to draw, then remembered. */
++function officeModule(): OfficeThumbnailNative | null {
++  if (found !== undefined) return found;
++  found = optionalNativeModule<OfficeThumbnailNative>("RakazoPdfView");
++  return found;
++}
++
++/** Whether this build can draw an Office document's first page on a card. */
++export function officeThumbnailAvailable(): boolean {
++  return typeof officeModule()?.officeThumbnail === "function";
++}
++
++/**
++ * A local `file://` PNG of the document's first page, `maxWidth` points wide, written into the
++ * app's cache by the native side and reused on the next card that asks. The page's own proportions
++ * come back with it, so the card can stand the picture on the paper without squashing it.
++ */
++export async function officeThumbnailPage(
++  uri: string,
++  maxWidth: number,
++): Promise<OfficePageThumbnail | null> {
++  const native = officeModule();
++  if (!native?.officeThumbnail) return null;
++  const page = await native.officeThumbnail(uri, maxWidth);
++  if (!page || !page.uri || !(page.width > 0) || !(page.height > 0)) return null;
++  return page;
++}
+diff --git a/apps/mobile/lib/optional-native.ts b/apps/mobile/lib/optional-native.ts
+new file mode 100644
+index 0000000..5e5ae6a
+--- /dev/null
++++ b/apps/mobile/lib/optional-native.ts
+@@ -0,0 +1,17 @@
++/**
++ * A native module if this build carries it, and nothing if it does not.
++ *
++ * The bridge is asked for lazily, on the first card that needs it: loading `expo-modules-core` pulls
++ * React Native's runtime in behind it, and a card is decoration — a test or a tool that lays one out
++ * without a phone must not fail on the bridge, and an older build simply answers `null`.
++ */
++export function optionalNativeModule<T>(name: string): T | null {
++  try {
++    const { requireOptionalNativeModule } = require("expo-modules-core") as typeof import(
++      "expo-modules-core"
++    );
++    return requireOptionalNativeModule<T>(name) ?? null;
++  } catch {
++    return null;
++  }
++}
 diff --git a/apps/mobile/lib/pdf-thumbnail.ts b/apps/mobile/lib/pdf-thumbnail.ts
 new file mode 100644
-index 0000000..7702b47
+index 0000000..311664a
 --- /dev/null
 +++ b/apps/mobile/lib/pdf-thumbnail.ts
-@@ -0,0 +1,45 @@
+@@ -0,0 +1,36 @@
 +/**
 + * The PDF module's other half: a first page drawn small enough to sit on a chat card. It is the
 + * same native module that shows a PDF in full (`RakazoPdfView`), asked for a thumbnail instead of
 + * a view; a build made before the function existed answers `null`, and the card then keeps the
 + * compact file row it had.
 + */
++import { optionalNativeModule } from "./optional-native";
++
 +type PdfThumbnailNative = {
 +  pdfThumbnail?: (uri: string, maxWidth: number) => Promise<string | null>;
 +};
 +
 +let found: PdfThumbnailNative | null | undefined;
 +
-+/**
-+ * The module, looked up the first time a card has a PDF to draw. It is required here rather than
-+ * imported at the top because loading the native bridge pulls React Native's own runtime in: a
-+ * card is decoration, and a test or a tool that renders one without a phone must not fail on it.
-+ */
++/** The module, asked for the first time a card has a PDF to draw, then remembered. */
 +function pdfModule(): PdfThumbnailNative | null {
 +  if (found !== undefined) return found;
-+  try {
-+    const { requireOptionalNativeModule } = require("expo-modules-core") as typeof import(
-+      "expo-modules-core"
-+    );
-+    found = requireOptionalNativeModule<PdfThumbnailNative>("RakazoPdfView") ?? null;
-+  } catch {
-+    found = null;
-+  }
++  found = optionalNativeModule<PdfThumbnailNative>("RakazoPdfView");
 +  return found;
 +}
 +
@@ -91466,10 +91743,17 @@ index f4e9ac5..dfa6a58 100644
    /// may be iOS waking the app in the background for a card it just started.
    func observe() {
 diff --git a/apps/mobile/modules/rakazo-pdf-view/ios/RakazoPdfViewModule.swift b/apps/mobile/modules/rakazo-pdf-view/ios/RakazoPdfViewModule.swift
-index 0dfdad1..9d65819 100644
+index 0dfdad1..d938586 100644
 --- a/apps/mobile/modules/rakazo-pdf-view/ios/RakazoPdfViewModule.swift
 +++ b/apps/mobile/modules/rakazo-pdf-view/ios/RakazoPdfViewModule.swift
-@@ -6,6 +6,15 @@ public final class RakazoPdfViewModule: Module {
+@@ -1,11 +1,33 @@
+ import ExpoModulesCore
+ import PDFKit
++import QuickLookThumbnailing
++import UIKit
+ 
+ /** The system PDF viewer, so a PDF reads in the app with zoom and search like Files. */
+ public final class RakazoPdfViewModule: Module {
    public func definition() -> ModuleDefinition {
      Name("RakazoPdfView")
  
@@ -91482,10 +91766,21 @@ index 0dfdad1..9d65819 100644
 +      promise.resolve(RakazoPdfThumbnail.make(uri: uri, maxWidth: maxWidth))
 +    }
 +
++    /**
++     * The first page of an Office document — a `.docx`, a deck, a workbook — drawn small enough to
++     * sit on a chat card. Quick Look renders it with the system's own readers, so the card shows the
++     * document's first page as ink rather than its bytes read as text, which is where a spreadsheet
++     * or a deck would turn into mojibake. A file the system cannot render answers `null` and the
++     * card keeps its compact row.
++     */
++    AsyncFunction("officeThumbnail") { (uri: String, maxWidth: Double, promise: Promise) in
++      RakazoOfficeThumbnail.make(uri: uri, maxWidth: maxWidth, promise: promise)
++    }
++
      View(RakazoPdfView.self) {
        Events("onLoadError")
        Prop("uri") { (view: RakazoPdfView, uri: String) in view.load(uri) }
-@@ -13,6 +22,77 @@ public final class RakazoPdfViewModule: Module {
+@@ -13,6 +35,175 @@ public final class RakazoPdfViewModule: Module {
    }
  }
  
@@ -91553,6 +91848,104 @@ index 0dfdad1..9d65819 100644
 +  private static func stamp(uri: String, width: Double) -> String {
 +    var hash: UInt64 = 0xcbf2_9ce4_8422_2325
 +    for byte in "\(uri)#\(Int(width))".utf8 {
++      hash ^= UInt64(byte)
++      hash = hash &* 0x0000_0100_0000_01b3
++    }
++    return String(hash, radix: 16)
++  }
++}
++
++/**
++ * First-page thumbnails for the documents Quick Look knows how to draw: Word, Excel, PowerPoint,
++ * Pages, Numbers and Keynote files, and their OpenDocument twins. Nothing here reads the file as
++ * text, so an encrypted or damaged document cannot produce a page of mojibake — it produces no
++ * page at all, and says why in the device log.
++ */
++enum RakazoOfficeThumbnail {
++  /// One call, one answer: a thumbnail that arrives after its card gave up must not answer twice.
++  private final class Race {
++    private let lock = NSLock()
++    private var open = true
++
++    func claim() -> Bool {
++      lock.lock()
++      defer { lock.unlock() }
++      guard open else { return false }
++      open = false
++      return true
++    }
++  }
++
++  static func make(uri: String, maxWidth: Double, promise: Promise) {
++    guard let url = URL(string: uri), url.isFileURL else {
++      figure("not a local file", uri)
++      promise.resolve(nil)
++      return
++    }
++    // A card is about 330 points wide; asking for more than 900 only spends memory.
++    let width = min(max(maxWidth, 160), 900)
++    let request = QLThumbnailGenerator.Request(
++      fileAt: url,
++      size: CGSize(width: width, height: (width * 1.4).rounded()),
++      scale: 2,
++      representationTypes: .all
++    )
++    let race = Race()
++    // A deck that takes its time is a card that shows its compact row: the chat never waits on one.
++    DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
++      guard race.claim() else { return }
++      figure("timed out", uri)
++      promise.resolve(nil)
++    }
++    QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { representation, error in
++      guard race.claim() else { return }
++      guard let image = representation?.uiImage, image.size.width > 0, image.size.height > 0 else {
++        figure(error?.localizedDescription ?? "no image", uri)
++        promise.resolve(nil)
++        return
++      }
++      guard let data = image.pngData() else {
++        figure("no png", uri)
++        promise.resolve(nil)
++        return
++      }
++      let directory = FileManager.default
++        .urls(for: .cachesDirectory, in: .userDomainMask)[0]
++        .appendingPathComponent("office-page-thumbnails", isDirectory: true)
++      do {
++        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
++      } catch {
++        figure("no cache directory", uri)
++        promise.resolve(nil)
++        return
++      }
++      let file = directory.appendingPathComponent("\(stamp(uri: uri, width: width)).png")
++      if !FileManager.default.fileExists(atPath: file.path) {
++        do {
++          try data.write(to: file, options: .atomic)
++        } catch {
++          figure("not written", uri)
++          promise.resolve(nil)
++          return
++        }
++      }
++      promise.resolve([
++        "uri": file.absoluteString,
++        "width": Double(image.size.width),
++        "height": Double(image.size.height),
++      ])
++    }
++  }
++
++  /// A page that could not be drawn says why in the device log, once per card that asked.
++  private static func figure(_ why: String, _ uri: String) {
++    NSLog("[RakazoQuickLook] office-page-thumbnail %@: %@", why, uri)
++  }
++
++  /// A stable name for one file at one width: FNV-1a, so it needs no hashing framework.
++  private static func stamp(uri: String, width: Double) -> String {
++    var hash: UInt64 = 0xcbf2_9ce4_8422_2325
++    for byte in "\(uri)#office#\(Int(width))".utf8 {
 +      hash ^= UInt64(byte)
 +      hash = hash &* 0x0000_0100_0000_01b3
 +    }
@@ -100542,10 +100935,10 @@ index 7f72426..abb48c2 100644
  
 diff --git a/packages/core/src/babygrok-face.test.ts b/packages/core/src/babygrok-face.test.ts
 new file mode 100644
-index 0000000..d9084ea
+index 0000000..269be43
 --- /dev/null
 +++ b/packages/core/src/babygrok-face.test.ts
-@@ -0,0 +1,375 @@
+@@ -0,0 +1,542 @@
 +import { describe, expect, it } from "vitest";
 +import type { BabygrokEyeSpec } from "./babygrok-face.js";
 +import {
@@ -100580,6 +100973,109 @@ index 0000000..d9084ea
 +    }
 +  }
 +  return odd;
++}
++
++/**
++ * The eyes a loop path draws, each walked into a closed outline: every side is one quadratic, so a
++ * dozen samples along it are finer than a screen pixel at any size.
++ */
++function loopPolygons(d: string): Array<Array<[number, number]>> {
++  const loops: Array<Array<[number, number]>> = [];
++  let current: Array<[number, number]> | null = null;
++  let cursor: [number, number] = [0, 0];
++  const tokens = d.match(/[MQZ]|-?\d+\.?\d*/g) ?? [];
++  let index = 0;
++  while (index < tokens.length) {
++    const token = tokens[index];
++    if (token === "M") {
++      if (current) loops.push(current);
++      cursor = [Number(tokens[index + 1]), Number(tokens[index + 2])];
++      current = [cursor];
++      index += 3;
++      continue;
++    }
++    if (token === "Q") {
++      const [x1, y1, x2, y2] = [
++        Number(tokens[index + 1]),
++        Number(tokens[index + 2]),
++        Number(tokens[index + 3]),
++        Number(tokens[index + 4]),
++      ] as [number, number, number, number];
++      const [x0, y0] = cursor;
++      for (let step = 1; step <= 12; step += 1) {
++        const t = step / 12;
++        current!.push([
++          (1 - t) ** 2 * x0 + 2 * (1 - t) * t * x1 + t * t * x2,
++          (1 - t) ** 2 * y0 + 2 * (1 - t) * t * y1 + t * t * y2,
++        ]);
++      }
++      cursor = [x2, y2];
++      index += 5;
++      continue;
++    }
++    if (token === "Z") {
++      if (current) loops.push(current);
++      current = null;
++      index += 1;
++      continue;
++    }
++    index += 1;
++  }
++  if (current) loops.push(current);
++  return loops;
++}
++
++/** Whether a point lies inside a closed outline, by the crossing rule. */
++function insidePolygon(polygon: Array<[number, number]>, [x, y]: [number, number]): boolean {
++  let odd = false;
++  for (let index = 0; index < polygon.length; index += 1) {
++    const [x0, y0] = polygon[index]!;
++    const [x1, y1] = polygon[(index + 1) % polygon.length]!;
++    if (y0 > y !== y1 > y && x < x0 + ((y - y0) * (x1 - x0)) / (y1 - y0)) odd = !odd;
++  }
++  return odd;
++}
++
++/** Whether two closed outlines touch or overlap at any point. */
++function eyesMeet(
++  one: Array<[number, number]>,
++  other: Array<[number, number]>,
++): boolean {
++  const box = (points: Array<[number, number]>) => ({
++    minX: Math.min(...points.map((point) => point[0])),
++    maxX: Math.max(...points.map((point) => point[0])),
++    minY: Math.min(...points.map((point) => point[1])),
++    maxY: Math.max(...points.map((point) => point[1])),
++  });
++  const a = box(one);
++  const b = box(other);
++  // Two outlines whose boxes are apart are apart; this is the answer for almost every pair.
++  if (a.maxX < b.minX || b.maxX < a.minX || a.maxY < b.minY || b.maxY < a.minY) return false;
++  if (one.some((point) => insidePolygon(other, point))) return true;
++  if (other.some((point) => insidePolygon(one, point))) return true;
++  const crosses = (
++    [x0, y0]: [number, number],
++    [x1, y1]: [number, number],
++    [x2, y2]: [number, number],
++    [x3, y3]: [number, number],
++  ) => {
++    const side = (ax: number, ay: number, bx: number, by: number, cx: number, cy: number) =>
++      (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
++    return (
++      side(x0, y0, x1, y1, x2, y2) * side(x0, y0, x1, y1, x3, y3) < 0 &&
++      side(x2, y2, x3, y3, x0, y0) * side(x2, y2, x3, y3, x1, y1) < 0
++    );
++  };
++  for (let index = 0; index < one.length; index += 1) {
++    const [x0, y0] = one[index]!;
++    const [x1, y1] = one[(index + 1) % one.length]!;
++    for (let step = 0; step < other.length; step += 1) {
++      const [x2, y2] = other[step]!;
++      const [x3, y3] = other[(step + 1) % other.length]!;
++      if (crosses([x0, y0], [x1, y1], [x2, y2], [x3, y3])) return true;
++    }
++  }
++  return false;
 +}
 +
 +/** Every x,y pair in a path body, as numbers. */
@@ -100899,13 +101395,77 @@ index 0000000..d9084ea
 +    const open = loops("neutral");
 +    const shut = loops("neutral", 0);
 +    expect(shut).not.toBe(open);
-+    // A shut eye is a thin slot: its numbers stay on the same pair of rows.
++    // A shut eye is a short slot, not a fleck: `IMG_2913` caught a blink on a list avatar's forty-
++    // point face and there was nothing left to see. It still gives up most of its length.
 +    const spread = (d: string) => {
 +      const numbers = (d.match(/-?\d+\.?\d*/g) ?? []).map(Number);
 +      const ys = numbers.filter((_, index) => index % 2 === 1);
 +      return Math.max(...ys) - Math.min(...ys);
 +    };
-+    expect(spread(shut)).toBeLessThan(spread(open) / 2);
++    expect(spread(shut)).toBeLessThan(spread(open) * 0.75);
++    expect(spread(shut)).toBeGreaterThan(spread(open) * 0.3);
++  });
++
++  it("never lets the two eyes run into one bar, on any face, body, lid or mood", () => {
++    for (const key of BABYGROK_BODY_KEYS) {
++      const body = BABYGROK_BODIES[key]!;
++      for (const face of Object.keys(MOTION_FACES)) {
++        for (const lid of [1, 0.6, 0.2]) {
++          for (const mood of [0, 0.5, 1]) {
++            for (const gaze of [[0, 0], [34, 0], [0, -36], [-34, 20]] as const) {
++              const d = babygrokEyeLoops({
++                body,
++                morphFrom: null,
++                morphTo: body,
++                morph: 1,
++                gazeX: gaze[0],
++                gazeY: gaze[1],
++                turn: gaze[0] / 34,
++                lid,
++                spec: spec(face),
++                mood,
++              });
++              const [left, right] = loopPolygons(d);
++              const where = `${key} ${face} lid ${lid} mood ${mood} gaze ${gaze[0]},${gaze[1]}`;
++              // Two closed shapes that neither share a point nor hold one another: the pair is
++              // two eyes, which is what a long lid lying across the face used to take away.
++              expect(eyesMeet(left!, right!), where).toBe(false);
++            }
++          }
++        }
++      }
++    }
++  });
++
++  it("keeps every eye inside the body's own outline, wherever the face looks", () => {
++    for (const key of BABYGROK_BODY_KEYS) {
++      const body = BABYGROK_BODIES[key]!;
++      for (const face of Object.keys(MOTION_FACES)) {
++        for (const lid of [1, 0.3]) {
++          for (const mood of [0, 1]) {
++            for (const gaze of [[0, 0], [34, 0], [0, -36], [-34, 20], [30, -30]] as const) {
++              const d = babygrokEyeLoops({
++                body,
++                morphFrom: null,
++                morphTo: body,
++                morph: 1,
++                gazeX: gaze[0],
++                gazeY: gaze[1],
++                turn: gaze[0] / 34,
++                lid,
++                spec: spec(face),
++                mood,
++              });
++              for (const loop of loopPolygons(d))
++                for (const point of loop)
++                  expect(onBody(body.ring, point), `${key} ${face} lid ${lid} mood ${mood} ${point}`).toBe(
++                    true,
++                  );
++            }
++          }
++        }
++      }
++    }
 +  });
 +
 +  it("bends the lids into the pleased arc for a poke or a smile", () => {
@@ -100923,10 +101483,10 @@ index 0000000..d9084ea
 +});
 diff --git a/packages/core/src/babygrok-face.ts b/packages/core/src/babygrok-face.ts
 new file mode 100644
-index 0000000..39e7ced
+index 0000000..871da70
 --- /dev/null
 +++ b/packages/core/src/babygrok-face.ts
-@@ -0,0 +1,442 @@
+@@ -0,0 +1,577 @@
 +import type { BabygrokBody } from "./babygrok-geometry.js";
 +
 +/**
@@ -101028,8 +101588,25 @@ index 0000000..39e7ced
 +};
 +/** How much thinner a pleased arc is than the open eye it bends out of, as a share. */
 +const ARC_THIN = 0.78;
-+/** A lid that scales its eye to nothing still leaves it this share thick, so it never vanishes. */
-+const LOOP_LID_KEEP = 0.12;
++/**
++ * How short a shut eye's lid may get, as a share of its open length.
++ *
++ * A blink took the lid almost to nothing (a twelfth), which on a list avatar's forty-point face
++ * left a fleck of ink rather than a closed eye — the dots `IMG_2913` caught beside 生活助理 and
++ * 备忘录. A shut eye keeps enough of its length to read as a short bar, as the reference's lids do.
++ */
++const LOOP_LID_KEEP = 0.42;
++/** How thin a shut eye's lid may get, as a share of its stroke: a closed eye is still a mark. */
++const LOOP_STROKE_KEEP = 0.55;
++/**
++ * The least gap between the two eyes, as a share of the space between their centres: a strip of
++ * skin that keeps a pair of lids from reading as one bar.
++ */
++const EYE_SKIN_SHARE = 0.14;
++/** The same gap in body units, so a small pair still keeps a visible seam. */
++const EYE_SKIN_MIN = 1.6;
++/** How far inside the body's own outline the eyes are kept, so no lid ever crosses the edge. */
++const EYE_BODY_INSET = 0.94;
 +
 +/** A body's outer ring as a path, `morph` of the way from one body to another. */
 +export function babygrokBodyPath(
@@ -101045,6 +101622,25 @@ index 0000000..39e7ced
 +    path += index === 0 ? `M${x} ${y}` : `L${x} ${y}`;
 +  }
 +  return `${path}Z`;
++}
++
++/**
++ * How far a body's own outline is from its centre in a direction, in body units: the ring's radius
++ * there, interpolated between the two vertices that straddle it. The ring starts at the top and
++ * runs clockwise, so a direction is a quarter turn behind the first vertex.
++ */
++export function babygrokBodyReach(ring: readonly number[], angle: number): number {
++  "worklet";
++  const count = ring.length / 2;
++  let turn = angle / (Math.PI * 2) + 0.25;
++  turn -= Math.floor(turn);
++  const at = turn * count;
++  const index = Math.floor(at) % count;
++  const next = (index + 1) % count;
++  const share = at - Math.floor(at);
++  const from = Math.hypot(ring[index * 2]!, ring[index * 2 + 1]!);
++  const to = Math.hypot(ring[next * 2]!, ring[next * 2 + 1]!);
++  return from + (to - from) * share;
 +}
 +
 +/** How far the eye pair may move from where it sits, along the way it is being pushed. */
@@ -101073,6 +101669,8 @@ index 0000000..39e7ced
 +  tilt: number,
 +  lid: number,
 +  radius: number,
++  /** How much of its own width the eye keeps, so a wide lid can be squeezed away from its twin. */
++  squeeze: number,
 +): string {
 +  "worklet";
 +  // The reference states a lid in the body's own frame — `x` across, `y` down — so `tilt` is how
@@ -101080,8 +101678,11 @@ index 0000000..39e7ced
 +  // quarter turn that makes it a lean rather than a direction) for the body's authored eye.
 +  const cos = Math.cos(tilt);
 +  const sin = Math.sin(tilt);
++  // The squeeze is applied in the lid's own frame, before the tilt: the whole eye narrows about
++  // its own centre, which is what keeps a long horizontal lid (the reference's `calm`) apart from
++  // the eye beside it instead of letting the two run into one bar.
 +  const at = (x: number, y: number) =>
-+    `${round(cx + (x * cos - y * sin) * unit)} ${round(cy + (x * sin + y * cos) * unit)}`;
++    `${round(cx + (x * squeeze * cos - y * sin) * unit)} ${round(cy + (x * squeeze * sin + y * cos) * unit)}`;
 +  // The reference states its lids with y up (its pleased arc is `p1` above its feet), and a body
 +  // is drawn with y down, so the vertical is turned over here — once, for every face.
 +  const [p0x, p0y, p1x, p1y, p2x, p2y] = [
@@ -101169,8 +101770,8 @@ index 0000000..39e7ced
 +  const reach = babygrokGazeReach(body.budget, gazeX, gazeY);
 +  const distance = Math.hypot(gazeX, gazeY);
 +  const pushed = distance > reach && distance > 0 ? reach / distance : 1;
-+  const originX = pairX + gazeX * pushed;
-+  const originY = pairY + gazeY * pushed;
++  let originX = pairX + gazeX * pushed;
++  let originY = pairY + gazeY * pushed;
 +  // The reference's unit is the body's own eye, so a face reads at the size the body was drawn
 +  // with: the neutral lid (0.31 units long) comes out as the eye the body authored, ends and all.
 +  const unit = Math.max(1, length - thickness) / BABYGROK_LID_UNITS;
@@ -101217,14 +101818,108 @@ index 0000000..39e7ced
 +  // diagonal bar rather than a `︵`.
 +  const lean = inBodyFrame ? 1 - mood : 0;
 +  const tilt = (((eye(5) - 90) * lean + TURN_LEAN * turn * 0.4) * Math.PI) / 180;
-+  const radius = thickness * 0.5 * (chosen.isArc ? ARC_THIN : 1) * Math.max(lid, LOOP_LID_KEEP);
++  // The lid's own opening never collapses past a short bar: a blink is an eye closing, not an
++  // eye turning into a dot that a forty-point avatar cannot show.
++  const opening = Math.max(lid, LOOP_LID_KEEP);
++  const radius =
++    thickness * 0.5 * (chosen.isArc ? ARC_THIN : 1) * Math.max(lid, LOOP_STROKE_KEEP);
 +  const pairTilt = ((eye(6) * lean + TURN_LEAN * turn) * Math.PI) / 180;
 +  const half = gap / 2;
++  // An eye's own footprint in its lid's frame, in body units: how far the drawn loop reaches
++  // across and along the lid once its stroke is counted.
++  const r = radius / unit;
++  const across = Math.max(
++    Math.abs(chosen.p0[0]),
++    Math.abs(chosen.p1[0]),
++    Math.abs(chosen.p2[0]),
++  );
++  const along =
++    Math.max(Math.abs(chosen.p0[1]), Math.abs(chosen.p1[1]), Math.abs(chosen.p2[1])) * opening;
++  let acrossHalf = (across + r) * unit;
++  let alongHalf = (along + r) * unit;
++  // Where the second eye sits in this eye's own frame, and the strip of skin no pair may give up.
++  const turnToPair = pairTilt - tilt;
++  const apartAcross = Math.abs(gap * Math.cos(turnToPair));
++  const apartAlong = Math.abs(gap * Math.sin(turnToPair));
++  const skin = Math.min(Math.max(length * 0.12, EYE_SKIN_MIN), gap * EYE_SKIN_SHARE);
++  // Two eyes meet when neither their sides nor their ends clear each other: a lid lying across
++  // the face (the reference's `calm`, `squinted`) is wider than the space between the eyes, and a
++  // turned head swings an upright pair into a line — either way the pair ran together into one
++  // bar that even left the body's outline (`IMG_2913`). Give up as little as the geometry needs,
++  // on whichever axis asks for less: the width a long lid carries, or its length.
++  let squeeze = 1;
++  let shorten = 1;
++  if (apartAcross < 2 * acrossHalf + skin && apartAlong < 2 * alongHalf + skin) {
++    const wider = acrossHalf > 1e-3 ? (apartAcross - skin) / (2 * acrossHalf) : 0;
++    const longer = alongHalf > 1e-3 ? (apartAlong - skin) / (2 * alongHalf) : 0;
++    if (wider >= longer) squeeze = Math.min(1, Math.max(0.2, wider));
++    else shorten = Math.min(1, Math.max(0.3, longer));
++    acrossHalf *= squeeze;
++    alongHalf *= shorten;
++  }
++  // How far the drawn pair reaches from its own centre, along and across the line between the eyes.
++  const bandAlong =
++    half + acrossHalf * Math.abs(Math.cos(turnToPair)) + alongHalf * Math.abs(Math.sin(turnToPair));
++  const bandAcross =
++    acrossHalf * Math.abs(Math.sin(turnToPair)) + alongHalf * Math.abs(Math.cos(turnToPair));
++
++  // The pair sits where the face looks, but whole on its body: the widest pair a body was drawn
++  // with still fits, so pulling it in only ever answers a long gaze into a wide lid.
++  const drift = Math.hypot(originX, originY);
++  if (drift > 1e-6) {
++    const ringFrom = morphFrom?.ring ?? body.ring;
++    const ringTo = body.ring;
++    const side = pairTilt + Math.PI / 2;
++    const reachAlong = bandAlong;
++    const reachAcross = bandAcross;
++    // The four corners of the pair's own box: each eye's far end, and the width the box adds.
++    const offsets: Array<readonly [number, number]> = [
++      [
++        Math.cos(pairTilt) * reachAlong + Math.cos(side) * reachAcross,
++        Math.sin(pairTilt) * reachAlong + Math.sin(side) * reachAcross,
++      ],
++      [
++        Math.cos(pairTilt) * reachAlong - Math.cos(side) * reachAcross,
++        Math.sin(pairTilt) * reachAlong - Math.sin(side) * reachAcross,
++      ],
++      [
++        -Math.cos(pairTilt) * reachAlong + Math.cos(side) * reachAcross,
++        -Math.sin(pairTilt) * reachAlong + Math.sin(side) * reachAcross,
++      ],
++      [
++        -Math.cos(pairTilt) * reachAlong - Math.cos(side) * reachAcross,
++        -Math.sin(pairTilt) * reachAlong - Math.sin(side) * reachAcross,
++      ],
++    ];
++    let pull = 1;
++    for (const [dx, dy] of offsets) {
++      const px = originX + dx;
++      const py = originY + dy;
++      const direction = Math.atan2(py, px);
++      const edge = Math.min(
++        babygrokBodyReach(ringFrom, direction),
++        babygrokBodyReach(ringTo, direction),
++      );
++      const limit = edge * EYE_BODY_INSET;
++      const c = px * px + py * py - limit * limit;
++      if (c <= 0) continue;
++      const a = drift * drift;
++      const b = 2 * (originX * dx + originY * dy);
++      const root = b * b - 4 * a * c;
++      const solved = root > 0 ? (-b + Math.sqrt(root)) / (2 * a) : 0;
++      pull = Math.min(pull, Math.max(0, solved));
++    }
++    if (pull < 1) {
++      const scale = Math.max(0, pull);
++      originX *= scale;
++      originY *= scale;
++    }
++  }
 +  let d = "";
 +  for (const side of [-1, 1]) {
 +    const cx = originX + Math.cos(pairTilt) * half * side;
 +    const cy = originY + Math.sin(pairTilt) * half * side;
-+    d += babygrokEyeLoop(chosen, cx, cy, unit, tilt, lid, radius);
++    d += babygrokEyeLoop(chosen, cx, cy, unit, tilt, opening * shorten, radius, squeeze);
 +  }
 +  return d;
 +}

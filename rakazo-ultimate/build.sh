@@ -46,6 +46,17 @@ test -f apps/mobile/lib/file-preview.ts
 test -f apps/mobile/components/thread/file-preview-paper.tsx
 grep -q 'file-paper-fade' apps/mobile/components/thread/file-preview-paper.tsx
 grep -q 'pdfThumbnail' apps/mobile/modules/rakazo-pdf-view/ios/RakazoPdfViewModule.swift
+# A deck or a workbook has a page too, drawn by the system's reader: a patch that lost the call,
+# the cache or the JS that asks for it would still compile a card that shows nothing for one.
+test -f apps/mobile/lib/office-thumbnail.ts
+test -f apps/mobile/lib/optional-native.ts
+grep -q 'officeThumbnail' apps/mobile/modules/rakazo-pdf-view/ios/RakazoPdfViewModule.swift
+grep -q 'office-page-thumbnails' apps/mobile/modules/rakazo-pdf-view/ios/RakazoPdfViewModule.swift
+grep -q 'QLThumbnailGenerator' apps/mobile/modules/rakazo-pdf-view/ios/RakazoPdfViewModule.swift
+# The eyes are two on every face: the clamp that keeps them apart is the patch's own, and a patch
+# that lost it draws the one white bar the user photographed across the black body.
+grep -q 'EYE_SKIN_SHARE' packages/core/src/babygrok-face.ts
+grep -q 'babygrokBodyReach' packages/core/src/babygrok-face.ts
 # This round's own files: the shelves an app belongs on and the row that shows it.
 test -f apps/mobile/lib/integration-categories.ts
 test -f apps/mobile/components/connect-app-row.tsx

@@ -85,6 +85,17 @@ grep -q 'assets/Bot.icon' apps/mobile/app.json
 grep -q 'splash-icon-dark.png' apps/mobile/app.json
 node -e 'const p=require("./apps/mobile/app.json");const f=(p.expo.plugins||[]).flat();if(!f.includes("expo-font"))throw new Error("expo-font plugin missing");'
 
+# This round's own speed: the inbox keeps a copy of its first chats so the first tap opens at once,
+# and a chat draws a screenful of messages before the rest. A patch that lost either would still
+# compile, and the app would feel slow again.
+test -f apps/mobile/lib/preload-chats.ts
+test -f apps/mobile/lib/preload-chats.test.ts
+grep -q 'export const PRELOADED_CHATS = 5;' apps/mobile/lib/preload-chats.ts
+grep -q 'export function currentSavedChatsScope' apps/mobile/lib/saved-chats.ts
+grep -q 'void preloadChats(inboxChats(listData, { bots, groups }))' apps/mobile/app/index.tsx
+grep -q 'initialNumToRender={6}' apps/mobile/components/thread/thread-message-list.tsx
+grep -q 'maxToRenderPerBatch={4}' apps/mobile/components/thread/thread-message-list.tsx
+
 npm i -g pnpm@12.18.0
 pnpm install --frozen-lockfile
 

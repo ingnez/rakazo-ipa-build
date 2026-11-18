@@ -4130,7 +4130,7 @@ index 616d4cc..3795dff 100644
                    <ComputerReleaseActions
                      takeoverRequested={computer?.takeoverRequested ?? false}
 diff --git a/apps/mobile/app/index.tsx b/apps/mobile/app/index.tsx
-index 0a5db83..eb1c270 100644
+index 0a5db83..e27c493 100644
 --- a/apps/mobile/app/index.tsx
 +++ b/apps/mobile/app/index.tsx
 @@ -26,8 +26,12 @@ import {
@@ -4187,7 +4187,15 @@ index 0a5db83..eb1c270 100644
  import { native, useThemedStyles } from "../lib/native";
  import { iosAtLeast } from "../lib/native-controls";
  import {
-@@ -93,6 +109,7 @@ import {
+@@ -82,6 +98,7 @@ import type { OrganizeTarget } from "../lib/organize-target";
+ import { findOrganizeTarget } from "../lib/organize-target";
+ import { offerPasskeyOnce } from "../lib/passkey";
+ import { INBOX_POLL_INTERVAL_MS, INBOX_SIGNALLED_POLL_INTERVAL_MS } from "../lib/poll-cadence";
++import { inboxChats, preloadChats } from "../lib/preload-chats";
+ import { registerPushToken } from "../lib/push";
+ import { hasSignedInBefore, rememberSignedIn } from "../lib/returning-user";
+ import { useRosterSignals } from "../lib/roster-signals";
+@@ -93,6 +110,7 @@ import {
    subscribeSessionGeneration,
  } from "../lib/session";
  import { useSplitView } from "../lib/split-view";
@@ -4195,7 +4203,7 @@ index 0a5db83..eb1c270 100644
  import { confirmUnsentSendLoss } from "../lib/unsent-send-warning";
  import { useArchivedCount } from "../lib/use-archived-count";
  import { useCollapsedSections } from "../lib/use-collapsed-sections";
-@@ -158,7 +175,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -158,7 +176,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
    const tokens = mobileTokens();
    const appearance = resolveMobileAppearance();
    const styles = useThemedStyles(createHomeStyles);
@@ -4204,7 +4212,7 @@ index 0a5db83..eb1c270 100644
    const locale = useUiLocale();
    const isFocused = useIsFocused();
    const day = useInboxDay();
-@@ -198,10 +215,27 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -198,10 +216,27 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
    const [spaceBusy, setSpaceBusy] = useState(false);
    const [spaceRecoveryId, setSpaceRecoveryId] = useState<string | null>(null);
    const userId = me?.userId;
@@ -4232,7 +4240,7 @@ index 0a5db83..eb1c270 100644
    useEffect(() => {
      void loadActivityMode().then((on) => {
        setActivityMode(on);
-@@ -278,6 +312,13 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -278,6 +313,13 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
      rosterSignalsLive ? INBOX_SIGNALLED_POLL_INTERVAL_MS : INBOX_POLL_INTERVAL_MS,
      inboxShown,
    );
@@ -4246,7 +4254,7 @@ index 0a5db83..eb1c270 100644
    useEffect(() => onInboxChanged(() => void refreshBots().catch(() => undefined)), [refreshBots]);
  
    const archivedCount = useArchivedCount(me?.spaceId, hasSession);
-@@ -318,6 +359,12 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -318,6 +360,12 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
        withoutArchiving("group", applyUnreadOverrides("group", groups, unreadOverrides), archiving),
      [groups, unreadOverrides, archiving],
    );
@@ -4259,7 +4267,7 @@ index 0a5db83..eb1c270 100644
    const shownSpaces = useMemo(
      () =>
        archiving.size === 0
-@@ -334,7 +381,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -334,7 +382,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
        shownSpaces.length > 0
          ? shownSpaces.map((space) =>
              space.id === me?.spaceId
@@ -4268,7 +4276,7 @@ index 0a5db83..eb1c270 100644
                : space,
            )
          : me
-@@ -344,21 +391,29 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -344,21 +392,29 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
                  name: t`Personal`,
                  isDefault: true,
                  hasContent: true,
@@ -4301,7 +4309,7 @@ index 0a5db83..eb1c270 100644
    const spaceSections = retainInboxValue(
      keptSections,
      inboxSpaces.map(({ id, botSections }) => ({ id, botSections })),
-@@ -378,7 +433,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -378,7 +434,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
      // Android pins sit above the list; iOS keeps rows with native swipe and context menus.
      const otherSpaces = shownSpaces.filter((space) => space.id !== me?.spaceId);
      const pinned: PinnedChat[] = [
@@ -4310,7 +4318,7 @@ index 0a5db83..eb1c270 100644
          .filter((bot) => bot.pinned && !chatSnoozed(bot, snoozeNow))
          .map((bot) => ({ kind: "bot" as const, bot })),
        ...[...visibleGroups, ...otherSpaces.flatMap((space) => space.groups)]
-@@ -400,17 +455,20 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -400,17 +456,25 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
      collapsed,
      me?.spaceId,
      shownSpaces,
@@ -4322,6 +4330,11 @@ index 0a5db83..eb1c270 100644
      snoozeNow,
    ]);
 -  // Snoozed chats stay off the icon until they wake.
++  // The first chats this Space lists open from a saved copy on their first tap.
++  useEffect(() => {
++    if (inboxLoaded.current && !onShareSelect)
++      void preloadChats(inboxChats(listData, { bots, groups })).catch(() => undefined);
++  }, [listData, bots, groups, onShareSelect]);
 +  // Snoozed chats stay off the icon until they wake. The hero's bot counts too, though it is
 +  // drawn above the list rather than as a row.
    const badgeCount = me
@@ -4334,7 +4347,7 @@ index 0a5db83..eb1c270 100644
            groups: space.groups.filter((group) => !chatSnoozed(group, snoozeNow)),
          })),
        )
-@@ -472,7 +530,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -472,7 +536,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
      listRef,
      // The Liquid Glass header floats over the list; the older header sits above it.
      topInset: nativeHeader ? headerHeight : 0,
@@ -4343,7 +4356,7 @@ index 0a5db83..eb1c270 100644
    });
    const router = useRouter();
    const pathname = usePathname();
-@@ -641,9 +699,10 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -641,9 +705,10 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
    const runCreateAction = useCallback(
      (action: CreateAction) => {
        if (action === "bot") newBot();
@@ -4355,7 +4368,7 @@ index 0a5db83..eb1c270 100644
    );
  
    const organizations = useOrganizations(hasSession && !onShareSelect).data;
-@@ -655,11 +714,11 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -655,11 +720,11 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
  
    useHomeHeader({
      nativeHeader,
@@ -4369,7 +4382,7 @@ index 0a5db83..eb1c270 100644
      runCreateAction,
      headerTitle,
    });
-@@ -667,6 +726,8 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -667,6 +732,8 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
    const openBot = useCallback(
      (bot: MobileBot | SpaceBot) => {
        if (spaceActionRef.current.busy || spaceActionRef.current.recoveryId) return;
@@ -4378,7 +4391,7 @@ index 0a5db83..eb1c270 100644
        void openMobileSpace(bot.spaceId, () => {
          if (onShareSelect) onShareSelect(bot);
          else openChat({ pathname: "/thread", params: { botId: bot.id, name: bot.name } });
-@@ -674,6 +735,49 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -674,6 +741,49 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
      },
      [openChat, onShareSelect],
    );
@@ -4428,7 +4441,7 @@ index 0a5db83..eb1c270 100644
    const openGroup = useCallback(
      (group: MobileGroup | SpaceGroup) => {
        if (spaceActionRef.current.busy || spaceActionRef.current.recoveryId) return;
-@@ -728,6 +832,21 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -728,6 +838,21 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
    const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: ListViewToken[] }) =>
      avatarViewport.update(viewableItems.map((token) => token.key)),
    ).current;
@@ -4450,7 +4463,7 @@ index 0a5db83..eb1c270 100644
    const renderItem = useInboxRenderItem({
      appearance,
      botAction,
-@@ -737,6 +856,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -737,6 +862,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
      day,
      now: snoozeNow,
      deleteSection,
@@ -4458,7 +4471,7 @@ index 0a5db83..eb1c270 100644
      editSectionFromMenu,
      groupAction,
      spaceId: me?.spaceId,
-@@ -751,6 +871,10 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -751,6 +877,10 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
      sharing: !!onShareSelect,
      spaces: spaceSections,
      toggleCollapsed,
@@ -4469,7 +4482,7 @@ index 0a5db83..eb1c270 100644
    });
  
    if (!ready) {
-@@ -770,9 +894,34 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -770,9 +900,34 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
    const activityView = !onShareSelect && activityMode && Boolean(userId);
    const showActivity = activityView && !showLoadFailure;
    const rows = activityView || showLoadFailure ? [] : listData;
@@ -4505,7 +4518,7 @@ index 0a5db83..eb1c270 100644
        {inlineError ? <Text style={styles.error}>{inlineError}</Text> : null}
        {spaceRecoveryId ? (
          <Pressable
-@@ -830,6 +979,11 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -830,6 +985,11 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
    const refreshInbox = async () => {
      await Promise.all([refreshBots(), loadActivity()]);
    };
@@ -4517,7 +4530,7 @@ index 0a5db83..eb1c270 100644
  
    return (
      <View style={styles.screen}>
-@@ -837,8 +991,6 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -837,8 +997,6 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
          <InboxHeader
            embedded={embedded}
            initials={initials}
@@ -4526,7 +4539,7 @@ index 0a5db83..eb1c270 100644
            runCreateAction={runCreateAction}
            columnInsets={columnInsets}
            title={headerTitle?.()}
-@@ -860,6 +1012,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -860,6 +1018,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
                      (!onShareSelect && (item.type === "bot" || item.type === "group"))
                    }
                    header={hasListHeader ? listHeader : null}
@@ -4534,7 +4547,7 @@ index 0a5db83..eb1c270 100644
                    empty={listEmpty}
                    footer={listFooter}
                    gutters={{
-@@ -871,6 +1024,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -871,6 +1030,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
                    onRefresh={refreshInbox}
                    signals={jumpSignals}
                    showJumpPills={!onShareSelect && !refreshing && !inboxHasNoChats(rows)}
@@ -4542,7 +4555,7 @@ index 0a5db83..eb1c270 100644
                  />
                ) : (
                  <FlatList<InboxItem>
-@@ -887,7 +1041,11 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -887,7 +1047,11 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
                    indicatorStyle={appearance === "dark" ? "white" : "black"}
                    contentContainerStyle={[
                      styles.list,
@@ -4555,7 +4568,7 @@ index 0a5db83..eb1c270 100644
                    ]}
                    contentInsetAdjustmentBehavior="automatic"
                    refreshControl={
-@@ -915,6 +1073,15 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -915,6 +1079,15 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
            </View>
          </CompactRowsContext.Provider>
        </SelectedChatContext.Provider>
@@ -4571,7 +4584,7 @@ index 0a5db83..eb1c270 100644
        {organizeChat && organizeTarget ? (
          <BotOrganizeModal
            bot={organizeChat}
-@@ -938,6 +1105,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -938,6 +1111,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
            }}
          />
        ) : null}
@@ -74659,7 +74672,7 @@ index 674dfec..16d368d 100644
    );
  }
 diff --git a/apps/mobile/components/thread/thread-message-list.tsx b/apps/mobile/components/thread/thread-message-list.tsx
-index eeb3608..e2774c2 100644
+index eeb3608..5de5408 100644
 --- a/apps/mobile/components/thread/thread-message-list.tsx
 +++ b/apps/mobile/components/thread/thread-message-list.tsx
 @@ -4,12 +4,14 @@ import type { ReactElement, ReactNode } from "react";
@@ -74694,7 +74707,18 @@ index eeb3608..e2774c2 100644
      <View
        ref={scroll.helperViewport}
        collapsable={false}
-@@ -166,5 +171,6 @@ export function ThreadMessageList({
+@@ -148,6 +153,10 @@ export function ThreadMessageList({
+               </View>
+             }
+             renderItem={renderItem}
++            // A screenful of the newest messages draws first and the rest follow in small
++            // batches, so opening a chat neither waits on rows off screen nor stalls behind them.
++            initialNumToRender={6}
++            maxToRenderPerBatch={4}
+           />
+         </ThreadScrollSurface>
+       )}
+@@ -166,5 +175,6 @@ export function ThreadMessageList({
          />
        ) : null}
      </View>
@@ -86516,6 +86540,262 @@ index c9997f1..af98063 100644
          if (prepared.uri !== uri) {
            resized.push(prepared.uri);
            let resizedSize: number | undefined;
+diff --git a/apps/mobile/lib/preload-chats.test.ts b/apps/mobile/lib/preload-chats.test.ts
+new file mode 100644
+index 0000000..595c079
+--- /dev/null
++++ b/apps/mobile/lib/preload-chats.test.ts
+@@ -0,0 +1,150 @@
++import { beforeEach, expect, it, vi } from "vitest";
++import type { InboxItem } from "./inbox-spaces";
++
++const state = vi.hoisted(() => ({
++  saved: new Map<string, unknown>(),
++  space: "space-a",
++  scope: true,
++  rpc: vi.fn(),
++}));
++vi.mock("./api", () => ({ rpc: state.rpc, selectedSpaceId: () => state.space }));
++vi.mock("./integrations-cache", () => ({
++  isIntegrationsScopeCurrent: (scope: { selectionId: string }) => scope.selectionId === state.space,
++}));
++vi.mock("./saved-chats", () => ({
++  currentSavedChatsScope: () => null,
++  savedChatsScope: async () =>
++    state.scope ? { namespace: "ns", selectionId: state.space, spaceId: state.space } : null,
++  savedChatTarget: ({ botId, groupId }: { botId?: string; groupId?: string }) =>
++    groupId ? `group:${groupId}` : `bot:${botId}`,
++  readSavedThread: (scope: { selectionId: string }, target: string) =>
++    state.saved.get(`${scope.selectionId}/${target}`) ?? null,
++  writeSavedThread: (scope: { selectionId: string }, target: string, snapshot: unknown) => {
++    state.saved.set(`${scope.selectionId}/${target}`, snapshot);
++  },
++}));
++
++const { inboxChats, preloadChats, PRELOADED_CHATS } = await import("./preload-chats");
++const { notifyConversationCleared } = await import("./conversation-cleared");
++
++/** A promise the test resolves when it wants the request to answer. */
++function deferred<T>() {
++  let resolve!: (value: T) => void;
++  const promise = new Promise<T>((settle) => {
++    resolve = settle;
++  });
++  return { promise, resolve };
++}
++
++const snapshotOf = (input: { botId?: string; groupId?: string }) => ({ fetched: input });
++
++beforeEach(() => {
++  state.saved.clear();
++  state.scope = true;
++  state.space = `space-${Math.random()}`;
++  state.rpc.mockReset();
++  state.rpc.mockImplementation(async (_path: string, input: object) => snapshotOf(input));
++});
++
++it("saves a copy of the first chats that have none, one request at a time", async () => {
++  state.saved.set(`${state.space}/bot:b2`, { kept: true });
++  const chats = Array.from({ length: PRELOADED_CHATS + 2 }, (_, index) => ({
++    botId: `b${index + 1}`,
++  }));
++  const first = deferred<unknown>();
++  state.rpc.mockImplementationOnce(() => first.promise);
++  const pass = preloadChats(chats);
++  await vi.waitFor(() => expect(state.rpc).toHaveBeenCalledTimes(1));
++  first.resolve(snapshotOf({ botId: "b1" }));
++  await pass;
++
++  expect(state.rpc.mock.calls.map(([, input]) => input)).toEqual([
++    { botId: "b1" },
++    { botId: "b3" },
++    { botId: "b4" },
++    { botId: "b5" },
++  ]);
++  expect(state.saved.get(`${state.space}/bot:b2`)).toEqual({ kept: true });
++  expect(state.saved.get(`${state.space}/bot:b1`)).toEqual(snapshotOf({ botId: "b1" }));
++  expect(state.saved.has(`${state.space}/bot:b6`)).toBe(false);
++});
++
++it("asks for each chat once per Space, and again after a failed request", async () => {
++  state.rpc.mockRejectedValueOnce(new TypeError("Network request failed"));
++  await preloadChats([{ botId: "b1" }, { groupId: "g1" }]);
++  // The pass stops at the first failure.
++  expect(state.rpc).toHaveBeenCalledTimes(1);
++
++  await preloadChats([{ botId: "b1" }, { groupId: "g1" }]);
++  await preloadChats([{ botId: "b1" }, { groupId: "g1" }]);
++  expect(state.rpc.mock.calls.map(([, input]) => input)).toEqual([
++    { botId: "b1" },
++    { botId: "b1" },
++    { groupId: "g1" },
++  ]);
++});
++
++it("keeps the copy the chat screen saved while the request was out", async () => {
++  const answer = deferred<unknown>();
++  state.rpc.mockImplementationOnce(() => answer.promise);
++  const pass = preloadChats([{ botId: "b1" }]);
++  await vi.waitFor(() => expect(state.rpc).toHaveBeenCalled());
++  state.saved.set(`${state.space}/bot:b1`, { opened: true });
++  answer.resolve(snapshotOf({ botId: "b1" }));
++  await pass;
++  expect(state.saved.get(`${state.space}/bot:b1`)).toEqual({ opened: true });
++});
++
++it("does nothing without a saved-chat scope", async () => {
++  state.scope = false;
++  await preloadChats([{ botId: "b1" }]);
++  expect(state.rpc).not.toHaveBeenCalled();
++});
++
++it("lists the selected Space's chats in inbox order, pinned ones first", () => {
++  const items = [
++    { type: "pinned", chats: [{ kind: "group", group: { id: "g1" } }] },
++    { type: "heading", key: "h", title: "Bots" },
++    { type: "bot", bot: { id: "b1" } },
++    { type: "bot", bot: { id: "elsewhere" } },
++    { type: "group", group: { id: "g2" } },
++  ] as unknown as InboxItem[];
++  expect(inboxChats(items, { bots: [{ id: "b1" }], groups: [{ id: "g1" }, { id: "g2" }] })).toEqual(
++    [{ groupId: "g1" }, { botId: "b1" }, { groupId: "g2" }],
++  );
++});
++
++it("stops when the Space changes, and never asks for one Space's chats in another", async () => {
++  const answer = deferred<unknown>();
++  state.rpc.mockImplementationOnce(() => answer.promise);
++  const first = state.space;
++  const pass = preloadChats([{ botId: "b1" }, { botId: "b2" }]);
++  await vi.waitFor(() => expect(state.rpc).toHaveBeenCalledTimes(1));
++  state.space = "space-other";
++  // Queued while the first pass is out, under the Space it was listed in.
++  const queued = preloadChats([{ botId: "b3" }]);
++  state.space = "space-new";
++  answer.resolve(snapshotOf({ botId: "b1" }));
++  await pass;
++  await queued;
++  expect(state.rpc).toHaveBeenCalledTimes(1);
++  expect(state.saved.has(`${first}/bot:b2`)).toBe(false);
++});
++
++it("does not save a chat that was cleared while its request was out", async () => {
++  const answer = deferred<unknown>();
++  state.rpc.mockImplementationOnce(() => answer.promise);
++  const pass = preloadChats([{ botId: "b1" }]);
++  await vi.waitFor(() => expect(state.rpc).toHaveBeenCalled());
++  notifyConversationCleared("b1");
++  answer.resolve(snapshotOf({ botId: "b1" }));
++  await pass;
++  expect(state.saved.has(`${state.space}/bot:b1`)).toBe(false);
++});
++
++it("passes on a refusal, so it is reported", async () => {
++  state.rpc.mockRejectedValueOnce(Object.assign(new Error("Forbidden"), { status: 403 }));
++  await expect(preloadChats([{ botId: "b1" }])).rejects.toThrow("Forbidden");
++  await preloadChats([{ botId: "b1" }]);
++  expect(state.rpc).toHaveBeenCalledTimes(1);
++});
+diff --git a/apps/mobile/lib/preload-chats.ts b/apps/mobile/lib/preload-chats.ts
+new file mode 100644
+index 0000000..dc7ad1f
+--- /dev/null
++++ b/apps/mobile/lib/preload-chats.ts
+@@ -0,0 +1,94 @@
++import { isRetryableError } from "@rakazo/core";
++import { rpc, selectedSpaceId } from "./api";
++import { onConversationCleared } from "./conversation-cleared";
++import type { InboxItem } from "./inbox-spaces";
++import { isIntegrationsScopeCurrent } from "./integrations-cache";
++import type { MobileSnapshot } from "./mobile-types";
++import type { SavedChatsScope } from "./saved-chats";
++import {
++  currentSavedChatsScope,
++  readSavedThread,
++  savedChatsScope,
++  savedChatTarget,
++  writeSavedThread,
++} from "./saved-chats";
++
++/** How many chats from the top of the inbox open from a saved copy on their first tap. */
++export const PRELOADED_CHATS = 5;
++
++type ChatTarget = { botId: string; groupId?: undefined } | { groupId: string; botId?: undefined };
++
++/** Chats already saved or fetched in this session, by Space and chat; each is fetched once. */
++const handled = new Set<string>();
++let running: Promise<void> | null = null;
++
++/** The chats the inbox lists from the selected Space, in the order it shows them. */
++export function inboxChats(
++  items: readonly InboxItem[],
++  current: { bots: readonly { id: string }[]; groups: readonly { id: string }[] },
++): ChatTarget[] {
++  const bots = new Set(current.bots.map((bot) => bot.id));
++  const groups = new Set(current.groups.map((group) => group.id));
++  const bot = (id: string): ChatTarget[] => (bots.has(id) ? [{ botId: id }] : []);
++  const group = (id: string): ChatTarget[] => (groups.has(id) ? [{ groupId: id }] : []);
++  return items.flatMap((item) => {
++    if (item.type === "pinned")
++      return item.chats.flatMap((chat) =>
++        chat.kind === "bot" ? bot(chat.bot.id) : group(chat.group.id),
++      );
++    if (item.type === "bot") return bot(item.bot.id);
++    return item.type === "group" ? group(item.group.id) : [];
++  });
++}
++
++/**
++ * Saves a copy of the first chats the inbox lists that have none yet, one at a time, so opening
++ * one shows its messages at once instead of waiting on the network. A chat with a saved copy is
++ * left alone: opening it already shows that copy while it refreshes.
++ */
++export function preloadChats(chats: readonly ChatTarget[]): Promise<void> {
++  const targets = chats.slice(0, PRELOADED_CHATS);
++  // These chats belong to the Space selected now; a pass that starts after a switch skips them.
++  const selection = selectedSpaceId();
++  const pass = async () => {
++    // The inbox changes often; a Space this session already read needs no keychain reads.
++    const scope = currentSavedChatsScope() ?? (await savedChatsScope());
++    if (scope && scope.selectionId === selection) await preloadInto(scope, targets);
++  };
++  running = (running ?? Promise.resolve()).then(pass, pass);
++  return running;
++}
++
++async function preloadInto(scope: SavedChatsScope, targets: readonly ChatTarget[]) {
++  for (const chat of targets) {
++    // After a Space switch these chats belong to another Space; the new one gets its own pass.
++    if (!isIntegrationsScopeCurrent(scope)) return;
++    const target = savedChatTarget(chat);
++    const key = JSON.stringify([scope.namespace, scope.selectionId, target]);
++    if (handled.has(key)) continue;
++    handled.add(key);
++    if (readSavedThread(scope, target)) continue;
++    let cleared = false;
++    const stopWatching = onConversationCleared((botId) => {
++      if (botId === chat.botId) cleared = true;
++    });
++    let snapshot: MobileSnapshot;
++    try {
++      snapshot = await rpc(
++        "threads/get",
++        chat.groupId ? { groupId: chat.groupId } : { botId: chat.botId! },
++      );
++    } catch (error) {
++      // A refusal is the server's answer: reported once and not asked again this launch.
++      if (!isRetryableError(error)) throw error;
++      // Offline or busy: the chat loads as usual when opened, and a later pass asks again.
++      handled.delete(key);
++      return;
++    } finally {
++      stopWatching();
++    }
++    // A chat cleared meanwhile, or opened meanwhile (its screen saved a fresher copy), keeps
++    // what it has.
++    if (!cleared && !readSavedThread(scope, target)) writeSavedThread(scope, target, snapshot);
++  }
++}
 diff --git a/apps/mobile/lib/query-client-provided.test.ts b/apps/mobile/lib/query-client-provided.test.ts
 new file mode 100644
 index 0000000..d29134b
@@ -87818,6 +88098,48 @@ index 0000000..773e193
 +export async function realtimeRequestContext(): Promise<ApiRequestContext> {
 +  return captureApiRequestContext();
 +}
+diff --git a/apps/mobile/lib/saved-chats.ts b/apps/mobile/lib/saved-chats.ts
+index b186afb..10e0dc7 100644
+--- a/apps/mobile/lib/saved-chats.ts
++++ b/apps/mobile/lib/saved-chats.ts
+@@ -198,17 +198,28 @@ export async function savedChatsScope(): Promise<SavedChatsScope | null> {
+   });
+ }
+ 
++// The scope this session last resolved. The inbox asks for it on every list change, and reading
++// the keychain and the session token each time would cost more than the preload it serves.
++let resolvedScope: SavedChatsScope | null = null;
++
+ async function withSessionNamespace(
+   scope: IntegrationsCacheScope,
+ ): Promise<SavedChatsScope | null> {
+   try {
+     const namespace = await artifactCacheSession(await loadSessionToken());
+-    return isIntegrationsScopeCurrent(scope) ? { ...scope, namespace } : null;
++    if (!isIntegrationsScopeCurrent(scope)) return null;
++    resolvedScope = { ...scope, namespace };
++    return resolvedScope;
+   } catch {
+     return null;
+   }
+ }
+ 
++/** The scope resolved earlier in this session, if it still belongs to the Space selected now. */
++export function currentSavedChatsScope(): SavedChatsScope | null {
++  return resolvedScope && isIntegrationsScopeCurrent(resolvedScope) ? resolvedScope : null;
++}
++
+ export async function liveSavedChatsScope(): Promise<SavedChatsScope | null> {
+   const saved = await savedChatsScope();
+   if (saved) return saved;
+@@ -358,6 +369,7 @@ function forgetSavedThread(target: { botId?: string; groupId?: string }) {
+ 
+ export function clearSavedChats(): void {
+   clearLegacySavedChats();
++  resolvedScope = null;
+   try {
+     const root = new Directory(Paths.cache, ROOT);
+     if (root.exists) root.delete();
 diff --git a/apps/mobile/lib/scenario-models.ts b/apps/mobile/lib/scenario-models.ts
 new file mode 100644
 index 0000000..ca922cb

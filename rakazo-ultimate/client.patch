@@ -91466,7 +91466,7 @@ index f4e9ac5..dfa6a58 100644
    /// may be iOS waking the app in the background for a card it just started.
    func observe() {
 diff --git a/apps/mobile/modules/rakazo-pdf-view/ios/RakazoPdfViewModule.swift b/apps/mobile/modules/rakazo-pdf-view/ios/RakazoPdfViewModule.swift
-index 0dfdad1..c778679 100644
+index 0dfdad1..9d65819 100644
 --- a/apps/mobile/modules/rakazo-pdf-view/ios/RakazoPdfViewModule.swift
 +++ b/apps/mobile/modules/rakazo-pdf-view/ios/RakazoPdfViewModule.swift
 @@ -6,6 +6,15 @@ public final class RakazoPdfViewModule: Module {
@@ -91485,7 +91485,7 @@ index 0dfdad1..c778679 100644
      View(RakazoPdfView.self) {
        Events("onLoadError")
        Prop("uri") { (view: RakazoPdfView, uri: String) in view.load(uri) }
-@@ -13,6 +22,57 @@ public final class RakazoPdfViewModule: Module {
+@@ -13,6 +22,77 @@ public final class RakazoPdfViewModule: Module {
    }
  }
  
@@ -91497,22 +91497,35 @@ index 0dfdad1..c778679 100644
 +  /// The page is drawn on the main thread, where Core Graphics is at home, even though the JS call
 +  /// arrives on a module queue.
 +  static func make(uri: String, maxWidth: Double) -> String? {
-+    guard let url = URL(string: uri), url.isFileURL else { return nil }
++    guard let url = URL(string: uri), url.isFileURL else {
++      figure("not a local file", uri)
++      return nil
++    }
 +    let render: () -> String? = {
-+      guard let document = PDFDocument(url: url), let page = document.page(at: 0) else { return nil }
++      guard let document = PDFDocument(url: url), let page = document.page(at: 0) else {
++        figure("unreadable", uri)
++        return nil
++      }
 +      let box = page.bounds(for: .cropBox)
-+      guard box.width > 0, box.height > 0 else { return nil }
++      guard box.width > 0, box.height > 0 else {
++        figure("empty page", uri)
++        return nil
++      }
 +      // A card is about 330 points wide; asking for more than 600 only spends memory.
 +      let width = min(max(maxWidth, 120), 600)
 +      let size = CGSize(width: width, height: (width * box.height / box.width).rounded())
 +      let image = page.thumbnail(of: size, for: .cropBox)
-+      guard let data = image.pngData() else { return nil }
++      guard let data = image.pngData() else {
++        figure("no image", uri)
++        return nil
++      }
 +      let directory = FileManager.default
 +        .urls(for: .cachesDirectory, in: .userDomainMask)[0]
-+        .appendingPathComponent("pdf-thumbnails", isDirectory: true)
++        .appendingPathComponent("pdf-page-thumbnails", isDirectory: true)
 +      do {
 +        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 +      } catch {
++        figure("no cache directory", uri)
 +        return nil
 +      }
 +      let file = directory.appendingPathComponent("\(stamp(uri: uri, width: width)).png")
@@ -91520,6 +91533,7 @@ index 0dfdad1..c778679 100644
 +        do {
 +          try data.write(to: file, options: .atomic)
 +        } catch {
++          figure("not written", uri)
 +          return nil
 +        }
 +      }
@@ -91527,6 +91541,12 @@ index 0dfdad1..c778679 100644
 +    }
 +    if Thread.isMainThread { return render() }
 +    return DispatchQueue.main.sync(execute: render)
++  }
++
++  /// A page that could not be drawn says why in the device log, once per card that asked: the
++  /// card itself shows nothing, which is the right thing on screen and no help in a bug report.
++  private static func figure(_ why: String, _ uri: String) {
++    NSLog("[RakazoPdfView] pdf-page-thumbnail %@: %@", why, uri)
 +  }
 +
 +  /// A stable name for one file at one width: FNV-1a, so it needs no hashing framework.

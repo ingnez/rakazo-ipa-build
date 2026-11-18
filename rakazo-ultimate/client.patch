@@ -101029,7 +101029,7 @@ index 89bd51783..850b0a227 100644
    return extensionType ?? null;
  }
 diff --git a/packages/core/src/avatar-clips.ts b/packages/core/src/avatar-clips.ts
-index 5ac17f39b..6c08539a4 100644
+index 5ac17f39b..0d1199810 100644
 --- a/packages/core/src/avatar-clips.ts
 +++ b/packages/core/src/avatar-clips.ts
 @@ -6,6 +6,8 @@
@@ -101059,15 +101059,14 @@ index 5ac17f39b..6c08539a4 100644
  }
  
  export type AvatarClipName = string;
-@@ -199,26 +210,54 @@ export const AVATAR_CLIPS: Record<AvatarClipName, AvatarClip> = {
+@@ -199,26 +210,53 @@ export const AVATAR_CLIPS: Record<AvatarClipName, AvatarClip> = {
  };
  
  const NO_CLIP: AvatarClip = { duration: 0 };
 +
 +/**
-+ * The reference app's own 28 clips, in this player's shape. They live in their own generated
-+ * module because they are data measured out of its bytecode, not authored here; `avatarClip`
-+ * prefers them, and the authored clips stay for the states they do not cover (a still pose).
++ * The avatar spec's 28 clips (`avatar-spec.ts`), in this player's shape; `avatarClip` prefers
++ * them, and the authored clips below stay for the states they do not cover (a still pose).
 + */
 +const OFFICIAL_CLIPS: Readonly<Record<AvatarClipName, AvatarClip>> = Object.fromEntries(
 +  Object.entries(MOTION_CLIPS).map(([name, clip]) => [
@@ -101095,7 +101094,7 @@ index 5ac17f39b..6c08539a4 100644
  
 -/** Which clips each state plays; a pool may repeat a clip to make it likelier. */
 +/**
-+ * Which clips each state plays, in the reference app's own table: a pool repeats a clip to make
++ * Which clips each state plays: a pool repeats a clip to make
 + * it likelier (`idle` lists five, four of them `Idle_B`), and `settling`/`thinking` stay still
 + * because those avatars are drawn small or are turning into the typing dots.
 + */
@@ -101115,7 +101114,7 @@ index 5ac17f39b..6c08539a4 100644
 +  /** The six working clips, equally weighted: the bot looks somewhere new each time. */
 +  working: ["Working_A", "Working_B", "Working_C", "Working_D", "Working_E", "Working_F"],
 +  /**
-+   * A live avatar at rest, at any size: the reference's own gentle idle — one look and two blinks
++   * A live avatar at rest, at any size: the gentle idle — one look and two blinks
 +   * over four seconds. Its louder idle clips (`Idle_A`, `Idle_D`) are left to a busy bot: played on
 +   * a row of inbox avatars they read as a crowd of bodies swinging about rather than as breathing.
 +   */
@@ -101125,7 +101124,7 @@ index 5ac17f39b..6c08539a4 100644
    /** Every other avatar at rest goes home and holds still, without blinking. */
    settling: ["still"],
    /** The face has turned into the typing dots, so it only needs to hold still. */
-@@ -234,6 +273,12 @@ export interface AvatarPose {
+@@ -234,6 +272,12 @@ export interface AvatarPose {
    y: number;
    zoom: number;
    lid: number;
@@ -101138,7 +101137,7 @@ index 5ac17f39b..6c08539a4 100644
  }
  
  /** Facing front, at rest zoom, eyes open: where an empty track sits. */
-@@ -245,6 +290,9 @@ export const AVATAR_REST_POSE: AvatarPose = {
+@@ -245,6 +289,9 @@ export const AVATAR_REST_POSE: AvatarPose = {
    y: 0,
    zoom: 1,
    lid: 0,
@@ -101148,7 +101147,7 @@ index 5ac17f39b..6c08539a4 100644
  };
  
  /** How long the bridge between two clips lasts when their poses differ, and its ease. */
-@@ -306,13 +354,42 @@ function authoredBlink(blinks: readonly number[] | undefined, t: number): number
+@@ -306,13 +353,42 @@ function authoredBlink(blinks: readonly number[] | undefined, t: number): number
    return shut;
  }
  
@@ -101195,7 +101194,7 @@ index 5ac17f39b..6c08539a4 100644
    return {
      pitch: rotation?.[0] ?? 0,
      yaw: rotation?.[1] ?? 0,
-@@ -320,6 +397,9 @@ export function avatarClipPose(clip: AvatarClip, t: number): AvatarPose {
+@@ -320,6 +396,9 @@ export function avatarClipPose(clip: AvatarClip, t: number): AvatarPose {
      x: position?.[0] ?? 0,
      y: position?.[1] ?? 0,
      zoom: zoom?.[0] ?? AVATAR_REST_POSE.zoom,
@@ -102815,10 +102814,10 @@ index 000000000..f223c9cbe
 +});
 diff --git a/packages/core/src/babygrok-face.ts b/packages/core/src/babygrok-face.ts
 new file mode 100644
-index 000000000..024cbef95
+index 000000000..c20532990
 --- /dev/null
 +++ b/packages/core/src/babygrok-face.ts
-@@ -0,0 +1,620 @@
+@@ -0,0 +1,619 @@
 +import { AVATAR_FACES } from "./avatar-spec.js";
 +import type { BabygrokBody } from "./babygrok-geometry.js";
 +
@@ -102845,10 +102844,9 @@ index 000000000..024cbef95
 +/**
 + * How far a pleased eye bends, in radians: about 117 degrees of arc.
 + *
-+ * The reference app's pleased eyes are shallow crescents, not half circles: measured off its own
-+ * screen, an arch 46 units wide and 30 tall over a 19-unit radius whose stroke is 17 units thick,
-+ * which is a little more than a third of a turn each way. Bending the eye the full half turn made
-+ * a dome with a hairline notch — a bun, not a `︵`.
++ * A pleased eye is a shallow crescent, not a half circle: a little more than a third of a turn
++ * each way. Bending the eye the full half turn made a dome with a hairline notch — a bun, not a
++ * `︵`.
 + */
 +export const HAPPY_BEND = 2.05;
 +/**
@@ -102888,7 +102886,7 @@ index 000000000..024cbef95
 +const LID_KEEP = 0.06;
 +
 +/**
-+ * One eye's lid curve, as the reference app's bytecode states it: a quadratic `p0 -> p1 -> p2` in
++ * One eye's lid curve, as the avatar spec states it: a quadratic `p0 -> p1 -> p2` in
 + * the body's own normalised units, and whether it is an arc (an open `︵`) rather than a closed
 + * stadium. `isArc` also means the lid is a stroke, which is thinner than the open eye it bends
 + * out of.
@@ -104686,10 +104684,10 @@ index 000000000..a09b63460
 +});
 diff --git a/packages/core/src/bot-motion-clips.ts b/packages/core/src/bot-motion-clips.ts
 new file mode 100644
-index 000000000..331840419
+index 000000000..9f4991ac9
 --- /dev/null
 +++ b/packages/core/src/bot-motion-clips.ts
-@@ -0,0 +1,234 @@
+@@ -0,0 +1,226 @@
 +import { babygrokVisualScale } from "./babygrok-geometry.js";
 +import { avatarClip, avatarClipPose } from "./avatar-clips.js";
 +import {
@@ -104709,10 +104707,9 @@ index 000000000..331840419
 +import type { AvatarPose } from "./avatar-clips.js";
 +
 +/**
-+ * The reference app's avatar motion, as measured from its own bytecode.
++ * Rakazo's avatar motion, from its own avatar spec (`avatar-spec.ts`).
 + *
-+ * The clips themselves (28 of them, 350 keyframes) and the 53-state table live in the generated
-+ * data module; this is the layer that answers the questions the renderer asks — which clips a
++ * The hand-written clips and the state table live in the spec; this is the layer that answers the questions the renderer asks — which clips a
 + * state plays, which face an expression means, and what an expression does to the eyes.
 + */
 +
@@ -104757,7 +104754,7 @@ index 000000000..331840419
 +  | "bouncing"
 +  | "powering-down";
 +
-+/** The clip pool a state plays, straight from the official table (weights included). */
++/** The clip pool a state plays, straight from the spec's state table (weights included). */
 +export function motionClipPool(state: string, compact = false): readonly string[] {
 +  const rule = MOTION_STATES[state];
 +  if (!rule) return MOTION_STATES.idle?.clips ?? [];
@@ -104782,8 +104779,7 @@ index 000000000..331840419
 +}
 +
 +/**
-+ * A face name as the renderer knows it: the official aliases (`thinking` is `sad`, `smile` is
-+ * `happy`, `angry` is `neutral`) resolve to the nine canonical faces; `blink` is not a face at
++ * A face name as the renderer knows it: the spec's aliases (e.g. `smile` is `happy`) resolve to the nine canonical faces; `blink` is not a face at
 + * all, it is the eyelids shutting, so it keeps the face that is already on.
 + */
 +export function motionFace(expression: string | null | undefined): string {
@@ -104795,10 +104791,9 @@ index 000000000..331840419
 +/**
 + * What a face does to the eye drawing.
 + *
-+ * The eyes themselves are drawn by the stroke renderer that was measured off the reference app
-+ * frame by frame (a capsule that arches when pleased, and thins as the lid closes); a face picks
-+ * how arched it is (`mood`) and how open the lid is (`open`, 1 fully open). The official eyelid
-+ * curves in `MOTION_FACES` are what these two numbers come from: a vertical lid (`p0`/`p2` apart)
++ * The eyes themselves are drawn by the stroke renderer (a capsule that arches when pleased, and
++ * thins as the lid closes); a face picks how arched it is (`mood`) and how open the lid is
++ * (`open`, 1 fully open). The spec's eyelid curves in `MOTION_FACES` are what these two numbers come from: a vertical lid (`p0`/`p2` apart)
 + * is an open eye, a lid that closes on itself (`p0` and `p2` level) is a squint, and an arc
 + * (`isArc`) is the pleased eye.
 + */
@@ -104821,11 +104816,8 @@ index 000000000..331840419
 +}
 +
 +/**
-+ * The lid curve a face names, flattened into numbers a worklet can carry: the reference app's own
-+ * quadratics, read straight out of its bytecode. `arc` is 1 for a pleased arc.
-+ *
-+ * The all-zero `inspecting` curve is the reference's "keep the body's own eye" spec, which is what
-+ * the renderer draws for it.
++ * The lid curve a face names, flattened into numbers a worklet can carry: the spec's own
++ * quadratics. `arc` is 1 for a pleased arc.
 + */
 +export function motionFaceSpec(face: string): {
 +  p0x: number;
@@ -104850,7 +104842,8 @@ index 000000000..331840419
 +}
 +
 +/**
-+ * The named numbers the reference app is built from, as its bytecode holds them. Kept together
++ * The interaction constants (press scale, springs, sizes). They are generic UI timings; they were
++ * first tuned against a reference app and are due to be re-tuned on their own. Kept together
 + * so a caller reaching for "the 340 ms mark arrival" cannot quietly invent a different value.
 + */
 +export const MOTION_NAMED = {
@@ -104880,7 +104873,7 @@ index 000000000..331840419
 +} as const;
 +
 +/**
-+ * A body colour as its flat swatch, in the given appearance: the reference app's black is pure
++ * A body colour as its flat swatch, in the given appearance: black is pure
 + * black on the light page and pure white on the dark one, which is why the first dot of its
 + * palette stays visible in either theme.
 + */
@@ -104895,13 +104888,10 @@ index 000000000..331840419
 +  return color;
 +}
 +
-+/** A body's zoom for its own shape: the official per-shape table, corrected so every body reads
-+ * the same size (see `BABYGROK_VISUAL_SCALES`). The official table alone leaves `wedge` at about
-+ * half a blob's area, which is the shrunken chip the grid showed. */
++/** A body's zoom for its own shape: normalised by area so every body reads the same size (see
++ * `BABYGROK_VISUAL_SCALES`). */
 +export function motionShapeScale(key: string): number {
-+  // The official override table halves `wedge` (0.55) and takes `heartChubby` to 0.6; laid over
-+  // these rings that drew a triangle as a chip beside the other bodies, so the area normalisation
-+  // above is what decides. The table stays exported as the record of what the reference measured.
++  // The spec's override table is empty; the area normalisation decides.
 +  void MOTION_SHAPE_SCALE_OVERRIDE;
 +  return babygrokVisualScale(key);
 +}

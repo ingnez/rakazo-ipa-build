@@ -85638,10 +85638,10 @@ index 0000000..1f1e512
 +}
 diff --git a/apps/mobile/lib/realtime-call.test.ts b/apps/mobile/lib/realtime-call.test.ts
 new file mode 100644
-index 0000000..d861ae2
+index 0000000..da59e22
 --- /dev/null
 +++ b/apps/mobile/lib/realtime-call.test.ts
-@@ -0,0 +1,242 @@
+@@ -0,0 +1,255 @@
 +import type { RealtimeCallPlan } from "@rakazo/contracts";
 +import { describe, expect, it, vi } from "vitest";
 +import type { RealtimeAudioPort } from "./realtime-audio";
@@ -85803,6 +85803,19 @@ index 0000000..d861ae2
 +    expect(h.audio.play).toHaveBeenCalledWith(new Uint8Array([9, 8, 7]));
 +  });
 +
++  it("reads a frame a build hands over as a view of its buffer", () => {
++    const h = harness();
++    frame(h.socket(), { type: "ready" });
++    // Only the view's own bytes reach the speaker, never the buffer around them.
++    const buffer = new Uint8Array([0, 0, 9, 8, 7, 0]);
++    h.socket()?.onMessage(buffer.subarray(2, 5));
++    expect(h.audio.play).toHaveBeenCalledWith(new Uint8Array([9, 8, 7]));
++    // Anything else is not audio: it must not reach the player at all.
++    h.audio.play.mockClear();
++    h.socket()?.onMessage({ odd: true });
++    expect(h.audio.play).not.toHaveBeenCalled();
++  });
++
 +  it("hangs up by saying so, and keeps the socket open for the chat it writes", () => {
 +    const h = harness();
 +    frame(h.socket(), { type: "ready" });
@@ -85886,10 +85899,10 @@ index 0000000..d861ae2
 +});
 diff --git a/apps/mobile/lib/realtime-call.ts b/apps/mobile/lib/realtime-call.ts
 new file mode 100644
-index 0000000..50cb344
+index 0000000..2eed587
 --- /dev/null
 +++ b/apps/mobile/lib/realtime-call.ts
-@@ -0,0 +1,305 @@
+@@ -0,0 +1,313 @@
 +import type { RealtimeCallPlan } from "@rakazo/contracts";
 +import { t } from "@lingui/core/macro";
 +import type { RealtimeAudioPort } from "./realtime-audio";
@@ -86067,11 +86080,19 @@ index 0000000..50cb344
 +
 +  private receive(data: unknown): void {
 +    if (this.closed) return;
-+    if (typeof data !== "string") {
-+      // The default format: the model's own PCM16, straight into the player.
-+      if (data instanceof ArrayBuffer) this.deps.audio.play(new Uint8Array(data));
++    // The default format: the model's own PCM16, straight into the player.
++    if (data instanceof ArrayBuffer) {
++      this.deps.audio.play(new Uint8Array(data));
 +      return;
 +    }
++    // A build that hands the frame over as a view of the buffer gives the same bytes; reading only
++    // the view keeps a stray header out of the front of the reply.
++    if (ArrayBuffer.isView(data)) {
++      const view = data as ArrayBufferView;
++      this.deps.audio.play(new Uint8Array(view.buffer, view.byteOffset, view.byteLength));
++      return;
++    }
++    if (typeof data !== "string") return;
 +    const event = parseRealtimeEvent(data);
 +    if (event) this.handle(event);
 +  }
@@ -90825,10 +90846,10 @@ index 0000000..dbfffd2
 +end
 diff --git a/apps/mobile/modules/rakazo-realtime-audio/ios/RakazoRealtimeAudioModule.swift b/apps/mobile/modules/rakazo-realtime-audio/ios/RakazoRealtimeAudioModule.swift
 new file mode 100644
-index 0000000..594e42d
+index 0000000..693278a
 --- /dev/null
 +++ b/apps/mobile/modules/rakazo-realtime-audio/ios/RakazoRealtimeAudioModule.swift
-@@ -0,0 +1,345 @@
+@@ -0,0 +1,784 @@
 +import AVFoundation
 +import AudioToolbox
 +import ExpoModulesCore
@@ -90849,12 +90870,32 @@ index 0000000..594e42d
 +/// to be switched into it while the engine is stopped. The unit subtracts what the speaker is playing
 +/// from what the microphone hears before the tap ever runs, which is the difference between a call
 +/// and a model answering its own voice.
++///
++/// A live call is the one place where the audio graph is not the app's to keep. Activating a
++/// `.voiceChat` session makes iOS swap the route (A2DP → HFP for a car or a headset, receiver →
++/// speaker on the phone), and every swap stops the engine by posting
++/// `AVAudioEngineConfigurationChange`; the app's other audio (expo-audio's own cue players) may also
++/// deactivate the shared session under it. An engine that has been stopped that way runs nothing:
++/// the tap stops delivering buffers and a scheduled player is never heard, which on 2026-11-18 was
++/// a 34 s call that carried no microphone frame at all in either direction. So this module treats a
++/// stopped engine as its own to restart: it listens for route, configuration and media-services
++/// changes, keeps the tap installed before the engine starts, and watches for a call that has gone
++/// quiet to rebuild the graph once.
 +public class RakazoRealtimeAudioModule: Module {
 +  private let engine = AVAudioEngine()
 +  private let player = AVAudioPlayerNode()
 +  /// Everything the microphone produces, off the audio thread.
 +  private let buffers = DispatchQueue(label: "rakazo.realtime.audio")
++  /// Guards the converter and the call's formats, which the audio thread reads while the main
++  /// thread may clear or rebuild them.
++  private let formats = NSLock()
++
 +  private var interruptionObserver: NSObjectProtocol?
++  private var routeObserver: NSObjectProtocol?
++  private var configurationObserver: NSObjectProtocol?
++  private var resetObserver: NSObjectProtocol?
++  private var watchdog: DispatchSourceTimer?
++  private var routeSettling: DispatchWorkItem?
 +
 +  /// Outputs that are already the right place for a call: anything but the phone's own speaker.
 +  private static let headsetPorts = [
@@ -90869,6 +90910,7 @@ index 0000000..594e42d
 +  private static let downlinkGain: Float = 1.6
 +
 +  private var inputConverter: AVAudioConverter?
++  private var converterSource: AVAudioFormat?
 +  private var captureFormat: AVAudioFormat?
 +  private var playbackFormat: AVAudioFormat?
 +  /// Microphone audio waiting to make a whole 20 ms frame.
@@ -90881,6 +90923,23 @@ index 0000000..594e42d
 +  /// Whether this call switched the microphone into the voice processing unit, so `stop` only
 +  /// hands back what it took.
 +  private var voiceProcessingOn = false
++  /// Set when the unit cannot be switched on for this call, so no repair keeps retrying it.
++  private var voiceProcessingWanted = true
++  /// The caller's own copy of a converter that keeps answering nothing: the tap falls back to
++  /// resampling the hardware's samples itself rather than sending silence.
++  private var converterBroken = false
++  private var emptyConversions = 0
++
++  /// What the watchdog reads to tell a working call from a silent one.
++  private var framesSeen = 0
++  private var lastFrameAt: TimeInterval = 0
++  private var startedAt: TimeInterval = 0
++  private var lastRepairAt: TimeInterval = 0
++  private var repairs = 0
++  private var silenceRepairs = 0
++  private var silenceLogged = false
++  /// Set when the graph could not be rebuilt in twenty seconds of trying.
++  private var gaveUp = false
 +
 +  public func definition() -> ModuleDefinition {
 +    Name("RakazoRealtimeAudio")
@@ -90919,103 +90978,91 @@ index 0000000..594e42d
 +    }
 +  }
 +
++  // MARK: - The call
++
 +  private func start(inputRate: Double, outputRate: Double) throws {
 +    stop()
-+    let session = AVAudioSession.sharedInstance()
-+    // `.voiceChat` is the mode with echo cancellation; the speaker stays the default output even
-+    // with a headset attached, and a Bluetooth headset may carry the call.
-+    try session.setCategory(
-+      .playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetooth]
-+    )
-+    try session.setActive(true, options: [])
-+    observeInterruptions()
-+
-+    let microphone = engine.inputNode
-+    // `.voiceChat` says what kind of audio this is; it does not switch the echo canceller on. The
-+    // voice processing unit does, and it can only be enabled while the engine is stopped. It takes
-+    // over the output node too, so the speaker's audio is what gets subtracted from the microphone.
-+    if !microphone.isVoiceProcessingEnabled {
-+      do {
-+        try microphone.setVoiceProcessingEnabled(true)
-+        voiceProcessingOn = true
-+      } catch {
-+        // A call without it still works — the reply can just be heard by the model and cut it off —
-+        // so fall back to the session's own mode instead of failing the call.
-+        NSLog("[RakazoRealtimeAudio] voice processing unavailable: %@", error.localizedDescription)
-+      }
-+    }
-+
-+    // With the voice processing unit running, some devices answer on the receiver — the same audio
-+    // at a fraction of the volume. A headset is already the right output; on the phone itself, ask
-+    // for the speaker explicitly instead of trusting the category option to win.
-+    if !Self.playsOnHeadset(session) {
-+      try? session.overrideOutputAudioPort(.speaker)
-+    }
 +
 +    guard
++      inputRate >= 8_000, outputRate >= 8_000,
 +      let capture = AVAudioFormat(
 +        commonFormat: .pcmFormatInt16, sampleRate: inputRate, channels: 1, interleaved: true
-+      )
-+    else {
-+      throw Exception(
-+        name: "ERR_REALTIME_AUDIO_FORMAT",
-+        description: "This device cannot record at \(Int(inputRate)) Hz."
-+      )
-+    }
-+    captureFormat = capture
-+    // 20 ms of PCM16 mono: what the gateway is built around.
-+    chunkBytes = max(2, Int((inputRate / 50).rounded()) * 2)
-+
-+    // The format the unit is actually running at, read after voice processing was switched on: it
-+    // is the unit's own (48 kHz, one channel as a rule), not the session's before the call.
-+    let hardware = microphone.outputFormat(forBus: 0)
-+    guard hardware.sampleRate > 0, hardware.channelCount > 0,
-+      let converter = AVAudioConverter(from: hardware, to: capture)
-+    else {
-+      throw Exception(
-+        name: "ERR_REALTIME_AUDIO_UNAVAILABLE",
-+        description: "The microphone is not available for a call."
-+      )
-+    }
-+    inputConverter = converter
-+
-+    guard
++      ),
 +      let playback = AVAudioFormat(
 +        commonFormat: .pcmFormatFloat32, sampleRate: outputRate, channels: 1, interleaved: false
 +      )
 +    else {
 +      throw Exception(
 +        name: "ERR_REALTIME_AUDIO_FORMAT",
-+        description: "This device cannot play at \(Int(outputRate)) Hz."
++        description: "This device cannot carry a call at \(Int(inputRate)) / \(Int(outputRate)) Hz."
 +      )
 +    }
-+    playbackFormat = playback
-+    if !playerAttached {
-+      engine.attach(player)
-+      playerAttached = true
-+    }
-+    // Nothing in the chain may be turning the voice down: the player is at unity, the mixer is at
-+    // unity, and the level work happens once, in `play`, where the incoming PCM16 is known.
-+    player.volume = 1
-+    engine.disconnectNodeOutput(player)
-+    engine.connect(player, to: engine.mainMixerNode, format: playback)
-+    engine.mainMixerNode.outputVolume = 1
-+    engine.prepare()
-+    try engine.start()
++    // 20 ms of PCM16 mono: what the gateway is built around.
++    let chunk = max(2, Int((inputRate / 50).rounded()) * 2)
 +
++    formats.lock()
++    self.captureFormat = capture
++    self.playbackFormat = playback
++    self.inputConverter = nil
++    self.converterSource = nil
++    formats.unlock()
++    chunkBytes = chunk
++
++    applySession()
++    configureVoiceProcessing()
++
++    // The microphone's own format, read after the unit was switched on: it is the unit's (48 kHz,
++    // one channel as a rule), not the session's before the call. When even that is unusable the
++    // call still opens — the tap is simply left for the watchdog to install the moment the route
++    // settles on something real.
++    if !Self.usable(engine.inputNode.outputFormat(forBus: 0))
++      && !Self.usable(engine.inputNode.inputFormat(forBus: 0))
++    {
++      report("mic-format-missing", "the input node has no usable format yet")
++    }
++
++    connectPlayer()
++    // The tap goes on before the engine runs: an engine that is already pulling audio is the one
++    // place where a tap can be added and then hear nothing at all.
++    installTap()
++    observe()
++    // A change the system posts while the engine is starting is one this call has to repair, so the
++    // call counts as running from here.
 +    running = true
 +    muted = false
-+    buffers.async { self.pending.removeAll(keepingCapacity: true) }
-+    microphone.installTap(onBus: 0, bufferSize: 1024, format: hardware) { [weak self] buffer, _ in
-+      self?.consume(buffer)
++    engine.prepare()
++    do {
++      try engine.start()
++    } catch {
++      report("engine-start-failed", error.localizedDescription)
++      stop()
++      throw Exception(
++        name: "ERR_REALTIME_AUDIO_UNAVAILABLE",
++        description: "The microphone is not available for a call."
++      )
 +    }
-+    tapInstalled = true
++
++    framesSeen = 0
++    lastFrameAt = 0
++    silenceRepairs = 0
++    silenceLogged = false
++    gaveUp = false
++    repairs = 0
++    startedAt = ProcessInfo.processInfo.systemUptime
++    lastRepairAt = startedAt
++    buffers.async { self.pending.removeAll(keepingCapacity: true) }
 +    player.play()
++    startWatchdog()
++    report("started", Self.describe(session: .sharedInstance(), input: engine.inputNode))
 +  }
 +
 +  private func stop() {
 +    running = false
 +    muted = false
++    stopWatchdog()
++    routeSettling?.cancel()
++    routeSettling = nil
++    removeObservers()
 +    if tapInstalled {
 +      engine.inputNode.removeTap(onBus: 0)
 +      tapInstalled = false
@@ -91027,21 +91074,99 @@ index 0000000..594e42d
 +    if engine.isRunning {
 +      engine.stop()
 +    }
-+    buffers.sync { self.pending.removeAll(keepingCapacity: true) }
++    buffers.sync {
++      self.pending.removeAll(keepingCapacity: true)
++      self.framesSeen = 0
++      self.lastFrameAt = 0
++    }
++    formats.lock()
 +    inputConverter = nil
++    converterSource = nil
 +    captureFormat = nil
 +    playbackFormat = nil
++    formats.unlock()
++    converterBroken = false
++    emptyConversions = 0
++    gaveUp = false
++    repairs = 0
++    silenceRepairs = 0
++    silenceLogged = false
++    voiceProcessingWanted = true
 +    // Give the microphone back the way it was taken: left on, every later recording (dictation, a
 +    // voice note, the turn-based call) would still run through the call's processing.
 +    if voiceProcessingOn, engine.inputNode.isVoiceProcessingEnabled {
 +      try? engine.inputNode.setVoiceProcessingEnabled(false)
 +    }
 +    voiceProcessingOn = false
-+    removeInterruptionObserver()
 +    // Hands audio back: haptics, music and every other sound the call had taken over.
 +    let session = AVAudioSession.sharedInstance()
 +    try? session.overrideOutputAudioPort(.none)
 +    try? session.setActive(false, options: .notifyOthersOnDeactivation)
++  }
++
++  // MARK: - The session
++
++  /// The call's session, asserted again whenever the route moved: the app's own audio players set
++  /// the shared session too, and a call is not the place that loses.
++  private func applySession() {
++    let session = AVAudioSession.sharedInstance()
++    do {
++      try session.setCategory(.playAndRecord, mode: .voiceChat, options: Self.categoryOptions)
++    } catch {
++      report("session-category-failed", error.localizedDescription)
++    }
++    do {
++      try session.setActive(true, options: [])
++    } catch {
++      report("session-active-failed", error.localizedDescription)
++    }
++    // With the voice processing unit running, some devices answer on the receiver — the same audio
++    // at a fraction of the volume. A headset is already the right output; on the phone itself, ask
++    // for the speaker explicitly instead of trusting the category option to win.
++    if !Self.playsOnHeadset(session) {
++      try? session.overrideOutputAudioPort(.speaker)
++    }
++  }
++
++  /// `.voiceChat` says what kind of audio this is; it does not switch the echo canceller on. The
++  /// voice processing unit does, and it can only be enabled while the engine is stopped. It takes
++  /// over the output node too, so the speaker's audio is what gets subtracted from the microphone.
++  ///
++  /// A unit that answers with an unusable input format (no rate, no channels) is worse than no unit
++  /// at all — it is the state in which the tap hears nothing — so it is switched back off and the
++  /// call carries on through the session's own mode instead of failing.
++  private func configureVoiceProcessing() {
++    let input = engine.inputNode
++    if input.isVoiceProcessingEnabled {
++      voiceProcessingOn = true
++    } else if voiceProcessingWanted {
++      do {
++        try input.setVoiceProcessingEnabled(true)
++        voiceProcessingOn = true
++      } catch {
++        voiceProcessingWanted = false
++        report("voice-processing-unavailable", error.localizedDescription)
++      }
++    }
++    guard voiceProcessingOn else { return }
++    guard !Self.usable(input.outputFormat(forBus: 0)) else { return }
++    report("voice-processing-format", "the unit answered no usable input format; leaving it off")
++    try? input.setVoiceProcessingEnabled(false)
++    voiceProcessingOn = false
++    voiceProcessingWanted = false
++  }
++
++  private static var categoryOptions: AVAudioSession.CategoryOptions {
++    var options: AVAudioSession.CategoryOptions = [.defaultToSpeaker]
++    // The hands-free profile is what a call needs from Bluetooth: it carries the microphone as
++    // well. A2DP is playback only, and adding it would route the call at the car's media input
++    // and leave the microphone on the phone.
++    #if compiler(>=6.2)
++      options.insert(.allowBluetoothHFP)
++    #else
++      options.insert(.allowBluetooth)
++    #endif
++    return options
 +  }
 +
 +  /// True when the call is already going somewhere other than the phone's own receiver or speaker.
@@ -91051,34 +91176,101 @@ index 0000000..594e42d
 +    }
 +  }
 +
++  private static func usable(_ format: AVAudioFormat) -> Bool {
++    format.sampleRate > 0 && format.channelCount > 0
++  }
++
++  // MARK: - The graph
++
++  private func connectPlayer() {
++    formats.lock()
++    let playback = playbackFormat
++    formats.unlock()
++    guard let playback else { return }
++    if !playerAttached {
++      engine.attach(player)
++      playerAttached = true
++    }
++    // Nothing in the chain may be turning the voice down: the player is at unity, the mixer is at
++    // unity, and the level work happens once, in `play`, where the incoming PCM16 is known.
++    player.volume = 1
++    engine.disconnectNodeOutput(player)
++    engine.connect(player, to: engine.mainMixerNode, format: playback)
++    engine.mainMixerNode.outputVolume = 1
++  }
++
++  /// Puts the microphone tap on the input node's own format — the one the node is running at after
++  /// the route and the voice processing unit settled, never a format guessed before either.
++  private func installTap() {
++    let input = engine.inputNode
++    if tapInstalled {
++      input.removeTap(onBus: 0)
++      tapInstalled = false
++    }
++    let output = input.outputFormat(forBus: 0)
++    let hardware = Self.usable(output) ? output : input.inputFormat(forBus: 0)
++    guard Self.usable(hardware) else { return }
++    input.installTap(onBus: 0, bufferSize: 1024, format: hardware) { [weak self] buffer, _ in
++      self?.consume(buffer)
++    }
++    tapInstalled = true
++  }
++
++  /// Rebuilds what a route or configuration change took apart: the session, the player's place in
++  /// the graph, the tap and the running engine, in that order.
++  private func repair(_ why: String) {
++    guard running, !gaveUp else { return }
++    let now = ProcessInfo.processInfo.systemUptime
++    // A route change arrives as a burst (the swap itself, then the session settling); one repair
++    // per burst is enough.
++    guard now - lastRepairAt > 0.25 else { return }
++    lastRepairAt = now
++    repairs += 1
++    // Twenty seconds of never getting a graph to run is the hardware, not something to keep
++    // tearing down: say so once and leave the call to end on its own.
++    if repairs > 40 {
++      gaveUp = true
++      report("giving-up", Self.describe(session: .sharedInstance(), input: engine.inputNode))
++      return
++    }
++    report("repair", why)
++    engine.stop()
++    applySession()
++    configureVoiceProcessing()
++    connectPlayer()
++    installTap()
++    engine.prepare()
++    do {
++      try engine.start()
++    } catch {
++      report("repair-start-failed", error.localizedDescription)
++      return
++    }
++    player.play()
++    silenceLogged = false
++  }
++
++  // MARK: - The microphone
++
 +  /// One tap buffer, cut to the call's rate and handed over in whole 20 ms pieces.
 +  private func consume(_ buffer: AVAudioPCMBuffer) {
-+    guard running, !muted, let converter = inputConverter, let capture = captureFormat else {
-+      return
-+    }
-+    let ratio = capture.sampleRate / buffer.format.sampleRate
-+    let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 32
-+    guard capacity > 0, let converted = AVAudioPCMBuffer(pcmFormat: capture, frameCapacity: capacity)
-+    else { return }
-+    var error: NSError?
-+    var supplied = false
-+    converter.convert(to: converted, error: &error) { _, status in
-+      if supplied {
-+        status.pointee = .noDataNow
-+        return nil
-+      }
-+      supplied = true
-+      status.pointee = .haveData
-+      return buffer
-+    }
-+    guard error == nil, converted.frameLength > 0, let samples = converted.int16ChannelData?[0] else {
-+      return
-+    }
-+    let data = Data(
-+      bytes: samples, count: Int(converted.frameLength) * MemoryLayout<Int16>.size)
++    guard running, !muted else { return }
++    formats.lock()
++    let capture = captureFormat
++    formats.unlock()
++    guard let capture else { return }
++
++    // The unit is the good path; the resampler is the one that keeps a call from being silence when
++    // the unit answers nothing for the format the route settled on.
++    var data: Data? = converterBroken ? nil : convert(buffer, to: capture)
++    if data == nil { data = resample(buffer, to: capture) }
++    guard let data, !data.isEmpty else { return }
++
 +    let chunk = chunkBytes
 +    buffers.async { [weak self] in
 +      guard let self else { return }
++      self.framesSeen += 1
++      self.lastFrameAt = ProcessInfo.processInfo.systemUptime
 +      self.pending.append(data)
 +      // A client that falls far behind (the socket stalled) drops the backlog rather than
 +      // replaying a second of stale speech into the call.
@@ -91093,6 +91285,98 @@ index 0000000..594e42d
 +    }
 +  }
 +
++  /// The converter for the microphone's current format, made once and kept while the format holds.
++  private func converter(for source: AVAudioFormat, to capture: AVAudioFormat) -> AVAudioConverter? {
++    formats.lock()
++    defer { formats.unlock() }
++    if let converter = inputConverter, let held = converterSource, held.matches(source) {
++      return converter
++    }
++    guard let converter = AVAudioConverter(from: source, to: capture) else { return nil }
++    converterSource = source
++    inputConverter = converter
++    return converter
++  }
++
++  /// Converts one tap buffer; nil when the unit produced no samples for it.
++  private func convert(_ buffer: AVAudioPCMBuffer, to capture: AVAudioFormat) -> Data? {
++    guard let converter = converter(for: buffer.format, to: capture) else { return nil }
++    let data = run(converter, input: buffer, output: capture)
++    if data != nil {
++      emptyConversions = 0
++      return data
++    }
++    // A unit that answers eight buffers in a row with nothing is not going to start: every later
++    // frame goes through the resampler instead of being dropped as silence.
++    emptyConversions += 1
++    if emptyConversions > 8, !converterBroken {
++      converterBroken = true
++      report("converter-silent", "\(Int(buffer.format.sampleRate)) Hz → \(Int(capture.sampleRate)) Hz")
++    }
++    return nil
++  }
++
++  private func run(_ converter: AVAudioConverter, input: AVAudioPCMBuffer, output: AVAudioFormat) -> Data? {
++    let ratio = output.sampleRate / input.format.sampleRate
++    let capacity = AVAudioFrameCount(Double(input.frameLength) * ratio) + 32
++    guard capacity > 0, let converted = AVAudioPCMBuffer(pcmFormat: output, frameCapacity: capacity)
++    else { return nil }
++    var error: NSError?
++    var supplied = false
++    converter.convert(to: converted, error: &error) { _, status in
++      if supplied {
++        status.pointee = .noDataNow
++        return nil
++      }
++      supplied = true
++      status.pointee = .haveData
++      return input
++    }
++    guard error == nil, converted.frameLength > 0, let samples = converted.int16ChannelData?[0] else {
++      return nil
++    }
++    return Data(bytes: samples, count: Int(converted.frameLength) * MemoryLayout<Int16>.size)
++  }
++
++  /// The fallback when `AVAudioConverter` will not do it: linear interpolation from whatever the
++  /// hardware gives to the rate the model takes. Worse than the unit, and the only thing between a
++  /// call and silence when the unit refuses.
++  private func resample(_ buffer: AVAudioPCMBuffer, to capture: AVAudioFormat) -> Data? {
++    let frames = Int(buffer.frameLength)
++    let sourceRate = buffer.format.sampleRate
++    guard frames > 0, sourceRate > 0, capture.sampleRate > 0 else { return nil }
++    let step = sourceRate / capture.sampleRate
++    let count = Int((Double(frames) / step).rounded(.up))
++    guard count > 0 else { return nil }
++    let channel: [Float]?
++    switch buffer.format.commonFormat {
++    case .pcmFormatFloat32:
++      channel = buffer.floatChannelData.map { pointer in
++        Array(UnsafeBufferPointer(start: pointer[0], count: frames))
++      }
++    case .pcmFormatInt16:
++      channel = buffer.int16ChannelData.map { pointer in
++        (0..<frames).map { Float(pointer[0][$0]) / 32_768.0 }
++      }
++    default:
++      channel = nil
++    }
++    guard let samples = channel else { return nil }
++    var out = [Int16](repeating: 0, count: count)
++    for index in 0..<count {
++      let position = Double(index) * step
++      let low = min(Int(position), frames - 1)
++      let high = min(low + 1, frames - 1)
++      let fraction = Float(position - Double(low))
++      let value = samples[low] * (1 - fraction) + samples[high] * fraction
++      out[index] = Int16(max(-1, min(1, value)) * 32_767)
++    }
++    return out.withUnsafeBufferPointer { pointer in
++      guard let base = pointer.baseAddress else { return nil }
++      return Data(bytes: base, count: count * MemoryLayout<Int16>.size)
++    }
++  }
++
 +  private func emit(_ data: Data) {
 +    let base64 = data.base64EncodedString()
 +    DispatchQueue.main.async { [weak self] in
@@ -91100,9 +91384,19 @@ index 0000000..594e42d
 +    }
 +  }
 +
++  // MARK: - The speaker
++
 +  private func play(base64: String) {
-+    guard running, let format = playbackFormat, let data = Data(base64Encoded: base64) else {
-+      return
++    guard running, let data = Data(base64Encoded: base64) else { return }
++    formats.lock()
++    let format = playbackFormat
++    formats.unlock()
++    guard let format else { return }
++    // A call whose engine was stopped under it (a route change, another part of the app taking the
++    // session) is put back together before this piece is queued, so the reply is heard instead of
++    // being scheduled on a graph that is not running.
++    if !engine.isRunning || !tapInstalled {
++      repair("playback")
 +    }
 +    let frames = data.count / MemoryLayout<Int16>.size
 +    guard frames > 0,
@@ -91118,7 +91412,7 @@ index 0000000..594e42d
 +      }
 +    }
 +    player.scheduleBuffer(buffer, completionHandler: nil)
-+    if !player.isPlaying {
++    if running, !player.isPlaying {
 +      player.play()
 +    }
 +  }
@@ -91136,42 +91430,208 @@ index 0000000..594e42d
 +    guard playerAttached else { return }
 +    // Stopping the node throws away everything it had queued and not yet played.
 +    player.stop()
-+    if running {
++    if running, engine.isRunning {
 +      player.play()
 +    }
 +  }
 +
-+  private func observeInterruptions() {
-+    guard interruptionObserver == nil else { return }
-+    interruptionObserver = NotificationCenter.default.addObserver(
-+      forName: AVAudioSession.interruptionNotification,
-+      object: AVAudioSession.sharedInstance(),
-+      queue: .main
-+    ) { [weak self] notification in
-+      guard let self,
-+        let raw = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
-+        let type = AVAudioSession.InterruptionType(rawValue: raw)
-+      else { return }
-+      switch type {
-+      case .began:
-+        self.sendEvent("onInterruption", ["began": true])
-+      case .ended:
-+        // The system paused the engine for the interruption; pick the call back up.
-+        if self.running, !self.engine.isRunning {
-+          try? self.engine.start()
-+          self.player.play()
-+        }
-+        self.sendEvent("onInterruption", ["began": false])
-+      @unknown default:
-+        break
++  // MARK: - The world moving under the call
++
++  private func observe() {
++    let center = NotificationCenter.default
++    let session = AVAudioSession.sharedInstance()
++    if interruptionObserver == nil {
++      interruptionObserver = center.addObserver(
++        forName: AVAudioSession.interruptionNotification,
++        object: session,
++        queue: .main
++      ) { [weak self] notification in
++        self?.interrupted(notification)
++      }
++    }
++    if routeObserver == nil {
++      routeObserver = center.addObserver(
++        forName: AVAudioSession.routeChangeNotification,
++        object: session,
++        queue: .main
++      ) { [weak self] _ in
++        self?.routeChanged()
++      }
++    }
++    if configurationObserver == nil {
++      configurationObserver = center.addObserver(
++        forName: NSNotification.Name.AVAudioEngineConfigurationChange,
++        object: engine,
++        queue: .main
++      ) { [weak self] _ in
++        self?.configurationChanged()
++      }
++    }
++    if resetObserver == nil {
++      resetObserver = center.addObserver(
++        forName: AVAudioSession.mediaServicesWereResetNotification,
++        object: session,
++        queue: .main
++      ) { [weak self] _ in
++        self?.mediaServicesReset()
 +      }
 +    }
 +  }
 +
-+  private func removeInterruptionObserver() {
-+    guard let observer = interruptionObserver else { return }
-+    NotificationCenter.default.removeObserver(observer)
++  private func removeObservers() {
++    let center = NotificationCenter.default
++    for observer in [interruptionObserver, routeObserver, configurationObserver, resetObserver] {
++      if let observer { center.removeObserver(observer) }
++    }
 +    interruptionObserver = nil
++    routeObserver = nil
++    configurationObserver = nil
++    resetObserver = nil
++  }
++
++  private func interrupted(_ notification: Notification) {
++    guard let raw = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
++      let type = AVAudioSession.InterruptionType(rawValue: raw)
++    else { return }
++    switch type {
++    case .began:
++      sendEvent("onInterruption", ["began": true])
++    case .ended:
++      // The system paused the engine for the interruption and may also have deactivated the
++      // session: the call is picked back up with both, not just the engine.
++      if running {
++        let session = AVAudioSession.sharedInstance()
++        try? session.setActive(true, options: [])
++        repair("interruption-ended")
++      }
++      sendEvent("onInterruption", ["began": false])
++    @unknown default:
++      break
++    }
++  }
++
++  /// A car, a headset or the phone's own speaker: the route moved, which is the moment the engine
++  /// is stopped and a call goes silent in both directions. The session is given a moment to settle
++  /// so the graph is rebuilt once, on the route it is going to keep.
++  private func routeChanged() {
++    guard running else { return }
++    report("route-changed", Self.describe(session: .sharedInstance(), input: engine.inputNode))
++    routeSettling?.cancel()
++    let work = DispatchWorkItem { [weak self] in
++      guard let self else { return }
++      self.routeSettling = nil
++      guard self.running else { return }
++      // A graph that is still running only lost its output; a graph the swap stopped is rebuilt.
++      if self.engine.isRunning, self.tapInstalled {
++        let session = AVAudioSession.sharedInstance()
++        if !Self.playsOnHeadset(session) {
++          try? session.overrideOutputAudioPort(.speaker)
++        }
++        if !self.player.isPlaying { self.player.play() }
++        return
++      }
++      self.repair("route-changed")
++    }
++    routeSettling = work
++    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
++  }
++
++  /// The engine's own graph changed format or stopped: nothing it had is still valid.
++  private func configurationChanged() {
++    guard running else { return }
++    report("configuration-changed", "engine running: \(engine.isRunning)")
++    // An engine that kept running through the change needs nothing; repairing it here would fight
++    // the change in a loop of its own.
++    guard !engine.isRunning || !tapInstalled else { return }
++    repair("configuration-changed")
++  }
++
++  /// The system's audio stack was rebuilt; every node and the session's configuration went with it.
++  private func mediaServicesReset() {
++    guard running else { return }
++    report("media-services-reset", "rebuilding the audio graph")
++    voiceProcessingWanted = true
++    voiceProcessingOn = false
++    converterBroken = false
++    formats.lock()
++    inputConverter = nil
++    converterSource = nil
++    formats.unlock()
++    repair("media-services-reset")
++  }
++
++  // MARK: - The watchdog
++
++  /// A call that has gone quiet without a notification to say so — the engine stopped, the route
++  /// moved twice, the tap heard nothing — is put back together here, so a call can never sit at
++  /// "connected" while neither side is heard.
++  private func startWatchdog() {
++    stopWatchdog()
++    let timer = DispatchSource.makeTimerSource(queue: .main)
++    timer.schedule(deadline: .now() + 0.4, repeating: 0.5, leeway: .milliseconds(100))
++    timer.setEventHandler { [weak self] in
++      self?.watch()
++    }
++    timer.resume()
++    watchdog = timer
++  }
++
++  private func stopWatchdog() {
++    watchdog?.cancel()
++    watchdog = nil
++  }
++
++  private func watch() {
++    guard running else { return }
++    let now = ProcessInfo.processInfo.systemUptime
++    if !engine.isRunning || !tapInstalled {
++      repair("watchdog-engine-stopped")
++      return
++    }
++    guard !muted else { return }
++    let (seen, last) = buffers.sync { (framesSeen, lastFrameAt) }
++    if seen == 0 {
++      // Two seconds in, a call that has produced nothing at all gets its graph rebuilt once more;
++      // by four seconds it is not something this module can fix, and saying so beats another
++      // silent call.
++      if now - startedAt > 2.0, silenceRepairs < 2 {
++        silenceRepairs += 1
++        repair("watchdog-no-frames")
++      } else if now - startedAt > 4.0, !silenceLogged {
++        silenceLogged = true
++        report("no-frames", Self.describe(session: .sharedInstance(), input: engine.inputNode))
++      }
++      return
++    }
++    if last > 0, now - last > 2.5, silenceRepairs < 4 {
++      silenceRepairs += 1
++      repair("watchdog-frames-stalled")
++    }
++  }
++
++  // MARK: - Logging
++
++  private static func describe(session: AVAudioSession, input: AVAudioInputNode) -> String {
++    let outputs = session.currentRoute.outputs.map(\.portType.rawValue).joined(separator: ",")
++    let inputs = session.currentRoute.inputs.map(\.portType.rawValue).joined(separator: ",")
++    let format = input.outputFormat(forBus: 0)
++    return "out=\(outputs) in=\(inputs) mic=\(Int(format.sampleRate))x\(format.channelCount) "
++      + "vp=\(input.isVoiceProcessingEnabled) category=\(session.category.rawValue) "
++      + "mode=\(session.mode.rawValue) others=\(session.isOtherAudioPlaying)"
++  }
++
++  private func report(_ stage: String, _ detail: String) {
++    NSLog("[RakazoRealtimeAudio] %@: %@", stage, detail)
++  }
++}
++
++private extension AVAudioFormat {
++  /// Whether two formats would give the same converter: `AVAudioFormat` has no value equality.
++  func matches(_ other: AVAudioFormat) -> Bool {
++    sampleRate == other.sampleRate
++      && channelCount == other.channelCount
++      && commonFormat == other.commonFormat
++      && isInterleaved == other.isInterleaved
 +  }
 +}
 diff --git a/apps/mobile/modules/rakazo-realtime-audio/package.json b/apps/mobile/modules/rakazo-realtime-audio/package.json

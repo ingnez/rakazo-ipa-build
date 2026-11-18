@@ -35,6 +35,11 @@ test -f apps/mobile/modules/rakazo-document-scanner/ios/RakazoDocumentScannerMod
 # A live call is half native: without this module the phone has no microphone stream to send.
 test -f apps/mobile/modules/rakazo-realtime-audio/ios/RakazoRealtimeAudioModule.swift
 test -f apps/mobile/lib/realtime-call.ts
+# And a call that stays audible is the module listening to the audio graph: a patch that lost the
+# route/configuration repair, or the tap before the start, must fail here and not 25 minutes later.
+grep -q 'AVAudioEngineConfigurationChange' apps/mobile/modules/rakazo-realtime-audio/ios/RakazoRealtimeAudioModule.swift
+grep -q 'private func repair(_ why: String)' apps/mobile/modules/rakazo-realtime-audio/ios/RakazoRealtimeAudioModule.swift
+grep -q 'ArrayBuffer.isView(data)' apps/mobile/lib/realtime-call.ts
 # This round's own files: the shelves an app belongs on and the row that shows it.
 test -f apps/mobile/lib/integration-categories.ts
 test -f apps/mobile/components/connect-app-row.tsx

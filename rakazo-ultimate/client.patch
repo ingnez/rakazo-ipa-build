@@ -72282,10 +72282,10 @@ index 0000000..2b62f98
 +}
 diff --git a/apps/mobile/components/thread/file-attachment-card.tsx b/apps/mobile/components/thread/file-attachment-card.tsx
 new file mode 100644
-index 0000000..fdac730
+index 0000000..7ac181d
 --- /dev/null
 +++ b/apps/mobile/components/thread/file-attachment-card.tsx
-@@ -0,0 +1,205 @@
+@@ -0,0 +1,208 @@
 +import { ph } from "@lingui/core/macro";
 +import { useLingui } from "@lingui/react/macro";
 +import { formatFileSize } from "@rakazo/core";
@@ -72369,12 +72369,15 @@ index 0000000..fdac730
 +  const { t } = useLingui();
 +  const tokens = useMobileTokens();
 +  const theme = useResolvedAppearance();
-+  // The reference app names the file without its extension and puts the type under it as the
-+  // format itself ("MD · 5.6 KB"), so a long name keeps its room and the format reads at a glance.
++  // The reference app names the file without its extension and puts the type under it after the
++  // size, in its own lower case ("10.2 KB · md"), so a long name keeps its room and the format
++  // reads at a glance.
 +  const { title, extension } = splitFileName(name);
 +  const sizeLabel = size === undefined ? undefined : formatFileSize(size);
-+  // A file with no extension still says how big it is, without a dot left dangling before it.
-+  const format = extension ? [extension, sizeLabel].filter(Boolean).join(" · ") : sizeLabel;
++  // A file with no extension still says how big it is, without a dot left dangling after it.
++  const format = extension
++    ? [sizeLabel, extension.toLowerCase()].filter(Boolean).join(" · ")
++    : sizeLabel;
 +  const detail = caption ?? format ?? t`File`;
 +  const cardFill = theme === "dark" ? DARK_CARD_FILL : "#FFFFFF";
 +  return (

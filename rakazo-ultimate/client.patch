@@ -2719,7 +2719,7 @@ index 5353060..37aeab1 100644
              {target.scope === "account" ? (
 diff --git a/apps/mobile/app/(settings)/usage.tsx b/apps/mobile/app/(settings)/usage.tsx
 new file mode 100644
-index 0000000..533cfdb
+index 0000000..b532759
 --- /dev/null
 +++ b/apps/mobile/app/(settings)/usage.tsx
 @@ -0,0 +1,521 @@
@@ -2753,7 +2753,6 @@ index 0000000..533cfdb
 +import { native, useMobileTokens, useThemedStyles } from "../../lib/native";
 +import { accountRpcQuery, queryClient } from "../../lib/query";
 +import { useSideInsets } from "../../lib/side-insets";
-+import { errorText } from "../../lib/user-error";
 +import type { UsageTag, UsageTagKey } from "../../lib/usage-display";
 +import {
 +  formatCompactTokens,
@@ -2766,6 +2765,7 @@ index 0000000..533cfdb
 +  thinkingLabel,
 +  usageTags,
 +} from "../../lib/usage-display";
++import { errorText } from "../../lib/user-error";
 +
 +/**
 + * What the Bot has spent over one rolling window, told apart by who it was working for: the front
@@ -87966,11 +87966,11 @@ index 0000000..ce083d8
 +});
 diff --git a/apps/mobile/lib/usage-display.ts b/apps/mobile/lib/usage-display.ts
 new file mode 100644
-index 0000000..9a315cf
+index 0000000..ac6a1e5
 --- /dev/null
 +++ b/apps/mobile/lib/usage-display.ts
 @@ -0,0 +1,142 @@
-+import type { UsageDetailCall, UsageDesk, UsageDetailWindow } from "@rakazo/contracts";
++import type { UsageDesk, UsageDetailCall, UsageDetailWindow } from "@rakazo/contracts";
 +
 +/**
 + * How the usage screens write a number down: short enough to sit beside a label, exact enough to
@@ -88114,10 +88114,10 @@ index 0000000..9a315cf
 +}
 diff --git a/apps/mobile/lib/usage-screen.test.tsx b/apps/mobile/lib/usage-screen.test.tsx
 new file mode 100644
-index 0000000..f0c51a4
+index 0000000..3101802
 --- /dev/null
 +++ b/apps/mobile/lib/usage-screen.test.tsx
-@@ -0,0 +1,401 @@
+@@ -0,0 +1,403 @@
 +// @vitest-environment jsdom
 +
 +import type { UsageDetails } from "@rakazo/contracts";
@@ -88333,7 +88333,9 @@ index 0000000..f0c51a4
 +  dateLocaleForUi: () => "en-US",
 +  useUiLocale: () => "zh-CN",
 +}));
-+vi.mock("./appearance", () => ({ mobileTokens: () => ({ destructive: "red", warning: "orange" }) }));
++vi.mock("./appearance", () => ({
++  mobileTokens: () => ({ destructive: "red", warning: "orange" }),
++}));
 +vi.mock("./native", () => ({
 +  native: {
 +    groupedPage: "#fff",

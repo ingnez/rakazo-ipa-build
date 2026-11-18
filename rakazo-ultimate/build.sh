@@ -40,6 +40,12 @@ test -f apps/mobile/lib/realtime-call.ts
 grep -q 'AVAudioEngineConfigurationChange' apps/mobile/modules/rakazo-realtime-audio/ios/RakazoRealtimeAudioModule.swift
 grep -q 'private func repair(_ why: String)' apps/mobile/modules/rakazo-realtime-audio/ios/RakazoRealtimeAudioModule.swift
 grep -q 'ArrayBuffer.isView(data)' apps/mobile/lib/realtime-call.ts
+# A file's card shows what is inside the file: the parser, the sheet it is set on, and the page a
+# PDF is drawn as. A patch that lost any of them would still compile a card that says nothing.
+test -f apps/mobile/lib/file-preview.ts
+test -f apps/mobile/components/thread/file-preview-paper.tsx
+grep -q 'file-paper-fade' apps/mobile/components/thread/file-preview-paper.tsx
+grep -q 'pdfThumbnail' apps/mobile/modules/rakazo-pdf-view/ios/RakazoPdfViewModule.swift
 # This round's own files: the shelves an app belongs on and the row that shows it.
 test -f apps/mobile/lib/integration-categories.ts
 test -f apps/mobile/components/connect-app-row.tsx

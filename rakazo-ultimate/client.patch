@@ -72282,18 +72282,20 @@ index 0000000..2b62f98
 +}
 diff --git a/apps/mobile/components/thread/file-attachment-card.tsx b/apps/mobile/components/thread/file-attachment-card.tsx
 new file mode 100644
-index 0000000..36b7638
+index 0000000..fdac730
 --- /dev/null
 +++ b/apps/mobile/components/thread/file-attachment-card.tsx
-@@ -0,0 +1,170 @@
+@@ -0,0 +1,205 @@
 +import { ph } from "@lingui/core/macro";
 +import { useLingui } from "@lingui/react/macro";
 +import { formatFileSize } from "@rakazo/core";
 +import type { PressableProps, ViewProps } from "react-native";
 +import { Pressable, StyleSheet, Text, View } from "react-native";
 +import Svg, { Path } from "react-native-svg";
++import type { MobileArtifactTarget } from "../../lib/artifact-open";
 +import { splitFileName } from "../../lib/file-name";
 +import { useMobileTokens, useResolvedAppearance } from "../../lib/native";
++import { FilePreviewPaper } from "./file-preview-paper";
 +
 +/** The card's own surface in the dark appearance, as the reference app draws it. */
 +const DARK_CARD_FILL = "#1C1C1E";
@@ -72325,16 +72327,20 @@ index 0000000..36b7638
 +};
 +
 +/**
-+ * A file in a chat, drawn as the file itself: document glyph, its name, and what kind of thing it
-+ * is. A tap opens it (or downloads it to the share sheet); the card is a button, so no outer
-+ * gesture has to be guessed at, and a file that cannot open says why instead of doing nothing.
++ * A file in a chat, drawn as the file itself: what is inside it when the app can show that (a
++ * text file's opening set like a page, a PDF's first page), then the document glyph, its name and
++ * what kind of thing it is. A tap opens it (or downloads it to the share sheet); the card is a
++ * button, so no outer gesture has to be guessed at, and a file that cannot open says why instead
++ * of doing nothing.
 + */
 +export function FileAttachmentCard({
 +  name,
++  mimeType,
 +  size,
 +  caption,
 +  tone = "sent",
 +  busy = false,
++  preview,
 +  onPress,
 +  onLongPress,
 +  accessibilityActions,
@@ -72342,13 +72348,18 @@ index 0000000..36b7638
 +  style,
 +}: {
 +  name: string;
-+  /** Kept for callers: the card names the format by the file's own extension, as the reference does. */
++  /** What the server called the file; the sheet above the name is read by it. */
 +  mimeType: string;
 +  size?: number;
 +  /** A line under the card: sending, failed, or the reason it would not open. */
 +  caption?: string;
 +  tone?: "sent" | "pending" | "failed";
 +  busy?: boolean;
++  /**
++   * The file the card is showing: its content is read for the sheet above the name when the app
++   * can draw it, and nothing is drawn when it cannot.
++   */
++  preview?: { target: MobileArtifactTarget; artifactId: string };
 +  onPress?: () => void;
 +  onLongPress?: PressableProps["onLongPress"];
 +  accessibilityActions?: ViewProps["accessibilityActions"];
@@ -72365,6 +72376,7 @@ index 0000000..36b7638
 +  // A file with no extension still says how big it is, without a dot left dangling before it.
 +  const format = extension ? [extension, sizeLabel].filter(Boolean).join(" · ") : sizeLabel;
 +  const detail = caption ?? format ?? t`File`;
++  const cardFill = theme === "dark" ? DARK_CARD_FILL : "#FFFFFF";
 +  return (
 +    <View style={[styles.wrap, style]}>
 +      <Pressable
@@ -72382,24 +72394,40 @@ index 0000000..36b7638
 +          {
 +            // The reference app draws a file as a card of its own: near-black on a dark chat and
 +            // pure white on a light one, with a border faint enough to only separate it.
-+            backgroundColor: theme === "dark" ? DARK_CARD_FILL : "#FFFFFF",
++            backgroundColor: cardFill,
 +            borderColor: tone === "failed" ? tokens.destructive : tokens.border,
 +            opacity: tone === "pending" ? 0.72 : pressed ? 0.9 : 1,
 +          },
 +        ]}
 +      >
-+        <DocumentGlyph dark={theme === "dark"} format={extension?.toLowerCase() ?? ""} />
-+        <View style={styles.text}>
-+          <Text
-+            numberOfLines={1}
-+            ellipsizeMode="middle"
-+            style={[styles.name, { color: tokens.foreground }]}
-+          >
-+            {title}
-+          </Text>
-+          <Text numberOfLines={1} style={[styles.detail, { color: tokens.mutedForeground }]}>
-+            {busy ? t`Opening…` : detail}
-+          </Text>
++        {preview ? (
++          // The sheet sits inside the card's own rounded edge, so the card reads as the page's
++          // frame rather than as a panel glued above a file row.
++          <View style={styles.preview}>
++            <FilePreviewPaper
++              artifactId={preview.artifactId}
++              background={cardFill}
++              mimeType={mimeType}
++              name={name}
++              size={size}
++              target={preview.target}
++            />
++          </View>
++        ) : null}
++        <View style={[styles.info, preview ? styles.infoUnderPreview : null]}>
++          <DocumentGlyph dark={theme === "dark"} format={extension?.toLowerCase() ?? ""} />
++          <View style={styles.text}>
++            <Text
++              numberOfLines={1}
++              ellipsizeMode="middle"
++              style={[styles.name, { color: tokens.foreground }]}
++            >
++              {title}
++            </Text>
++            <Text numberOfLines={1} style={[styles.detail, { color: tokens.mutedForeground }]}>
++              {busy ? t`Opening…` : detail}
++            </Text>
++          </View>
 +        </View>
 +      </Pressable>
 +    </View>
@@ -72434,20 +72462,27 @@ index 0000000..36b7638
 +const styles = StyleSheet.create({
 +  wrap: { gap: 4 },
 +  card: {
-+    flexDirection: "row",
-+    alignItems: "center",
-+    gap: 12,
++    // The card is a frame: the sheet above and the file's row inside share its rounded edge.
 +    borderRadius: 18,
 +    borderCurve: "continuous",
 +    borderWidth: StyleSheet.hairlineWidth,
-+    paddingHorizontal: 14,
-+    paddingVertical: 13,
++    overflow: "hidden",
 +    // A file card is a card of the conversation's own width: the reference app gives a name the
 +    // room to read on one line, and the caller hands it the message's whole width, which is the
 +    // same share of the row a long text bubble takes.
 +    alignSelf: "stretch",
 +    minWidth: FILE_CARD_MIN_WIDTH,
 +  },
++  preview: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 10 },
++  info: {
++    flexDirection: "row",
++    alignItems: "center",
++    gap: 12,
++    paddingHorizontal: 14,
++    paddingVertical: 13,
++  },
++  // Under the sheet the row is already spaced by the sheet's own padding: no second gap.
++  infoUnderPreview: { paddingTop: 4, paddingBottom: 14 },
 +  // Never `flex: 1`: the card is a shrink-wrap box inside a row that sizes to its content, and
 +  // Yoga gives a `flex: 1` child of such a box a width of zero — the name and the kind collapsed
 +  // away and only the icon was left. `flexShrink` with `minWidth: 0` lets the text take the room
@@ -72455,6 +72490,186 @@ index 0000000..36b7638
 +  text: { flex: 1, flexShrink: 1, minWidth: 0, gap: 2 },
 +  name: { fontSize: 17, fontWeight: "600", lineHeight: 22 },
 +  detail: { fontSize: 15, lineHeight: 20 },
++});
+diff --git a/apps/mobile/components/thread/file-preview-paper.tsx b/apps/mobile/components/thread/file-preview-paper.tsx
+new file mode 100644
+index 0000000..2cfa6e8
+--- /dev/null
++++ b/apps/mobile/components/thread/file-preview-paper.tsx
+@@ -0,0 +1,174 @@
++import { useEffect, useRef, useState } from "react";
++import { Image, StyleSheet, Text, View } from "react-native";
++import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
++import type { MobileArtifactTarget } from "../../lib/artifact-open";
++import { pdfArtifactThumbnail, previewTextMobileArtifact } from "../../lib/artifact-open";
++import type { PreviewBlock } from "../../lib/file-preview";
++import {
++  PREVIEW_PAPER_HEIGHT,
++  PREVIEW_TEXT_MAX_CHARS,
++  filePreviewKind,
++  previewBlocks,
++  previewMaxBytes,
++} from "../../lib/file-preview";
++import { pdfThumbnailAvailable } from "../../lib/pdf-thumbnail";
++import { APP_MONO_FONT_FAMILY } from "../../lib/app-font";
++import { useMobileTokens } from "../../lib/native";
++
++/** A portrait page's shape, so a PDF's first page can be laid out before it is drawn. */
++const PAGE_ASPECT_RATIO = 1 / 1.414;
++
++/**
++ * What a file holds, drawn on the card itself: a text file's opening set like a page, or a PDF's
++ * first page. It is decoration over a card that opens the real file, so it takes no touches and
++ * says nothing to VoiceOver; a file it cannot show — or one too big to read for a card — draws
++ * nothing at all, and the card keeps the compact file row it had.
++ */
++export function FilePreviewPaper({
++  target,
++  artifactId,
++  mimeType,
++  name,
++  size,
++  background,
++}: {
++  target: MobileArtifactTarget;
++  artifactId: string;
++  mimeType: string;
++  name: string;
++  /** The block's own size, so a 3 MB log is not read to show twelve lines of it. */
++  size?: number;
++  /** The card's fill: the page fades into it at the fold. */
++  background: string;
++}) {
++  const tokens = useMobileTokens();
++  const kind = filePreviewKind(mimeType, name);
++  const [blocks, setBlocks] = useState<PreviewBlock[] | null>(null);
++  const [page, setPage] = useState<string | null>(null);
++  const [failed, setFailed] = useState(false);
++  // The target is a fresh object on every render of the bubble; the read is keyed on its identity
++  // as a string so a re-render does not ask the server again.
++  const targetRef = useRef(target);
++  targetRef.current = target;
++  const targetKey = "botId" in target ? `bot:${target.botId}` : `group:${target.groupId}`;
++
++  useEffect(() => {
++    if (!artifactId || kind === "none" || (size !== undefined && size > previewMaxBytes(kind))) {
++      setFailed(true);
++      return;
++    }
++    let active = true;
++    setFailed(false);
++    // One guarded read: a file that cannot be read — or a card drawn where the app's own reader is
++    // not there to ask — shows nothing and the card stays compact.
++    const load = async () => {
++      try {
++        if (kind === "text") {
++          const text = await previewTextMobileArtifact(
++            targetRef.current,
++            artifactId,
++            mimeType,
++            PREVIEW_TEXT_MAX_CHARS,
++          );
++          if (!active) return;
++          const next = previewBlocks(text, { mimeType, name });
++          if (next.length) setBlocks(next);
++          else setFailed(true);
++          return;
++        }
++        if (!pdfThumbnailAvailable()) {
++          if (active) setFailed(true);
++          return;
++        }
++        const uri = await pdfArtifactThumbnail(targetRef.current, artifactId, mimeType, 420);
++        if (!active) return;
++        if (uri) setPage(uri);
++        else setFailed(true);
++      } catch {
++        if (active) setFailed(true);
++      }
++    };
++    void load();
++    return () => {
++      active = false;
++    };
++  }, [artifactId, kind, mimeType, name, size, targetKey]);
++
++  if (failed) return null;
++
++  return (
++    <View
++      pointerEvents="none"
++      importantForAccessibility="no-hide-descendants"
++      accessibilityElementsHidden
++      style={styles.paper}
++    >
++      {kind === "pdf" ? (
++        page ? (
++          <Image
++            accessibilityIgnoresInvertColors
++            resizeMode="contain"
++            source={{ uri: page }}
++            style={styles.page}
++          />
++        ) : null
++      ) : (
++        <View style={styles.blocks}>
++          {blocks?.map((block, index) =>
++            block.kind === "rule" ? (
++              <View
++                key={`rule-${index}`}
++                style={[styles.rule, { backgroundColor: tokens.border }]}
++              />
++            ) : (
++              <Text
++                key={`${index}-${block.kind}`}
++                style={[
++                  blockStyles[block.kind],
++                  { color: block.kind === "quote" ? tokens.mutedForeground : tokens.foreground },
++                  index > 0 && block.kind === "heading" ? styles.headingGap : null,
++                  index > 0 && block.kind === "subheading" ? styles.subheadingGap : null,
++                ]}
++              >
++                {block.text}
++              </Text>
++            ),
++          )}
++        </View>
++      )}
++      {kind === "text" ? (
++        <Svg style={styles.fade} width="100%" height={36}>
++          <Defs>
++            <LinearGradient id="file-paper-fade" x1="0" y1="0" x2="0" y2="1">
++              <Stop offset="0" stopColor={background} stopOpacity={0} />
++              <Stop offset="1" stopColor={background} stopOpacity={1} />
++            </LinearGradient>
++          </Defs>
++          <Rect width="100%" height={36} fill="url(#file-paper-fade)" />
++        </Svg>
++      ) : null}
++    </View>
++  );
++}
++
++/** One place for the page's type, so a title reads as a title on every card. */
++const blockStyles = StyleSheet.create({
++  heading: { fontSize: 17, lineHeight: 22, fontWeight: "700" },
++  subheading: { fontSize: 14.5, lineHeight: 20, fontWeight: "700" },
++  body: { fontSize: 13.5, lineHeight: 19, fontWeight: "400" },
++  bullet: { fontSize: 13.5, lineHeight: 19, fontWeight: "400" },
++  quote: { fontSize: 13, lineHeight: 18, fontWeight: "400" },
++  code: { fontSize: 11.5, lineHeight: 16, fontFamily: APP_MONO_FONT_FAMILY },
++  rule: { fontSize: 1, lineHeight: 1 },
++});
++
++const styles = StyleSheet.create({
++  // The fold: what does not fit is cut off mid-line, as a page under its own edge.
++  paper: { height: PREVIEW_PAPER_HEIGHT, overflow: "hidden" },
++  blocks: { gap: 3 },
++  headingGap: { marginTop: 5 },
++  subheadingGap: { marginTop: 4 },
++  rule: { height: StyleSheet.hairlineWidth, marginVertical: 5 },
++  page: { width: "100%", aspectRatio: PAGE_ASPECT_RATIO },
++  fade: { position: "absolute", left: 0, right: 0, bottom: 0 },
 +});
 diff --git a/apps/mobile/components/thread/ledger-panel.tsx b/apps/mobile/components/thread/ledger-panel.tsx
 new file mode 100644
@@ -73122,7 +73337,7 @@ index 0000000..4762d37
 +  return `${(bytes / 1024).toFixed(1)} KB`;
 +}
 diff --git a/apps/mobile/components/thread/message-bubble.tsx b/apps/mobile/components/thread/message-bubble.tsx
-index aa623d6..c2ab233 100644
+index aa623d6..de84196 100644
 --- a/apps/mobile/components/thread/message-bubble.tsx
 +++ b/apps/mobile/components/thread/message-bubble.tsx
 @@ -15,7 +15,7 @@ import {
@@ -73259,7 +73474,7 @@ index aa623d6..c2ab233 100644
            block={block}
            onDismissed={onChoiceDismissed ? () => onChoiceDismissed(block.question) : undefined}
            accessibilityActions={actionProps.accessibilityActions}
-@@ -943,3 +942,75 @@ function AgentEventLabel({
+@@ -943,3 +942,78 @@ function AgentEventLabel({
      </Pressable>
    );
  }
@@ -73331,6 +73546,9 @@ index aa623d6..c2ab233 100644
 +      onAccessibilityAction={actionProps.onAccessibilityAction}
 +      onLongPress={actionProps.onLongPress}
 +      onPress={() => void open()}
++      // What the file holds, when the app can draw it: the card shows a page of the document
++      // itself instead of a row that names it and says nothing.
++      preview={artifactId ? { target, artifactId } : undefined}
 +      size={attachment.size}
 +    />
 +  );
@@ -77643,19 +77861,105 @@ index 4e7a309..66e7d82 100644
  });
  
  it("offers a retry in the row when the first load fails", async () => {
+diff --git a/apps/mobile/lib/artifact-open.test.ts b/apps/mobile/lib/artifact-open.test.ts
+index 6edeafb..2d612ec 100644
+--- a/apps/mobile/lib/artifact-open.test.ts
++++ b/apps/mobile/lib/artifact-open.test.ts
+@@ -55,6 +55,9 @@ vi.mock("expo-secure-store", () => ({
+     state.secure.set(key, value);
+   }),
+ }));
++// The viewer and the PDF module ask the native side whether they exist; in a node test there is
++// no native side, and importing the real package needs React Native's `__DEV__`.
++vi.mock("expo-modules-core", () => ({ requireOptionalNativeModule: () => null }));
+ vi.mock("react-native", () => ({ Image: { getSize: state.getSize } }));
+ vi.mock("expo-sharing", () => ({ isAvailableAsync: vi.fn(), shareAsync: vi.fn() }));
+ vi.mock("./session", () => ({
+@@ -259,4 +262,27 @@ describe("artifact preview caches", () => {
+     await api.imageArtifactUri(target, "art-2", "image/png");
+     expect(artifactFetches()).toBe(3);
+   });
++
++  it("reads only a card's opening, from the same cached file the viewer opens", async () => {
++    // The mock writes the payload as given (the real file system decodes it), so the bytes the
++    // cache holds are the string the card reads back.
++    const stored = `# 协作流程规矩方案\n\n${"正文".repeat(60)}`;
++    state.rpc.mockImplementation(async (proc: string) =>
++      proc === "me" ? { userId: state.userId } : { contentBase64: stored },
++    );
++    const api = await load();
++    const opening = await api.previewTextMobileArtifact(target, "art-1", "text/markdown", 50);
++    expect(opening).toBe(stored.slice(0, 50));
++    // The card's read is a download like any other: the tap that opens the file pays nothing.
++    expect(artifactFetches()).toBe(1);
++    expect(await api.textMobileArtifact(target, "art-1", "text/markdown")).toBe(stored);
++    expect(artifactFetches()).toBe(1);
++  });
++
++  it("draws no PDF page in a build without the module, and downloads only once", async () => {
++    const api = await load();
++    expect(await api.pdfArtifactThumbnail(target, "art-1", "application/pdf", 420)).toBeNull();
++    expect(await api.pdfArtifactThumbnail(target, "art-1", "application/pdf", 420)).toBeNull();
++    expect(artifactFetches()).toBe(1);
++  });
+ });
 diff --git a/apps/mobile/lib/artifact-open.ts b/apps/mobile/lib/artifact-open.ts
-index 6ae6a34..1b56b38 100644
+index 6ae6a34..5c46db7 100644
 --- a/apps/mobile/lib/artifact-open.ts
 +++ b/apps/mobile/lib/artifact-open.ts
-@@ -9,6 +9,7 @@ import { artifactCacheFileName, artifactShareFileName } from "./artifact-file";
+@@ -9,6 +9,8 @@ import { artifactCacheFileName, artifactShareFileName } from "./artifact-file";
  import { ARTIFACT_DOWNLOAD_TIMEOUT_MS } from "./artifacts";
  import type { ImageSize } from "./inline-image";
  import { createKeyedPromiseCache } from "./inline-image";
++import { pdfThumbnailUri } from "./pdf-thumbnail";
 +import { openInQuickLook, quickLookOpens } from "./quick-look";
  import { currentSessionGeneration, loadSessionToken } from "./session";
  
  export type MobileArtifactTarget = { botId: string } | { groupId: string };
-@@ -155,6 +156,10 @@ export async function audioArtifactUri(
+@@ -146,6 +148,42 @@ export async function textMobileArtifact(
+   return (await cacheMobileArtifact(target, artifactId, mimeType)).text();
+ }
+ 
++/**
++ * The opening of a text artifact, for the card that shows what is inside it. It reads through the
++ * same cache the viewer uses, so opening the file afterwards is local; only `maxChars` of it is
++ * handed back, because a card shows a page and a log can be a megabyte.
++ */
++export async function previewTextMobileArtifact(
++  target: MobileArtifactTarget,
++  artifactId: string,
++  mimeType: string,
++  maxChars: number,
++): Promise<string> {
++  const text = await textMobileArtifact(target, artifactId, mimeType);
++  return text.length > maxChars ? text.slice(0, maxChars) : text;
++}
++
++const pdfThumbnails = createKeyedPromiseCache<string | null>(async (key) => {
++  const [uri, width] = JSON.parse(key) as [string, number];
++  return pdfThumbnailUri(uri, width);
++});
++
++/**
++ * The first page of a PDF artifact as a local image, for its card. The file is downloaded through
++ * the same cache the viewer fills, and the page is drawn by the app's own PDF module; concurrent
++ * cards showing one PDF share a single render.
++ */
++export async function pdfArtifactThumbnail(
++  target: MobileArtifactTarget,
++  artifactId: string,
++  mimeType: string,
++  width: number,
++): Promise<string | null> {
++  const file = await cacheMobileArtifact(target, artifactId, mimeType);
++  const uri = await pdfThumbnails.get(JSON.stringify([file.uri, Math.round(width)]));
++  return uri && new File(uri).exists ? uri : null;
++}
++
+ /** Local playback URI using the same authenticated, session-scoped artifact cache. */
+ export async function audioArtifactUri(
+   target: MobileArtifactTarget,
+@@ -155,6 +193,10 @@ export async function audioArtifactUri(
    return (await cacheMobileArtifact(target, artifactId, mimeType)).uri;
  }
  
@@ -77666,7 +77970,7 @@ index 6ae6a34..1b56b38 100644
  export async function openMobileArtifact(
    target: MobileArtifactTarget,
    artifactId: string,
-@@ -162,7 +167,20 @@ export async function openMobileArtifact(
+@@ -162,7 +204,20 @@ export async function openMobileArtifact(
    mimeType: string,
  ): Promise<void> {
    const file = await cacheMobileArtifact(target, artifactId, mimeType);
@@ -77688,7 +77992,7 @@ index 6ae6a34..1b56b38 100644
  }
  
  const imageArtifactUris = createKeyedPromiseCache<string>(async (key) => {
-@@ -236,15 +254,24 @@ export async function shareLocalFile(uri: string, mimeType: string, name: string
+@@ -236,15 +291,24 @@ export async function shareLocalFile(uri: string, mimeType: string, name: string
    await shareNamedFile(new File(uri), mimeType, name);
  }
  
@@ -81684,6 +81988,470 @@ index 0000000..6557c13
 +  const title = name.slice(0, dot).trim();
 +  return title ? { title, extension: extension.toUpperCase() } : { title: name };
 +}
+diff --git a/apps/mobile/lib/file-preview.test.ts b/apps/mobile/lib/file-preview.test.ts
+new file mode 100644
+index 0000000..0cdd7f1
+--- /dev/null
++++ b/apps/mobile/lib/file-preview.test.ts
+@@ -0,0 +1,149 @@
++import { describe, expect, it } from "vitest";
++import {
++  fileExtension,
++  filePreviewKind,
++  previewBlocks,
++  previewIsMonospaced,
++  previewMaxBytes,
++} from "./file-preview";
++
++describe("filePreviewKind", () => {
++  it("previews what the viewer can draw as text", () => {
++    expect(filePreviewKind("text/markdown", "a.md")).toBe("text");
++    expect(filePreviewKind("text/plain; charset=utf-8", "notes")).toBe("text");
++    expect(filePreviewKind("text/csv", "table.csv")).toBe("text");
++    expect(filePreviewKind("application/json", "data.json")).toBe("text");
++    expect(filePreviewKind("text/html", "page.html")).toBe("text");
++  });
++
++  it("gives a PDF its own first page", () => {
++    expect(filePreviewKind("application/pdf", "脓毒症指南.pdf")).toBe("pdf");
++  });
++
++  it("keeps images and video to their own views", () => {
++    expect(filePreviewKind("image/png", "shot.png")).toBe("none");
++    expect(filePreviewKind("video/mp4", "clip.mp4")).toBe("none");
++  });
++
++  it("reads the name when the sender gave no type", () => {
++    expect(filePreviewKind("application/octet-stream", "run.log")).toBe("text");
++    expect(filePreviewKind("", "script.py")).toBe("text");
++    expect(filePreviewKind("application/octet-stream", "archive.zip")).toBe("none");
++    expect(filePreviewKind("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "表.xlsx")).toBe(
++      "none",
++    );
++    expect(filePreviewKind("application/x-ios-app", "Bot.ipa")).toBe("none");
++  });
++
++  it("does not take a version number for a format", () => {
++    expect(fileExtension("2026.11 计划")).toBe("");
++    expect(filePreviewKind("application/pdf", "指南.v2")).toBe("pdf");
++  });
++});
++
++describe("previewMaxBytes", () => {
++  it("reads a short document, not a log that happens to end in .md", () => {
++    expect(previewMaxBytes("text")).toBe(512 * 1024);
++    expect(previewMaxBytes("pdf")).toBe(8 * 1024 * 1024);
++  });
++});
++
++describe("previewBlocks", () => {
++  const blocks = (text: string, mimeType = "text/markdown", name = "a.md") =>
++    previewBlocks(text, { mimeType, name });
++
++  it("sets the title apart and keeps the paragraphs", () => {
++    expect(blocks("# 协作流程规矩方案（谁签字，谁负责）\n\n起草：小猪包后台 日期：2026-11-18\n")).toEqual([
++      { kind: "heading", text: "协作流程规矩方案（谁签字，谁负责）" },
++      { kind: "body", text: "起草：小猪包后台 日期：2026-11-18" },
++    ]);
++  });
++
++  it("takes the emphasis marks off without eating Chinese punctuation", () => {
++    expect(blocks("**一句话结论**：\n\n现在的流程能跑，但**没锁死。**\n")).toEqual([
++      { kind: "subheading", text: "一句话结论：" },
++      { kind: "body", text: "现在的流程能跑，但没锁死。" },
++    ]);
++  });
++
++  it("keeps a word's own underscore", () => {
++    expect(blocks("改名 file_name 即可，不要 **动** 它")).toEqual([
++      { kind: "body", text: "改名 file_name 即可，不要 动 它" },
++    ]);
++  });
++
++  it("keeps list items as items, ordered ones numbered", () => {
++    expect(blocks("- 规矩 1\n- 规矩 2\n1. 第三步\n")).toEqual([
++      { kind: "bullet", text: "• 规矩 1" },
++      { kind: "bullet", text: "• 规矩 2" },
++      { kind: "bullet", text: "1. 第三步" },
++    ]);
++  });
++
++  it("drops a rule line to a hairline", () => {
++    expect(blocks("上文\n\n---\n\n下文")).toEqual([
++      { kind: "body", text: "上文" },
++      { kind: "rule", text: "" },
++      { kind: "body", text: "下文" },
++    ]);
++  });
++
++  it("reads a table row as facts on one line", () => {
++    expect(blocks("| 项目 | 结论 |\n| --- | --- |\n| 流程 | 能跑 |")).toEqual([
++      { kind: "body", text: "项目 · 结论" },
++      { kind: "body", text: "--- · ---" },
++      { kind: "body", text: "流程 · 能跑" },
++    ]);
++  });
++
++  it("shows a link by its words and an image by its alt", () => {
++    expect(blocks("见[方案](https://example.com/a.md)与![图](https://example.com/b.png)")).toEqual([
++      { kind: "body", text: "见方案与图" },
++    ]);
++  });
++
++  it("shows a page by its words, not its markup", () => {
++    const html = "<style>body{color:red}</style><h1>标题</h1><p>正文&amp;符号</p><script>x()</script>";
++    expect(blocks(html, "text/html", "page.html")).toEqual([
++      { kind: "heading", text: "标题" },
++      { kind: "body", text: "正文&符号" },
++    ]);
++  });
++
++  it("leaves a code file's lines alone, comments and all", () => {
++    expect(blocks("# 这是注释\nprint('hi')\n", "text/x-python", "run.py")).toEqual([
++      { kind: "code", text: "# 这是注释" },
++      { kind: "code", text: "print('hi')" },
++    ]);
++  });
++
++  it("sets a fenced block as code inside a document", () => {
++    expect(blocks("说明\n\n```\n# 不是标题\n```\n")).toEqual([
++      { kind: "body", text: "说明" },
++      { kind: "code", text: "# 不是标题" },
++    ]);
++  });
++
++  it("keeps a quote a quote", () => {
++    expect(blocks("> 原文如此\n")).toEqual([{ kind: "quote", text: "原文如此" }]);
++  });
++
++  it("stops at the block limit, so a long file cannot build a thousand views", () => {
++    const long = Array.from({ length: 200 }, (_, index) => `第 ${index + 1} 行`).join("\n");
++    expect(previewBlocks(long, { mimeType: "text/plain", maxBlocks: 12 })).toHaveLength(12);
++  });
++
++  it("reads a byte-order mark and blank lines without drawing them", () => {
++    expect(blocks("\ufeff\n\n标题\n\n\n")).toEqual([{ kind: "body", text: "标题" }]);
++  });
++});
++
++describe("previewIsMonospaced", () => {
++  it("sets code in the mono face and prose in the reading face", () => {
++    expect(previewIsMonospaced("text/plain", "run.py")).toBe(true);
++    expect(previewIsMonospaced("application/json", "data.json")).toBe(true);
++    expect(previewIsMonospaced("text/markdown", "a.md")).toBe(false);
++    expect(previewIsMonospaced("text/csv", "table.csv")).toBe(false);
++    expect(previewIsMonospaced("text/html", "page.html")).toBe(false);
++  });
++});
+diff --git a/apps/mobile/lib/file-preview.ts b/apps/mobile/lib/file-preview.ts
+new file mode 100644
+index 0000000..4037f30
+--- /dev/null
++++ b/apps/mobile/lib/file-preview.ts
+@@ -0,0 +1,303 @@
++import { artifactPreviewKind } from "@rakazo/contracts";
++import { splitFileName } from "./file-name";
++
++/**
++ * What a chat's file card can show of the file itself before it is opened: the opening of a text
++ * file set like a page, or the first page of a PDF. A file whose bytes are not words — an
++ * installer, an archive, a spreadsheet — answers `none` and keeps the compact card it had, so the
++ * chat never shows a blank white sheet or a line of mojibake.
++ */
++export type FilePreviewKind = "text" | "pdf" | "none";
++
++/**
++ * How much of a text file the card reads. The paper shows about a dozen lines, and a fourth of
++ * this is already past the fold: reading more would cost the kind of file that is a log.
++ */
++export const PREVIEW_TEXT_MAX_CHARS = 2400;
++
++/** Past this the card does not read a text file at all: a 3 MB document is not a card's business. */
++export const PREVIEW_TEXT_MAX_BYTES = 512 * 1024;
++
++/** A PDF is read as a whole file before its first page can be drawn, so its own ceiling is low. */
++export const PREVIEW_PDF_MAX_BYTES = 8 * 1024 * 1024;
++
++/** How much of a document the card shows, in points: roughly twelve lines on the paper. */
++export const PREVIEW_PAPER_HEIGHT = 236;
++
++/**
++ * Names that are text even when the sender calls them plain bytes. `.md` also covers a Markdown
++ * file uploaded from a phone that had no type for it, and `.log` is what a bot writes a run into.
++ */
++const TEXT_EXTENSIONS = new Set([
++  "md",
++  "markdown",
++  "mdx",
++  "txt",
++  "text",
++  "json",
++  "jsonl",
++  "csv",
++  "tsv",
++  "log",
++  "py",
++  "ts",
++  "tsx",
++  "js",
++  "jsx",
++  "mjs",
++  "cjs",
++  "html",
++  "htm",
++  "xml",
++  "yaml",
++  "yml",
++  "toml",
++  "ini",
++  "cfg",
++  "conf",
++  "env",
++  "sh",
++  "bash",
++  "zsh",
++  "sql",
++  "css",
++  "scss",
++  "go",
++  "rs",
++  "java",
++  "kt",
++  "swift",
++  "c",
++  "h",
++  "cpp",
++  "hpp",
++  "m",
++  "rb",
++  "php",
++  "lua",
++  "r",
++  "pl",
++  "tex",
++  "srt",
++  "vtt",
++]);
++
++/**
++ * The formats whose lines are read as code: drawn in the app's monospaced face and never run
++ * through the Markdown rules, because a leading `#` in a shell script is a comment, not a title.
++ */
++const MONO_EXTENSIONS = new Set([
++  "json",
++  "jsonl",
++  "ts",
++  "tsx",
++  "js",
++  "jsx",
++  "mjs",
++  "cjs",
++  "xml",
++  "yaml",
++  "yml",
++  "toml",
++  "ini",
++  "cfg",
++  "conf",
++  "env",
++  "sh",
++  "bash",
++  "zsh",
++  "sql",
++  "css",
++  "scss",
++  "go",
++  "rs",
++  "java",
++  "kt",
++  "swift",
++  "c",
++  "h",
++  "cpp",
++  "hpp",
++  "m",
++  "rb",
++  "php",
++  "lua",
++  "r",
++  "pl",
++  "py",
++]);
++
++/** One line of the page as the card sets it, with the weight its place in the document earns. */
++export type PreviewBlock = {
++  kind: "heading" | "subheading" | "body" | "bullet" | "quote" | "code" | "rule";
++  text: string;
++};
++
++/** The extension a name carries, lower-cased; empty when the name has none. */
++export function fileExtension(name: string): string {
++  return splitFileName(name).extension?.toLowerCase() ?? "";
++}
++
++/**
++ * How this file's card can show its content. The server's own type decides first — it is what the
++ * full preview opens with, so a card that previews more than the viewer is a card that lies — and
++ * the name is the fallback for a sender that had no type to give.
++ */
++export function filePreviewKind(mimeType: string, name = ""): FilePreviewKind {
++  const extension = fileExtension(name);
++  switch (artifactPreviewKind(mimeType)) {
++    case "markdown":
++    case "text":
++    case "html":
++      return "text";
++    case "pdf":
++      return "pdf";
++    case "image":
++    case "video":
++      return "none";
++    case "none":
++      return TEXT_EXTENSIONS.has(extension) ? "text" : "none";
++  }
++}
++
++/** The most bytes a card will read for this kind of preview; past it the card stays compact. */
++export function previewMaxBytes(kind: FilePreviewKind): number {
++  return kind === "pdf" ? PREVIEW_PDF_MAX_BYTES : PREVIEW_TEXT_MAX_BYTES;
++}
++
++/**
++ * Whether this file's lines belong in the monospaced face. A page is prose once its tags are off,
++ * so HTML is set as prose even though its source is code.
++ */
++export function previewIsMonospaced(mimeType: string, name = ""): boolean {
++  if (artifactPreviewKind(mimeType) === "html") return false;
++  return MONO_EXTENSIONS.has(fileExtension(name));
++}
++
++/** The tags a page's words hide behind: HTML is shown by its text, never by its markup. */
++function htmlText(html: string): string {
++  return html
++    .replace(/<!--[\s\S]*?-->/g, " ")
++    .replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, " ")
++    // A page's own headings keep their rank: `<h1>` reads as `#` before the tags come off.
++    .replace(/<h([1-6])\b[^>]*>/gi, (_, level: string) => `\n${"#".repeat(Number(level))} `)
++    .replace(/<\/(p|div|li|h[1-6]|tr|section|article|header|footer)>/gi, "\n")
++    .replace(/<br\s*\/?>/gi, "\n")
++    .replace(/<[^>]+>/g, " ")
++    .replace(/&nbsp;/gi, " ")
++    .replace(/&amp;/gi, "&")
++    .replace(/&lt;/gi, "<")
++    .replace(/&gt;/gi, ">")
++    .replace(/&quot;/gi, '"')
++    .replace(/&#39;/gi, "'")
++    .replace(/&#(\d+);/g, (_, code: string) => String.fromCharCode(Number(code)));
++}
++
++/**
++ * The Markdown a line wears, taken off: emphasis, links, inline code and stray tags. A pair of
++ * markers is only a pair — an underscore inside `file_name` or a lone `*` stays the word it is.
++ */
++function plainLine(line: string): string {
++  return line
++    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
++    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
++    .replace(/<\/?[a-z][^>]*>/gi, "")
++    .replace(/`+([^`]*)`+/g, "$1")
++    .replace(/\*\*([^*]+)\*\*/g, "$1")
++    .replace(/__([^_]+)__/g, "$1")
++    .replace(/(^|[\s(（[【"“‘])[*_]([^*_\n]+?)[*_](?=$|[\s)）\]】"”’。，、：；！？!?,.;:])/g, "$1$2")
++    .replace(/\\([\\`*_{}[\]()#+\-.!])/g, "$1")
++    .replace(/\s+/g, " ")
++    .trim();
++}
++
++/** A table row as one line of facts: `| a | b |` reads as `a · b`. */
++function tableRow(line: string): string {
++  return line
++    .replace(/^\||\|$/g, "")
++    .split("|")
++    .map((cell) => cell.trim())
++    .filter(Boolean)
++    .join(" · ");
++}
++
++/**
++ * A text file's opening, as the lines the card sets — the title it carries set apart, its list
++ * items kept as items, and its markup taken off so the first lines read as the document does.
++ * Never more than `maxBlocks`, because the paper is clipped anyway and a long file would build a
++ * thousand views the chat would later lay out on every scroll.
++ */
++export function previewBlocks(
++  text: string,
++  options: { mimeType?: string; name?: string; maxBlocks?: number } = {},
++): PreviewBlock[] {
++  const limit = options.maxBlocks ?? 40;
++  const source = text.startsWith("\ufeff") ? text.slice(1) : text;
++  const body = artifactPreviewKind(options.mimeType ?? "") === "html" ? htmlText(source) : source;
++  const lines = body.replace(/\r\n?/g, "\n").split("\n");
++  const mono = previewIsMonospaced(options.mimeType ?? "", options.name ?? "");
++  const blocks: PreviewBlock[] = [];
++  let fenced = false;
++  for (const raw of lines) {
++    if (blocks.length >= limit) break;
++    const line = raw.replace(/\t/g, "  ").trimEnd();
++    if (/^\s*(```|~~~)/.test(line)) {
++      fenced = !fenced;
++      continue;
++    }
++    if (fenced) {
++      if (line.trim()) blocks.push({ kind: "code", text: line.trim() });
++      continue;
++    }
++    if (!line.trim()) continue;
++    if (/^\s*([-*_]\s*){3,}$/.test(line)) {
++      blocks.push({ kind: "rule", text: "" });
++      continue;
++    }
++    if (mono) {
++      blocks.push({ kind: "code", text: line.trim() });
++      continue;
++    }
++    const heading = /^(#{1,6})\s+(.*)$/.exec(line);
++    if (heading) {
++      const level = heading[1]?.length ?? 1;
++      const title = plainLine(heading[2] ?? "");
++      if (title) blocks.push({ kind: level <= 2 ? "heading" : "subheading", text: title });
++      continue;
++    }
++    // A whole line in bold is a section of its own: documents that write their titles that way
++    // (rather than with `##`) read as the same page once the marks are taken off.
++    const boldLine = /^(\*\*|__)(.+?)\1[:：]?$/.exec(line.trim());
++    if (boldLine) {
++      const title = plainLine(line);
++      if (title) blocks.push({ kind: "subheading", text: title });
++      continue;
++    }
++    if (/^\s*\|.*\|\s*$/.test(line)) {
++      const row = plainLine(tableRow(line));
++      if (row) blocks.push({ kind: "body", text: row });
++      continue;
++    }
++    const quote = /^\s*>\s?(.*)$/.exec(line);
++    if (quote) {
++      const quoted = plainLine(quote[1] ?? "");
++      if (quoted) blocks.push({ kind: "quote", text: quoted });
++      continue;
++    }
++    const ordered = /^\s*(\d{1,2})[.)]\s+(.*)$/.exec(line);
++    if (ordered) {
++      const item = plainLine(ordered[2] ?? "");
++      if (item) blocks.push({ kind: "bullet", text: `${ordered[1]}. ${item}` });
++      continue;
++    }
++    const unordered = /^\s*[-*+•]\s+(.*)$/.exec(line);
++    if (unordered) {
++      const item = plainLine(unordered[1] ?? "");
++      if (item) blocks.push({ kind: "bullet", text: `• ${item}` });
++      continue;
++    }
++    const paragraph = plainLine(line);
++    if (paragraph) blocks.push({ kind: "body", text: paragraph });
++  }
++  return blocks;
++}
 diff --git a/apps/mobile/lib/group-seats-view.test.tsx b/apps/mobile/lib/group-seats-view.test.tsx
 index 4fc1806..6c5ae82 100644
 --- a/apps/mobile/lib/group-seats-view.test.tsx
@@ -84089,6 +84857,57 @@ index 6ff9437..dd75df8 100644
            expect(modifiers).toContainEqual({
              name: "foregroundStyle",
              value: tokensForAppearance(scheme).primaryForeground,
+diff --git a/apps/mobile/lib/pdf-thumbnail.ts b/apps/mobile/lib/pdf-thumbnail.ts
+new file mode 100644
+index 0000000..7702b47
+--- /dev/null
++++ b/apps/mobile/lib/pdf-thumbnail.ts
+@@ -0,0 +1,45 @@
++/**
++ * The PDF module's other half: a first page drawn small enough to sit on a chat card. It is the
++ * same native module that shows a PDF in full (`RakazoPdfView`), asked for a thumbnail instead of
++ * a view; a build made before the function existed answers `null`, and the card then keeps the
++ * compact file row it had.
++ */
++type PdfThumbnailNative = {
++  pdfThumbnail?: (uri: string, maxWidth: number) => Promise<string | null>;
++};
++
++let found: PdfThumbnailNative | null | undefined;
++
++/**
++ * The module, looked up the first time a card has a PDF to draw. It is required here rather than
++ * imported at the top because loading the native bridge pulls React Native's own runtime in: a
++ * card is decoration, and a test or a tool that renders one without a phone must not fail on it.
++ */
++function pdfModule(): PdfThumbnailNative | null {
++  if (found !== undefined) return found;
++  try {
++    const { requireOptionalNativeModule } = require("expo-modules-core") as typeof import(
++      "expo-modules-core"
++    );
++    found = requireOptionalNativeModule<PdfThumbnailNative>("RakazoPdfView") ?? null;
++  } catch {
++    found = null;
++  }
++  return found;
++}
++
++/** Whether this build can draw a PDF's first page on a card. */
++export function pdfThumbnailAvailable(): boolean {
++  return typeof pdfModule()?.pdfThumbnail === "function";
++}
++
++/**
++ * A local `file://` PNG of the PDF's first page, `maxWidth` points wide, written into the app's
++ * cache by the native side and reused on the next card that asks. A PDF the system cannot read
++ * answers `null` rather than an error: the card has nothing to show and says nothing.
++ */
++export async function pdfThumbnailUri(uri: string, maxWidth: number): Promise<string | null> {
++  const native = pdfModule();
++  if (!native?.pdfThumbnail) return null;
++  return native.pdfThumbnail(uri, maxWidth);
++}
 diff --git a/apps/mobile/lib/phone-connector-socket.test.ts b/apps/mobile/lib/phone-connector-socket.test.ts
 new file mode 100644
 index 0000000..646fc89
@@ -90643,6 +91462,84 @@ index f4e9ac5..dfa6a58 100644
    /// Follows cards the server starts by push, and the token that lets it. Called at launch, which
    /// may be iOS waking the app in the background for a card it just started.
    func observe() {
+diff --git a/apps/mobile/modules/rakazo-pdf-view/ios/RakazoPdfViewModule.swift b/apps/mobile/modules/rakazo-pdf-view/ios/RakazoPdfViewModule.swift
+index 0dfdad1..c778679 100644
+--- a/apps/mobile/modules/rakazo-pdf-view/ios/RakazoPdfViewModule.swift
++++ b/apps/mobile/modules/rakazo-pdf-view/ios/RakazoPdfViewModule.swift
+@@ -6,6 +6,15 @@ public final class RakazoPdfViewModule: Module {
+   public func definition() -> ModuleDefinition {
+     Name("RakazoPdfView")
+ 
++    /**
++     * The first page, drawn small enough to sit on a chat card. The page is rendered by PDFKit and
++     * written into the app's cache under a name derived from the file and the width asked for, so
++     * a thread that scrolls past the same PDF twice renders it once.
++     */
++    AsyncFunction("pdfThumbnail") { (uri: String, maxWidth: Double, promise: Promise) in
++      promise.resolve(RakazoPdfThumbnail.make(uri: uri, maxWidth: maxWidth))
++    }
++
+     View(RakazoPdfView.self) {
+       Events("onLoadError")
+       Prop("uri") { (view: RakazoPdfView, uri: String) in view.load(uri) }
+@@ -13,6 +22,57 @@ public final class RakazoPdfViewModule: Module {
+   }
+ }
+ 
++/**
++ * First-page thumbnails for PDF artifacts. A card shows the top of the page at the width the card
++ * has, and the rest of it waits for the tap that opens the file itself.
++ */
++enum RakazoPdfThumbnail {
++  /// The page is drawn on the main thread, where Core Graphics is at home, even though the JS call
++  /// arrives on a module queue.
++  static func make(uri: String, maxWidth: Double) -> String? {
++    guard let url = URL(string: uri), url.isFileURL else { return nil }
++    let render: () -> String? = {
++      guard let document = PDFDocument(url: url), let page = document.page(at: 0) else { return nil }
++      let box = page.bounds(for: .cropBox)
++      guard box.width > 0, box.height > 0 else { return nil }
++      // A card is about 330 points wide; asking for more than 600 only spends memory.
++      let width = min(max(maxWidth, 120), 600)
++      let size = CGSize(width: width, height: (width * box.height / box.width).rounded())
++      let image = page.thumbnail(of: size, for: .cropBox)
++      guard let data = image.pngData() else { return nil }
++      let directory = FileManager.default
++        .urls(for: .cachesDirectory, in: .userDomainMask)[0]
++        .appendingPathComponent("pdf-thumbnails", isDirectory: true)
++      do {
++        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
++      } catch {
++        return nil
++      }
++      let file = directory.appendingPathComponent("\(stamp(uri: uri, width: width)).png")
++      if !FileManager.default.fileExists(atPath: file.path) {
++        do {
++          try data.write(to: file, options: .atomic)
++        } catch {
++          return nil
++        }
++      }
++      return file.absoluteString
++    }
++    if Thread.isMainThread { return render() }
++    return DispatchQueue.main.sync(execute: render)
++  }
++
++  /// A stable name for one file at one width: FNV-1a, so it needs no hashing framework.
++  private static func stamp(uri: String, width: Double) -> String {
++    var hash: UInt64 = 0xcbf2_9ce4_8422_2325
++    for byte in "\(uri)#\(Int(width))".utf8 {
++      hash ^= UInt64(byte)
++      hash = hash &* 0x0000_0100_0000_01b3
++    }
++    return String(hash, radix: 16)
++  }
++}
++
+ final class RakazoPdfView: ExpoView {
+   let onLoadError = EventDispatcher()
+   private let pdfView = PDFView()
 diff --git a/apps/mobile/modules/rakazo-quick-look/expo-module.config.json b/apps/mobile/modules/rakazo-quick-look/expo-module.config.json
 new file mode 100644
 index 0000000..1be5832
@@ -90846,10 +91743,10 @@ index 0000000..dbfffd2
 +end
 diff --git a/apps/mobile/modules/rakazo-realtime-audio/ios/RakazoRealtimeAudioModule.swift b/apps/mobile/modules/rakazo-realtime-audio/ios/RakazoRealtimeAudioModule.swift
 new file mode 100644
-index 0000000..693278a
+index 0000000..6f1c584
 --- /dev/null
 +++ b/apps/mobile/modules/rakazo-realtime-audio/ios/RakazoRealtimeAudioModule.swift
-@@ -0,0 +1,784 @@
+@@ -0,0 +1,789 @@
 +import AVFoundation
 +import AudioToolbox
 +import ExpoModulesCore
@@ -91160,9 +92057,14 @@ index 0000000..693278a
 +    var options: AVAudioSession.CategoryOptions = [.defaultToSpeaker]
 +    // The hands-free profile is what a call needs from Bluetooth: it carries the microphone as
 +    // well. A2DP is playback only, and adding it would route the call at the car's media input
-+    // and leave the microphone on the phone.
++    // and leave the microphone on the phone. iOS 26 renamed the option; on anything older the
++    // long-standing one is the same profile.
 +    #if compiler(>=6.2)
-+      options.insert(.allowBluetoothHFP)
++      if #available(iOS 26.0, *) {
++        options.insert(.allowBluetoothHFP)
++      } else {
++        options.insert(.allowBluetooth)
++      }
 +    #else
 +      options.insert(.allowBluetooth)
 +    #endif

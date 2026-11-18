@@ -63050,32 +63050,27 @@ index e29608b..59ba82a 100644
              <NativeSymbol
                android="chevron-expand"
 diff --git a/apps/mobile/components/bot-avatar.tsx b/apps/mobile/components/bot-avatar.tsx
-index a589810..c6bd477 100644
+index a589810..da6c0da 100644
 --- a/apps/mobile/components/bot-avatar.tsx
 +++ b/apps/mobile/components/bot-avatar.tsx
-@@ -1,48 +1,90 @@
+@@ -1,7 +1,8 @@
  import { useLingui } from "@lingui/react/macro";
  import type { BotAvatarSet } from "@rakazo/contracts";
 -import type { AvatarEyes, AvatarMotionMode, LogoAvatarActivity } from "@rakazo/core";
-+import type { AvatarMotionMode, BabygrokBody, LogoAvatarActivity } from "@rakazo/core";
++import type { AvatarFrame, AvatarMotionMode, BabygrokBody, LogoAvatarActivity } from "@rakazo/core";
  import {
 +  AVATAR_EYE_REACH,
    AVATAR_LID_CLOSE,
    AVATAR_MOTION_UNITS,
    AVATAR_TYPING_DOTS,
-   avatarClip,
-   avatarClock,
-   avatarFrame,
--  avatarIdentitySeed,
-   avatarLifeState,
-   avatarPokeFrame,
-   avatarRestingBlink,
+@@ -15,34 +16,77 @@ import {
    avatarSchedulePose,
    avatarThinkingDot,
    avatarWorkingDot,
 +  BABYGROK_BODIES,
 +  BABYGROK_DRAW_MARGIN,
 +  BABYGROK_DRAW_VIEWBOX,
++  BABYGROK_BASE_SPEC,
 +  babygrokBodyPath,
 +  babygrokEyeLoops,
    botAvatarActivity,
@@ -63089,11 +63084,11 @@ index a589810..c6bd477 100644
 -  SHIPPED_BOT_AVATAR_EYES,
 -  SHIPPED_BOT_AVATAR_VIEWBOX,
 -  usesLogoAvatar,
-+  motionFaceSpec,
++  motionFaceEyes,
 +  motionShapeScale,
  } from "@rakazo/core";
 -import { memo, useSyncExternalStore } from "react";
-+import { memo, useEffect, useRef, useState, useSyncExternalStore } from "react";
++import { memo, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
  import { Image, Pressable, View } from "react-native";
 +import type { SharedValue } from "react-native-reanimated";
  import Animated, {
@@ -63157,7 +63152,7 @@ index a589810..c6bd477 100644
  
  /** How far (0–1) the face has turned into the typing dots, for a morph of 0–1. */
  function morphGrow(morph: number): number {
-@@ -52,11 +94,6 @@ function morphGrow(morph: number): number {
+@@ -52,11 +96,6 @@ function morphGrow(morph: number): number {
  }
  /** The face shrinks until it is the size of the middle typing dot. */
  const MORPH_SHRINK = 1 - (2 * AVATAR_TYPING_DOTS.radius) / AVATAR_MOTION_UNITS;
@@ -63169,7 +63164,7 @@ index a589810..c6bd477 100644
  /** The avatar's flat frame right now, a tap poke included; a worklet. */
  function liveFrame(life: AvatarLife) {
    "worklet";
-@@ -90,28 +127,82 @@ function liveFrame(life: AvatarLife) {
+@@ -90,28 +129,91 @@ function liveFrame(life: AvatarLife) {
    return { frame, grow };
  }
  
@@ -63236,34 +63231,43 @@ index a589810..c6bd477 100644
 +  previous: BabygrokBody | null,
 +  morph: number,
 +  mood: number,
++  /**
++   * The frame to draw, when the caller has already read one: the same frame both the eyes and the
++   * cache key come from, so they can never disagree.
++   */
++  frame?: AvatarFrame,
 +): string {
    "worklet";
 -  const { frame, grow } = liveFrame(life);
 -  return { x: frame.eyeX, y: frame.eyeY, lid: frame.lid, hidden: grow >= 0.5 };
-+  const { frame } = liveFrame(life);
-+  const spec = motionFaceSpec(frame.face);
++  const now = frame ?? liveFrame(life).frame;
++  // Every body wears its own two capsules, and a face only bends them (`mood`) or closes them
++  // (`open`). The reference's other eight lid curves — a lid lying across the face, a tottering
++  // one — are how it draws a *stroke* face; filled as the pair's own ink they turned the eyes into
++  // long slashes and, once they had to be squeezed apart, into flecks. `IMG_2915` caught exactly
++  // that on the main bot: the eyes read as two skewed slashes rather than the reference's plump
++  // short capsules.
++  const eyes = motionFaceEyes(now.face);
 +  return babygrokEyeLoops({
 +    body,
 +    morphFrom: previous,
 +    morphTo: body,
 +    morph: Math.min(Math.max(morph, 0), 1),
 +    // The eyes ride where the face looks, and lean with the turn of the head.
-+    gazeX: frame.eyeX,
-+    gazeY: frame.eyeY,
-+    turn: AVATAR_EYE_REACH.x ? frame.eyeX / AVATAR_EYE_REACH.x : 0,
-+    lid: frame.lid,
-+    spec: {
-+      p0: [spec.p0x, spec.p0y],
-+      p1: [spec.p1x, spec.p1y],
-+      p2: [spec.p2x, spec.p2y],
-+      isArc: spec.arc > 0.5,
-+    },
-+    mood,
++    gazeX: now.eyeX,
++    gazeY: now.eyeY,
++    turn: AVATAR_EYE_REACH.x ? now.eyeX / AVATAR_EYE_REACH.x : 0,
++    // A face that half closes the eyes (`sleepy`, `calm`) does it through the lid, so a blink on
++    // that face still lands as a blink rather than as an open eye.
++    lid: now.lid * eyes.open,
++    // The body's own eye, tilted as the body was drawn with it.
++    spec: BABYGROK_BASE_SPEC,
++    mood: Math.max(mood, eyes.mood),
 +  });
  }
  
  export interface BotAvatarProps {
-@@ -125,13 +216,19 @@ export interface BotAvatarProps {
+@@ -125,13 +227,19 @@ export interface BotAvatarProps {
    motion?: AvatarMotionMode;
    composing?: boolean;
    pokeable?: boolean;
@@ -63286,7 +63290,7 @@ index a589810..c6bd477 100644
    return <LegacyBotAvatar {...props} />;
  });
  
-@@ -143,7 +240,7 @@ function RakazoBotAvatar({
+@@ -143,7 +251,7 @@ function RakazoBotAvatar({
    activity,
    composing = false,
    muted = false,
@@ -63295,7 +63299,7 @@ index a589810..c6bd477 100644
    pokeable = false,
  }: BotAvatarProps) {
    const liveActivity = useSyncExternalStore(
-@@ -160,7 +257,7 @@ function RakazoBotAvatar({
+@@ -160,7 +268,7 @@ function RakazoBotAvatar({
    );
    const working = isRunWorking(status) && resolved !== "writing" && motion !== "running";
    return (
@@ -63304,7 +63308,7 @@ index a589810..c6bd477 100644
        <LogoAvatar
          color={color}
          identity={identity}
-@@ -247,9 +344,11 @@ function LegacyBotAvatar({
+@@ -247,9 +355,11 @@ function LegacyBotAvatar({
    status,
    identity,
    muted = false,
@@ -63317,7 +63321,7 @@ index a589810..c6bd477 100644
  }: {
    color: string;
    size?: number;
-@@ -269,14 +368,22 @@ function LegacyBotAvatar({
+@@ -269,14 +379,22 @@ function LegacyBotAvatar({
    composing?: boolean;
    /** A tap plays a little reaction (the activity mark). */
    pokeable?: boolean;
@@ -63342,12 +63346,17 @@ index a589810..c6bd477 100644
    const eyeColor = botEyeInk(fillColor, tokens);
    const onScreen = useAvatarOnScreen();
    const reducedMotion = useReducedMotion();
-@@ -291,8 +398,93 @@ function LegacyBotAvatar({
+@@ -290,9 +408,97 @@ function LegacyBotAvatar({
+     settling,
      reducedMotion,
    });
-   const life = useLife(state, clock, size, motion);
+-  const life = useLife(state, clock, size, motion);
 -  const poke = usePoke(life, pokeable && clock === "running");
 -  const bodyStyle = useBodyStyle(life, size);
++  // Each bot starts its own idle somewhere else in its loop, so a list is not one animation run
++  // six times: the id it is drawn by picks the offset, and the same bot keeps it everywhere.
++  const stagger = (avatarIdentitySeed(identity ?? color) % 4000) / 1000;
++  const life = useLife(state, clock, size, motion, stagger);
 +  const tap = usePoke(life, pokeable && clock === "running");
 +  // Picking another body morphs it into the new one, vertex by vertex, on a soft spring;
 +  // the face squints with pleasure while it lands, as the reference app's does.
@@ -63438,7 +63447,7 @@ index a589810..c6bd477 100644
    const picture =
      parsed.kind === "image" && parsed.imageUrl ? (
        <View
-@@ -307,27 +499,29 @@ function LegacyBotAvatar({
+@@ -307,27 +513,29 @@ function LegacyBotAvatar({
        >
          <Image source={{ uri: parsed.imageUrl }} style={{ width: size, height: size }} />
        </View>
@@ -63480,7 +63489,7 @@ index a589810..c6bd477 100644
        {picture}
        {parsed.kind !== "image" && clock !== "still" ? (
          <ThinkingDots color={fillColor} size={size} life={life} />
-@@ -386,86 +580,105 @@ function Dot({
+@@ -386,86 +594,134 @@ function Dot({
  
  type BodyStyle = ReturnType<typeof useAnimatedStyle>;
  
@@ -63504,36 +63513,6 @@ index a589810..c6bd477 100644
    color,
    eyeColor,
 -  shapePath,
--  size,
--  life,
--  bodyStyle,
--}: {
--  color: string;
--  eyeColor: string;
--  shapePath: string;
--  size: number;
--  life: AvatarLife;
--  bodyStyle: BodyStyle;
--}) {
--  const eyes = SHIPPED_BOT_AVATAR_EYES;
--  const [leftEye, rightEye] = useBarEyes(eyes, SHIPPED_BOT_AVATAR_VIEWBOX, life);
--  return (
--    <Animated.View style={[{ width: size, height: size }, bodyStyle]}>
--      <Svg width={size} height={size} viewBox={SHIPPED_BOT_AVATAR_VIEWBOX}>
--        <Path d={shapePath} fill={color} />
--        <G fill={eyeColor}>
--          <AnimatedRect animatedProps={leftEye} width={eyes.width} rx={eyes.width / 2} />
--          <AnimatedRect animatedProps={rightEye} width={eyes.width} rx={eyes.width / 2} />
--        </G>
--      </Svg>
--    </Animated.View>
--  );
--}
--
--function OrganicAvatar({
--  color,
--  eyeColor,
--  identity,
 +  body,
 +  bodyScale,
 +  previous,
@@ -63546,7 +63525,7 @@ index a589810..c6bd477 100644
  }: {
    color: string;
    eyeColor: string;
--  identity?: string;
+-  shapePath: string;
 +  body: BabygrokBody;
 +  /** The body's own zoom from the official shape table, 1 for the base size. */
 +  bodyScale: number;
@@ -63561,18 +63540,76 @@ index a589810..c6bd477 100644
    bodyStyle: BodyStyle;
 +  entrance: boolean;
  }) {
--  const seed = avatarIdentitySeed(identity || color || "#8B5CF6");
--  const eyes = ORGANIC_AVATAR_EYES;
--  const [leftEye, rightEye] = useBarEyes(eyes, ORGANIC_AVATAR_VIEWBOX, life);
+-  const eyes = SHIPPED_BOT_AVATAR_EYES;
+-  const [leftEye, rightEye] = useBarEyes(eyes, SHIPPED_BOT_AVATAR_VIEWBOX, life);
+-  return (
+-    <Animated.View style={[{ width: size, height: size }, bodyStyle]}>
+-      <Svg width={size} height={size} viewBox={SHIPPED_BOT_AVATAR_VIEWBOX}>
+-        <Path d={shapePath} fill={color} />
+-        <G fill={eyeColor}>
+-          <AnimatedRect animatedProps={leftEye} width={eyes.width} rx={eyes.width / 2} />
+-          <AnimatedRect animatedProps={rightEye} width={eyes.width} rx={eyes.width / 2} />
+-        </G>
+-      </Svg>
+-    </Animated.View>
 +  // The reference app's bodies are one flat colour: no gradient, no shading, no shadow, so the
 +  // face reads as a clean geometric pill pair on a solid silhouette. The eyes are the same ink
 +  // path on every body, drawn on top of it.
++  // A settled body is the same 64-vertex path every frame, so it is built once and handed to the
++  // animation as it is; only a body morphing into another rebuilds it per frame.
++  const stillBody = useMemo(
++    () => (previous ? null : babygrokBodyPath(body.ring, body.ring, 1)),
++    [body, previous],
+   );
+-}
+-
+-function OrganicAvatar({
+-  color,
+-  eyeColor,
+-  identity,
+-  size,
+-  life,
+-  bodyStyle,
+-}: {
+-  color: string;
+-  eyeColor: string;
+-  identity?: string;
+-  size: number;
+-  life: AvatarLife;
+-  bodyStyle: BodyStyle;
+-}) {
+-  const seed = avatarIdentitySeed(identity || color || "#8B5CF6");
+-  const eyes = ORGANIC_AVATAR_EYES;
+-  const [leftEye, rightEye] = useBarEyes(eyes, ORGANIC_AVATAR_VIEWBOX, life);
 +  const bodyProps = useAnimatedProps(() => ({
-+    d: babygrokBodyPath(previous?.ring ?? body.ring, body.ring, morph.value),
++    d: stillBody ?? babygrokBodyPath(previous?.ring ?? body.ring, body.ring, morph.value),
 +  }));
-+  const eyeProps = useAnimatedProps(() => ({
-+    d: liveEyeLoops(life, body, previous, morph.value, mood.value),
-+  }));
++  // The eye path is only rebuilt when the face actually changes: an idle gaze drifts by a fraction
++  // of a unit a frame, and eight avatars rebuilding the same path sixty times a second is what a
++  // list of them would feel as a stutter. The key is the face quantised finer than a screen pixel.
++  const eyeKey = useSharedValue(-1);
++  const eyePath = useSharedValue("");
++  const eyeProps = useAnimatedProps(() => {
++    const { frame } = liveFrame(life);
++    const eyes = motionFaceEyes(frame.face);
++    const bend = Math.max(mood.value, eyes.mood);
++    const lid = Math.min(Math.max(frame.lid * eyes.open, 0), 1);
++    const ix = Math.round(frame.eyeX * 2) + 100;
++    const iy = Math.round(frame.eyeY * 2) + 100;
++    const key =
++      (((ix * 300 + iy) * 41 + Math.round(lid * 40)) * 21 + Math.round(bend * 20)) * 21 +
++      Math.round(morph.value * 20);
++    if (key !== eyeKey.value) {
++      eyeKey.value = key;
++      eyePath.value = liveEyeLoops(life, body, previous, morph.value, mood.value, frame);
++    }
++    return { d: eyePath.value };
++  });
++  // A body, or a body being morphed away from, is a different face: the path built for the last
++  // one is not this one's.
++  useEffect(() => {
++    eyeKey.value = -1;
++  }, [body, previous, eyeKey]);
 +  const arrival = useSharedValue(entrance ? 0 : 1);
 +  useEffect(() => {
 +    if (entrance) arrival.value = withSpring(1, ENTRANCE_SPRING);
@@ -78188,7 +78225,7 @@ index cdada5d..0fb11df 100644
  }));
  
 diff --git a/apps/mobile/lib/avatar-life.test.tsx b/apps/mobile/lib/avatar-life.test.tsx
-index 085ed88..95146c4 100644
+index 085ed88..4f90cef 100644
 --- a/apps/mobile/lib/avatar-life.test.tsx
 +++ b/apps/mobile/lib/avatar-life.test.tsx
 @@ -51,7 +51,11 @@ vi.mock("react-native-reanimated", () => {
@@ -78242,7 +78279,58 @@ index 085ed88..95146c4 100644
    useMobileTokens: () => ({
      mutedForeground: "#888",
      background: "#FFF",
-@@ -370,9 +392,13 @@ describe("activity mark", () => {
+@@ -160,10 +182,10 @@ describe("avatar motion on mobile", () => {
+     expect(awake()).toBe(1);
+   });
+ 
+-  it("keeps every other avatar still, even while its bot works, and keeps the working dot", () => {
++  it("breathes a small avatar while its bot works, and keeps the working dot", () => {
+     render(<BotAvatar color={SHAPE} identity="bot-1" size={28} status="running" />);
+     wait(30_000);
+-    expect(clockStarted()).toBe(false);
++    expect(clockStarted()).toBe(true);
+     expect(workingDot()).not.toBeNull();
+   });
+ 
+@@ -171,7 +193,8 @@ describe("avatar motion on mobile", () => {
+     render(<BotAvatar color={SHAPE} identity="bot-1" size={62} status="running" motion="lazy" />);
+     expect(workingDot()?.getAttribute("data-bg")).toBe("#3FA266");
+     expect(workingDot()?.getAttribute("data-ring")).toBe("#FFF");
+-    expect(Number(workingDot()?.getAttribute("data-width"))).toBeCloseTo(12 + 2 * 62 * 0.046);
++    // The ring is the page colour, thick enough to cut the dot out of a coloured body.
++    expect(Number(workingDot()?.getAttribute("data-width"))).toBeCloseTo(12 + 2 * 62 * 0.05);
+     render(<BotAvatar color={SHAPE} identity="bot-1" size={28} status="running" />);
+     expect(Number(workingDot()?.getAttribute("data-width"))).toBeCloseTo(10 + 2 * 28 * 0.046);
+   });
+@@ -206,11 +229,11 @@ describe("avatar motion on mobile", () => {
+     expect(motion.springs.at(-1)).toEqual([0, MORPH_SPRING]);
+   });
+ 
+-  it("drops the chat header's working dot while the bot writes, and keeps it a still picture", () => {
++  it("drops the chat header's working dot while the bot writes, and turns the face into dots", () => {
+     render(<BotAvatar color={SHAPE} identity="bot-1" size={28} status="running" composing />);
+     expect(workingDot()).toBeNull();
+-    expect(clockStarted()).toBe(false);
+-    expect(motion.springs.at(-1)?.[0]).toBe(0);
++    expect(clockStarted()).toBe(true);
++    expect(motion.springs.at(-1)?.[0]).toBe(1);
+   });
+ 
+   it("leaves the working dot off the chat's working avatar, which is the sign itself", () => {
+@@ -231,10 +254,10 @@ describe("avatar motion on mobile", () => {
+     expect(workingDot()).toBeNull();
+   });
+ 
+-  it("lets the call card blink at rest, without moving", () => {
++  it("breathes the call card at rest, as the reference's own bots do", () => {
+     render(<BotAvatar color={SHAPE} identity="bot-1" size={28} motion="live" />);
+     expect(clockStarted()).toBe(true);
+-    expect(awake()).toBe(0);
++    expect(awake()).toBe(1);
+   });
+ 
+   it("only blinks a busy avatar under Reduce Motion", () => {
+@@ -370,9 +393,13 @@ describe("activity mark", () => {
  
    it("shows each working member of a group in turn, every 2 s", () => {
      render(<ActivityMark bots={bots} atBottom />);
@@ -78256,6 +78344,39 @@ index 085ed88..95146c4 100644
      expect(shown()).toBe("#FF781C");
    });
  
+diff --git a/apps/mobile/lib/avatar-life.tsx b/apps/mobile/lib/avatar-life.tsx
+index 8a24afe..ff75391 100644
+--- a/apps/mobile/lib/avatar-life.tsx
++++ b/apps/mobile/lib/avatar-life.tsx
+@@ -143,6 +143,13 @@ export function useLife(
+   clock: AvatarClock,
+   size: number,
+   mode: AvatarMotionMode,
++  /**
++   * Where in its timeline this avatar starts, in seconds. Every avatar in a list mounts at the same
++   * moment, so without a per-bot offset they would breathe, look and blink in lockstep — a row of
++   * identical animations reads as a screen effect, not as six bots. The bot's own id picks the
++   * offset, so the same bot keeps the same rhythm on every screen and across launches.
++   */
++  stagger = 0,
+ ) {
+   const seconds = useSharedValue(0);
+   const awake = useSharedValue(0);
+@@ -153,11 +160,12 @@ export function useLife(
+   const schedule = useSharedValue<AvatarSegment[]>([]);
+   const poke = useSharedValue<AvatarPoke | null>(null);
+   const pokeProgress = useSharedValue(1);
+-  const mirror = useRef<ClockMirror>({ base: 0, since: null });
++  const mirror = useRef<ClockMirror>({ base: stagger, since: null });
+   const moving = clock !== "still";
+   const pool = avatarClipPool(state, size, mode);
+   useEffect(() => {
+-    awake.value = withTiming(clock === "running" ? 1 : 0, {
++    // An idle avatar moves at rest too, which is what a row of them reads as alive.
++    awake.value = withTiming(clock === "running" || clock === "idle" ? 1 : 0, {
+       duration: AWAKE_MS,
+       easing: Easing.inOut(Easing.cubic),
+     });
 diff --git a/apps/mobile/lib/bot-avatar-render.test.tsx b/apps/mobile/lib/bot-avatar-render.test.tsx
 index 33a7172..46abc76 100644
 --- a/apps/mobile/lib/bot-avatar-render.test.tsx
@@ -100573,7 +100694,7 @@ index 89bd517..850b0a2 100644
    return extensionType ?? null;
  }
 diff --git a/packages/core/src/avatar-clips.ts b/packages/core/src/avatar-clips.ts
-index 5ac17f3..6508156 100644
+index 5ac17f3..6c08539 100644
 --- a/packages/core/src/avatar-clips.ts
 +++ b/packages/core/src/avatar-clips.ts
 @@ -6,6 +6,8 @@
@@ -100603,7 +100724,7 @@ index 5ac17f3..6508156 100644
  }
  
  export type AvatarClipName = string;
-@@ -199,26 +210,50 @@ export const AVATAR_CLIPS: Record<AvatarClipName, AvatarClip> = {
+@@ -199,26 +210,54 @@ export const AVATAR_CLIPS: Record<AvatarClipName, AvatarClip> = {
  };
  
  const NO_CLIP: AvatarClip = { duration: 0 };
@@ -100658,14 +100779,18 @@ index 5ac17f3..6508156 100644
 -  compactIdle: ["rest", "hold"],
 +  /** The six working clips, equally weighted: the bot looks somewhere new each time. */
 +  working: ["Working_A", "Working_B", "Working_C", "Working_D", "Working_E", "Working_F"],
-+  /** A live avatar at rest (the call card): the official idle rotation, blink included. */
-+  idle: ["Idle_B", "Idle_B", "Idle_D", "Idle_B", "Idle_A"],
++  /**
++   * A live avatar at rest, at any size: the reference's own gentle idle — one look and two blinks
++   * over four seconds. Its louder idle clips (`Idle_A`, `Idle_D`) are left to a busy bot: played on
++   * a row of inbox avatars they read as a crowd of bodies swinging about rather than as breathing.
++   */
++  idle: ["Idle_B"],
 +  /** Small live avatars keep to the gentlest idle clip. */
 +  compactIdle: ["Idle_B"],
    /** Every other avatar at rest goes home and holds still, without blinking. */
    settling: ["still"],
    /** The face has turned into the typing dots, so it only needs to hold still. */
-@@ -234,6 +269,12 @@ export interface AvatarPose {
+@@ -234,6 +273,12 @@ export interface AvatarPose {
    y: number;
    zoom: number;
    lid: number;
@@ -100678,7 +100803,7 @@ index 5ac17f3..6508156 100644
  }
  
  /** Facing front, at rest zoom, eyes open: where an empty track sits. */
-@@ -245,6 +286,9 @@ export const AVATAR_REST_POSE: AvatarPose = {
+@@ -245,6 +290,9 @@ export const AVATAR_REST_POSE: AvatarPose = {
    y: 0,
    zoom: 1,
    lid: 0,
@@ -100688,7 +100813,7 @@ index 5ac17f3..6508156 100644
  };
  
  /** How long the bridge between two clips lasts when their poses differ, and its ease. */
-@@ -306,13 +350,42 @@ function authoredBlink(blinks: readonly number[] | undefined, t: number): number
+@@ -306,13 +354,42 @@ function authoredBlink(blinks: readonly number[] | undefined, t: number): number
    return shut;
  }
  
@@ -100735,7 +100860,7 @@ index 5ac17f3..6508156 100644
    return {
      pitch: rotation?.[0] ?? 0,
      yaw: rotation?.[1] ?? 0,
-@@ -320,6 +393,9 @@ export function avatarClipPose(clip: AvatarClip, t: number): AvatarPose {
+@@ -320,6 +397,9 @@ export function avatarClipPose(clip: AvatarClip, t: number): AvatarPose {
      x: position?.[0] ?? 0,
      y: position?.[1] ?? 0,
      zoom: zoom?.[0] ?? AVATAR_REST_POSE.zoom,
@@ -100747,10 +100872,30 @@ index 5ac17f3..6508156 100644
    };
  }
 diff --git a/packages/core/src/avatar-life.test.ts b/packages/core/src/avatar-life.test.ts
-index 44c91ee..7b4fc03 100644
+index 44c91ee..0437e3d 100644
 --- a/packages/core/src/avatar-life.test.ts
 +++ b/packages/core/src/avatar-life.test.ts
-@@ -244,7 +244,10 @@ describe("flat avatar frames", () => {
+@@ -69,8 +69,8 @@ describe("avatar state", () => {
+     expect(avatarClock({ ...row, settling: true })).toBe("running");
+   });
+ 
+-  it("lets only the call card blink at rest, and the activity mark always moves", () => {
+-    expect(avatarClock({ ...row, mode: "live" })).toBe("parked");
++  it("breathes a live avatar at rest, and always moves the activity mark", () => {
++    expect(avatarClock({ ...row, mode: "live" })).toBe("idle");
+     expect(avatarClock({ ...row, mode: "running" })).toBe("running");
+   });
+ 
+@@ -85,6 +85,8 @@ describe("avatar state", () => {
+   it("only blinks a moving avatar under Reduce Motion", () => {
+     expect(avatarClock({ ...row, state: "working", reducedMotion: true })).toBe("parked");
+     expect(avatarClock({ ...row, reducedMotion: true })).toBe("still");
++    // A live one keeps its blinks, and gives up the rest of its idle.
++    expect(avatarClock({ ...row, mode: "live", reducedMotion: true })).toBe("parked");
+   });
+ 
+   it("plays the working pool while busy, the thinking pool while writing, and small avatars the compact pool", () => {
+@@ -244,7 +246,10 @@ describe("flat avatar frames", () => {
      expect(avatarWorkingDot(62)).toMatchObject({ diameter: 12, inset: 0 });
      expect(avatarWorkingDot(80)).toMatchObject({ diameter: 15, inset: 3 });
      expect(avatarWorkingDot(96)).toMatchObject({ diameter: 17, inset: 3 });
@@ -100762,7 +100907,7 @@ index 44c91ee..7b4fc03 100644
    });
  });
  
-@@ -265,9 +268,11 @@ function still(pose: AvatarPose): boolean {
+@@ -265,9 +270,11 @@ function still(pose: AvatarPose): boolean {
  }
  
  describe("authored motion", () => {
@@ -100777,7 +100922,7 @@ index 44c91ee..7b4fc03 100644
    /** At most this many degrees in 10 ms while looking around, and during the spin. */
    const LOOK_STEP = 4;
    const SPIN_STEP = 12;
-@@ -334,12 +339,15 @@ describe("authored motion", () => {
+@@ -334,12 +341,15 @@ describe("authored motion", () => {
      expect(Math.max(...rolls) - Math.min(...rolls)).toBeGreaterThanOrEqual(360);
      for (let step = 1; step < all.length; step += 1)
        expect(turn(all[step]!, all[step - 1]!)).toBeLessThanOrEqual(SPIN_STEP);
@@ -100796,7 +100941,7 @@ index 44c91ee..7b4fc03 100644
        const clip = avatarClip(name);
        expect(clip.blinks?.length, name).toBeGreaterThan(0);
        for (const blink of clip.blinks ?? []) {
-@@ -348,7 +356,7 @@ describe("authored motion", () => {
+@@ -348,7 +358,7 @@ describe("authored motion", () => {
        }
        expect(Math.max(...poses(name).map((pose) => pose.lid)), name).toBeCloseTo(1);
      }
@@ -100805,7 +100950,7 @@ index 44c91ee..7b4fc03 100644
    });
  
    it("keeps every avatar at rest still, without a blink, except the call card", () => {
-@@ -374,16 +382,22 @@ describe("authored motion", () => {
+@@ -374,16 +384,22 @@ describe("authored motion", () => {
      for (const name of compactIdle) expect(idle).toContain(name);
    });
  
@@ -100834,10 +100979,39 @@ index 44c91ee..7b4fc03 100644
      }
    });
 diff --git a/packages/core/src/avatar-life.ts b/packages/core/src/avatar-life.ts
-index c4fd75d..362c42e 100644
+index c4fd75d..c789d7b 100644
 --- a/packages/core/src/avatar-life.ts
 +++ b/packages/core/src/avatar-life.ts
-@@ -185,6 +185,10 @@ export function avatarSchedulePose(
+@@ -42,10 +42,11 @@ export type AvatarMotionMode = "static" | "lazy" | "live" | "running";
+ /**
+  * How an avatar moves right now:
+  * - still: a picture;
+- * - parked: no motion, but it blinks (a live avatar at rest, or anything under Reduce Motion);
++ * - parked: no motion, but it blinks (anything under Reduce Motion);
++ * - idle: the reference's gentle idle, at rest (its breathing, its look and its blinks);
+  * - running: it plays its clips.
+  */
+-export type AvatarClock = "still" | "parked" | "running";
++export type AvatarClock = "still" | "parked" | "idle" | "running";
+ 
+ /** After a bot goes back to rest, its avatar keeps moving this long, then goes still. */
+ export const AVATAR_SETTLE_MS = 1400;
+@@ -67,7 +68,13 @@ export function avatarClock(input: {
+   if (mode === "static" || !input.onScreen || !input.hasEyes) return "still";
+   if (input.size <= AVATAR_STILL_MAX_SIZE) return "still";
+   const resting = input.state === "idle" && !input.settling && mode !== "running";
+-  if (resting) return mode === "live" ? "parked" : "still";
++  // A live avatar breathes at rest, as the reference app's do: its rows, its search results and its
++  // call card all blink and glance about while their bot waits. A lazy one stays a picture, and
++  // Reduce Motion parks even a live one at its blinks.
++  if (resting) {
++    if (mode !== "live") return "still";
++    return input.reducedMotion ? "parked" : "idle";
++  }
+   return input.reducedMotion ? "parked" : "running";
+ }
+ 
+@@ -185,6 +192,10 @@ export function avatarSchedulePose(
      y: mix(from.y, to.y),
      zoom: mix(from.zoom, to.zoom),
      lid: mix(from.lid, to.lid),
@@ -100848,7 +101022,7 @@ index c4fd75d..362c42e 100644
    };
  }
  
-@@ -198,9 +202,16 @@ const TURN_NARROWING = 0.16;
+@@ -198,9 +209,16 @@ const TURN_NARROWING = 0.16;
  /** How far a shut lid closes the eyes: a shut eye keeps a thin line. */
  export const AVATAR_LID_CLOSE = 0.9;
  
@@ -100865,7 +101039,7 @@ index c4fd75d..362c42e 100644
    translateX: number;
    translateY: number;
    scaleX: number;
-@@ -209,6 +220,12 @@ export interface AvatarFrame {
+@@ -209,6 +227,12 @@ export interface AvatarFrame {
    eyeY: number;
    /** Eye height, 1 open. */
    lid: number;
@@ -100878,7 +101052,7 @@ index c4fd75d..362c42e 100644
  }
  
  /**
-@@ -225,6 +242,10 @@ export function avatarFrame(pose: AvatarPose, awake: number): AvatarFrame {
+@@ -225,6 +249,10 @@ export function avatarFrame(pose: AvatarPose, awake: number): AvatarFrame {
    const toward = (value: number, rest: number) => rest + (value - rest) * awake;
    return {
      rotate: pose.roll * awake,
@@ -100889,7 +101063,7 @@ index c4fd75d..362c42e 100644
      translateX: pose.x * pose.zoom * 0.5 * awake,
      translateY: pose.y * pose.zoom * 0.5 * awake,
      scaleX: toward(scale * (1 - TURN_NARROWING * Math.abs(yaw)), 1),
-@@ -232,6 +253,9 @@ export function avatarFrame(pose: AvatarPose, awake: number): AvatarFrame {
+@@ -232,6 +260,9 @@ export function avatarFrame(pose: AvatarPose, awake: number): AvatarFrame {
      eyeX: yaw * AVATAR_EYE_REACH.x * awake,
      eyeY: pitch * AVATAR_EYE_REACH.y * awake,
      lid: 1 - AVATAR_LID_CLOSE * pose.lid * awake,
@@ -100899,7 +101073,7 @@ index c4fd75d..362c42e 100644
    };
  }
  
-@@ -335,9 +359,13 @@ export function avatarPhotoDot(slot: 0 | 1 | 2, ms: number, typing: boolean): nu
+@@ -335,9 +366,13 @@ export function avatarPhotoDot(slot: 0 | 1 | 2, ms: number, typing: boolean): nu
  /**
   * The working dot on a busy bot's avatar of `size` pt: a `diameter` pt disc set `inset` pt
   * in from the avatar's bottom corner, inside a `ring` pt ring of the surface behind it.
@@ -100935,10 +101109,10 @@ index 7f72426..abb48c2 100644
  
 diff --git a/packages/core/src/babygrok-face.test.ts b/packages/core/src/babygrok-face.test.ts
 new file mode 100644
-index 0000000..269be43
+index 0000000..10724a7
 --- /dev/null
 +++ b/packages/core/src/babygrok-face.test.ts
-@@ -0,0 +1,542 @@
+@@ -0,0 +1,620 @@
 +import { describe, expect, it } from "vitest";
 +import type { BabygrokEyeSpec } from "./babygrok-face.js";
 +import {
@@ -101468,6 +101642,84 @@ index 0000000..269be43
 +    }
 +  });
 +
++  /** Where a loop sits: the middle of its own outline. */
++  const loopMid = (loop: Array<[number, number]>): [number, number] => [
++    loop.reduce((sum, [x]) => sum + x, 0) / loop.length,
++    loop.reduce((sum, [, y]) => sum + y, 0) / loop.length,
++  ];
++  /** Where the pair of eyes sits on the body, in body units. */
++  const pairMid = (body: (typeof BABYGROK_BODIES)[string], gaze: readonly [number, number]) => {
++    const [left, right] = loopPolygons(
++      babygrokEyeLoops({
++        body,
++        morphFrom: null,
++        morphTo: body,
++        morph: 1,
++        gazeX: gaze[0],
++        gazeY: gaze[1],
++        turn: gaze[0] / 34,
++        lid: 1,
++        spec: spec("neutral"),
++        mood: 0,
++      }),
++    ).map(loopMid);
++    return [
++      (left![0] + right![0]) / 2 - body.eyes[0],
++      (left![1] + right![1]) / 2 - body.eyes[1],
++    ] as [number, number];
++  };
++
++  it("draws every body's face where the reference put it, up and to the right of its middle", () => {
++    for (const key of BABYGROK_BODY_KEYS) {
++      const body = BABYGROK_BODIES[key]!;
++      // The reference draws every bot looking up and away; a clamp that scaled the pair itself
++      // pulled ten of these thirteen faces back to a dead-centre stare (`IMG_2915`).
++      const [dx, dy] = pairMid(body, [0, 0]);
++      expect(dx, key).toBeLessThan(6);
++      expect(Math.abs(dy), key).toBeLessThan(6);
++      expect(Math.hypot(body.eyes[0], body.eyes[1]), key).toBeGreaterThan(10);
++    }
++  });
++
++  it("keeps a plump eye however far the face looks, instead of shrinking it into a fleck", () => {
++    for (const key of BABYGROK_BODY_KEYS) {
++      const body = BABYGROK_BODIES[key]!;
++      const reach = (gaze: readonly [number, number]) => {
++        const [left, right] = loopPolygons(
++          babygrokEyeLoops({
++            body,
++            morphFrom: null,
++            morphTo: body,
++            morph: 1,
++            gazeX: gaze[0],
++            gazeY: gaze[1],
++            turn: gaze[0] / 34,
++            lid: 1,
++            spec: spec("neutral"),
++            mood: 0,
++          }),
++        );
++        // The ink one eye covers, which is what a shrunken eye gives up.
++        const area = (loop: Array<[number, number]>) =>
++          Math.abs(
++            loop.reduce((sum, [x, y], index) => {
++              const [nx, ny] = loop[(index + 1) % loop.length]!;
++              return sum + x * ny - nx * y;
++            }, 0) / 2,
++          );
++        return [area(left!), area(right!)] as const;
++      };
++      const [restLeft, restRight] = reach([0, 0]);
++      for (const gaze of [[34, 0], [0, -36], [-34, 20], [30, -30]] as const) {
++        const [left, right] = reach(gaze);
++        // The gaze may be given up, the pair may travel, but the eyes stay the reference's own
++        // capsules: the slashed, shrunken eyes `IMG_2915` caught are what this keeps out.
++        expect(left, `${key} gaze ${gaze[0]},${gaze[1]}`).toBeGreaterThan(restLeft * 0.6);
++        expect(right, `${key} gaze ${gaze[0]},${gaze[1]}`).toBeGreaterThan(restRight * 0.6);
++      }
++    }
++  });
++
 +  it("bends the lids into the pleased arc for a poke or a smile", () => {
 +    expect(loops("neutral", 1, 0.5)).not.toBe(loops("neutral"));
 +    expect(loops("neutral", 1, 1)).not.toBe(loops("neutral", 1, 0.5));
@@ -101483,10 +101735,10 @@ index 0000000..269be43
 +});
 diff --git a/packages/core/src/babygrok-face.ts b/packages/core/src/babygrok-face.ts
 new file mode 100644
-index 0000000..871da70
+index 0000000..915c005
 --- /dev/null
 +++ b/packages/core/src/babygrok-face.ts
-@@ -0,0 +1,577 @@
+@@ -0,0 +1,622 @@
 +import type { BabygrokBody } from "./babygrok-geometry.js";
 +
 +/**
@@ -101852,67 +102104,112 @@ index 0000000..871da70
 +  if (apartAcross < 2 * acrossHalf + skin && apartAlong < 2 * alongHalf + skin) {
 +    const wider = acrossHalf > 1e-3 ? (apartAcross - skin) / (2 * acrossHalf) : 0;
 +    const longer = alongHalf > 1e-3 ? (apartAlong - skin) / (2 * alongHalf) : 0;
++    // The floor is a hairline rather than a plump eye on purpose: it only ever answers a lid that
++    // lies across the face (`calm`, `squinted`), which the app draws as its body's own capsule
++    // instead — see `motionFaceEyes` — so a squeezed pair here is arithmetic, not a face.
 +    if (wider >= longer) squeeze = Math.min(1, Math.max(0.2, wider));
 +    else shorten = Math.min(1, Math.max(0.3, longer));
 +    acrossHalf *= squeeze;
 +    alongHalf *= shorten;
 +  }
-+  // How far the drawn pair reaches from its own centre, along and across the line between the eyes.
-+  const bandAlong =
-+    half + acrossHalf * Math.abs(Math.cos(turnToPair)) + alongHalf * Math.abs(Math.sin(turnToPair));
-+  const bandAcross =
-+    acrossHalf * Math.abs(Math.sin(turnToPair)) + alongHalf * Math.abs(Math.cos(turnToPair));
-+
-+  // The pair sits where the face looks, but whole on its body: the widest pair a body was drawn
-+  // with still fits, so pulling it in only ever answers a long gaze into a wide lid.
-+  const drift = Math.hypot(originX, originY);
-+  if (drift > 1e-6) {
++  // What the ink actually reaches from each eye's centre, in body units: the lid's own half length
++  // and the stroke's radius, not the box the two can sit in. `squeeze` narrows the lid's width and
++  // `shorten` its length, but the stroke stays round, so the radius is added after they are.
++  const inkAcross = across * unit * squeeze + radius;
++  const inkAlong = along * unit * shorten + radius;
++  // The pair sits where the face looks, but whole on its body. The gaze is given up first, and the
++  // authored pair is the last thing touched: every body's eyes are drawn up and to the right of
++  // its middle, and a clamp that scaled the pair itself pulled twelve of the thirteen bodies back
++  // to a dead-centre stare the reference never draws (the blob's face, and so the main bot's,
++  // landed in the middle of its body instead of looking up and away).
++  //
++  // Each eye is checked at its own outline rather than at a box around the pair: a capsule's four
++  // extreme points (both tips and both sides) are where it leaves the body, while the box's
++  // corners stand well outside the ink — which is what made the old clamp give up so much.
++  {
 +    const ringFrom = morphFrom?.ring ?? body.ring;
 +    const ringTo = body.ring;
-+    const side = pairTilt + Math.PI / 2;
-+    const reachAlong = bandAlong;
-+    const reachAcross = bandAcross;
-+    // The four corners of the pair's own box: each eye's far end, and the width the box adds.
-+    const offsets: Array<readonly [number, number]> = [
-+      [
-+        Math.cos(pairTilt) * reachAlong + Math.cos(side) * reachAcross,
-+        Math.sin(pairTilt) * reachAlong + Math.sin(side) * reachAcross,
-+      ],
-+      [
-+        Math.cos(pairTilt) * reachAlong - Math.cos(side) * reachAcross,
-+        Math.sin(pairTilt) * reachAlong - Math.sin(side) * reachAcross,
-+      ],
-+      [
-+        -Math.cos(pairTilt) * reachAlong + Math.cos(side) * reachAcross,
-+        -Math.sin(pairTilt) * reachAlong + Math.sin(side) * reachAcross,
-+      ],
-+      [
-+        -Math.cos(pairTilt) * reachAlong - Math.cos(side) * reachAcross,
-+        -Math.sin(pairTilt) * reachAlong - Math.sin(side) * reachAcross,
-+      ],
-+    ];
-+    let pull = 1;
-+    for (const [dx, dy] of offsets) {
-+      const px = originX + dx;
-+      const py = originY + dy;
-+      const direction = Math.atan2(py, px);
-+      const edge = Math.min(
-+        babygrokBodyReach(ringFrom, direction),
-+        babygrokBodyReach(ringTo, direction),
-+      );
-+      const limit = edge * EYE_BODY_INSET;
-+      const c = px * px + py * py - limit * limit;
-+      if (c <= 0) continue;
-+      const a = drift * drift;
-+      const b = 2 * (originX * dx + originY * dy);
-+      const root = b * b - 4 * a * c;
-+      const solved = root > 0 ? (-b + Math.sqrt(root)) / (2 * a) : 0;
-+      pull = Math.min(pull, Math.max(0, solved));
++    const alongX = -Math.sin(tilt);
++    const alongY = Math.cos(tilt);
++    const acrossX = Math.cos(tilt);
++    const acrossY = Math.sin(tilt);
++    // The eye as a shape to measure: a length along its lid, a width across it, and the stroke's
++    // own roundness around them. Its supporting point in a direction is where that shape reaches,
++    // which is what the body's edge is compared with — not the box around it.
++    const lidAlong = along * unit * shorten;
++    const lidAcross = across * unit * squeeze;
++    const gazeSquared = gazeX * gazeX + gazeY * gazeY;
++    // How far the body's outline is from its middle in a direction, taking the nearest edge within
++    // a little either side: a star's spike or a clover's notch is a few degrees wide.
++    const edge = (x: number, y: number): number => {
++      const angle = Math.atan2(y, x);
++      let edge = Math.min(babygrokBodyReach(ringFrom, angle), babygrokBodyReach(ringTo, angle));
++      for (const around of [-0.22, 0.22])
++        edge = Math.min(
++          edge,
++          babygrokBodyReach(ringFrom, angle + around),
++          babygrokBodyReach(ringTo, angle + around),
++        );
++      return edge * EYE_BODY_INSET;
++    };
++    let give = 1;
++    let hold = 0;
++    // The body's edge changes direction as the pair travels (a star's spike and notch are a quarter
++    // of its width apart), so each eye is measured where the gaze would leave it: two passes settle
++    // on the same answer.
++    for (let pass = 0; pass < 2; pass += 1) {
++      let next = 1;
++      for (const side of [-1, 1]) {
++        const cx = Math.cos(pairTilt) * half * side;
++        const cy = Math.sin(pairTilt) * half * side;
++        const px = pairX + cx;
++        const py = pairY + cy;
++        const out = Math.hypot(px, py);
++        if (out < 1e-6) continue;
++        const dx = px / out;
++        const dy = py / out;
++        const support = Math.hypot(lidAlong * (alongX * dx + alongY * dy), lidAcross * (acrossX * dx + acrossY * dy)) + radius;
++        // The eye's outermost ink, seen from the pair's own middle.
++        const ex = cx + dx * support;
++        const ey = cy + dy * support;
++        if (gazeSquared > 1e-9) {
++          const limit = edge(px + ex + gazeX * give, py + ey + gazeY * give);
++          const restX = pairX + ex;
++          const restY = pairY + ey;
++          const c = restX * restX + restY * restY - limit * limit;
++          const b = 2 * (restX * gazeX + restY * gazeY);
++          // Only an eye that starts on the body and would leave it as the face looks.
++          if (c <= 0 && b > 0) {
++            const root = b * b - 4 * gazeSquared * c;
++            if (root > 0)
++              next = Math.min(next, Math.max(0, (-b + Math.sqrt(root)) / (2 * gazeSquared)));
++          }
++        }
++        // A face drawn with a lid longer than its own (the reference's `surprised`, `calm`) can sit
++        // off the body before it looks anywhere: that is the only case where the pair itself moves,
++        // and then only as far in as it must to be back on the body.
++        const spoken = ex * ex + ey * ey - edge(px, py) ** 2;
++        if (spoken > 0) {
++          const near = 2 * (ex * pairX + ey * pairY);
++          const span = pairX * pairX + pairY * pairY;
++          const root = near * near - 4 * span * spoken;
++          if (span > 1e-9 && root > 0) {
++            // The nearer of the two places the pair has to shrink to: from outside it is the
++            // smaller root, the first one back on the body.
++            const solved = (-near - Math.sqrt(root)) / (2 * span);
++            if (solved > 0 && solved < 1) hold = Math.max(hold, solved);
++          }
++        }
++      }
++      if (next === give) break;
++      give = next;
 +    }
-+    if (pull < 1) {
-+      const scale = Math.max(0, pull);
-+      originX *= scale;
-+      originY *= scale;
++    if (hold > 0) {
++      originX = pairX * hold + (originX - pairX) * Math.min(give, hold);
++      originY = pairY * hold + (originY - pairY) * Math.min(give, hold);
++    } else if (give < 1) {
++      originX = pairX + (originX - pairX) * give;
++      originY = pairY + (originY - pairY) * give;
 +    }
 +  }
 +  let d = "";
@@ -103926,10 +104223,10 @@ index 0000000..79e0495
 +
 diff --git a/packages/core/src/bot-motion-clips.test.ts b/packages/core/src/bot-motion-clips.test.ts
 new file mode 100644
-index 0000000..584872b
+index 0000000..e800313
 --- /dev/null
 +++ b/packages/core/src/bot-motion-clips.test.ts
-@@ -0,0 +1,179 @@
+@@ -0,0 +1,184 @@
 +import { describe, expect, it } from "vitest";
 +import { AVATAR_CLIP_POOLS, AVATAR_REST_POSE, avatarClip, avatarClipPose, avatarEase } from "./avatar-clips.js";
 +import { BABYGROK_BODIES } from "./babygrok-geometry.js";
@@ -104101,7 +104398,12 @@ index 0000000..584872b
 +  });
 +
 +  it("keeps the resting pools small and the working pool the official six", () => {
-+    expect(AVATAR_CLIP_POOLS.idle).toEqual(motionClipPool("idle"));
++    // The resting pool is the official idle set's own gentle clip (`Idle_B`). The louder two are
++    // left out on purpose: they are authored for one bot on one screen, and played at rest on every
++    // row of an inbox they swing a dozen bodies about instead of letting them breathe.
++    expect(AVATAR_CLIP_POOLS.idle.length).toBeGreaterThan(0);
++    for (const name of AVATAR_CLIP_POOLS.idle)
++      expect(motionClipPool("idle"), name).toContain(name);
 +    expect(AVATAR_CLIP_POOLS.compactIdle).toEqual(motionClipPool("idle", true));
 +    expect(AVATAR_CLIP_POOLS.working).toEqual(motionClipPool("working"));
 +    // Every pool name is a clip the player can find.

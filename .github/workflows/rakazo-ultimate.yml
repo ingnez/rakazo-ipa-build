@@ -1,9 +1,15 @@
 name: Rakazo Ultimate iOS
-# Branch copy for grokbot-* review builds: runs on GitHub's hosted Xcode 27 Mac (the runner the
-# main-branch builds use) and builds the branch it was dispatched on. Dispatch only: nothing runs
-# on push, nothing is released; the unsigned .ipa and the simulator screenshots are artifacts.
-# The screenshot step is capped at 10 minutes so a hang cannot delay the already-uploaded IPA.
-on: [workflow_dispatch]
+# Branch copy for grokbot-* review builds: runs on GitHub's hosted Xcode 27 Mac and builds the
+# branch it was dispatched on. Dispatch only: nothing runs on push, nothing is released; the
+# unsigned .ipa and the simulator launch check are artifacts.
+# Inputs: prepare_only skips the device build (launch check only); bundle_releases are earlier
+# releases whose shipped JS bundles are also launched (fresh and as an upgrade from the first).
+on:
+  workflow_dispatch:
+    inputs:
+      prepare_only: { type: boolean, default: false }
+      bundle_releases: { type: string, default: "" }
+permissions: { contents: read, actions: read }
 concurrency: { group: "rakazo-ios-${{ github.ref }}", cancel-in-progress: false }
 jobs:
   build:
@@ -11,8 +17,14 @@ jobs:
     timeout-minutes: 240
     steps:
       - { uses: actions/checkout@v4, with: { ref: "${{ github.ref }}" } }
-      - { run: bash rakazo-ultimate/build.sh }
+      - name: Build
+        run: bash rakazo-ultimate/build.sh
+        env: { PREPARE_ONLY: "${{ inputs.prepare_only && '1' || '' }}" }
       - { if: always(), uses: actions/upload-artifact@v4, with: { name: rakazo-ultimate-ipa, path: rakazo-ultimate/Rakazo-unsigned.ipa, if-no-files-found: warn, retention-days: 30 } }
       - { if: always(), uses: actions/upload-artifact@v4, with: { name: rakazo-ultimate-log, path: rakazo-ultimate/xcodebuild.log, if-no-files-found: warn, retention-days: 30 } }
-      - { name: Simulator screenshots, continue-on-error: true, timeout-minutes: 10, run: bash rakazo-ultimate/sim-screens.sh }
-      - { if: always(), uses: actions/upload-artifact@v4, with: { name: rakazo-sim-screens, path: rakazo-ultimate/sim-screens/, if-no-files-found: warn, retention-days: 30 } }
+      - name: Simulator launch check
+        continue-on-error: true
+        timeout-minutes: 75
+        run: bash rakazo-ultimate/sim-crashcheck.sh
+        env: { GH_TOKEN: "${{ github.token }}", BUNDLE_RELEASES: "${{ inputs.bundle_releases }}" }
+      - { if: always(), uses: actions/upload-artifact@v4, with: { name: rakazo-sim-check, path: rakazo-ultimate/sim-check/, if-no-files-found: warn, retention-days: 30 } }

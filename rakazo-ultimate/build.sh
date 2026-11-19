@@ -174,6 +174,8 @@ cd ios
 pod install --repo-update || pod install
 grep -q 'MessageImageActions' Podfile.lock ||
   { echo "::error::message-image-actions was not autolinked"; exit 1; }
+# A simulator-only check needs the prepared project, not the device build.
+if [ -n "${PREPARE_ONLY:-}" ]; then exit 0; fi
 xcodebuild -workspace Rakazo.xcworkspace -scheme Rakazo -configuration Release \
   -destination 'generic/platform=iOS' -derivedDataPath build \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build \

@@ -58,7 +58,7 @@ launch_check() { # label
   sleep 30
   if ps -p "$pid" >/dev/null 2>&1; then alive=ALIVE; else alive=CRASHED; fi
   # Only this tree's own bundle gates the step; an earlier release seeding data may crash itself.
-  case "$label" in *tree*) [ "$alive" = ALIVE ] || FAIL=1 ;; esac
+  case "$label" in fresh-tree|relaunch-tree|upgrade-*-to-tree) [ "$alive" = ALIVE ] || FAIL=1 ;; esac
   xcrun simctl io "$UDID" screenshot "$OUT/$label.png" || true
   xcrun simctl spawn "$UDID" log show --start "$start" --predicate 'process == "Rakazo"' --style compact \
     > "$OUT/$label.log" 2>/dev/null || true

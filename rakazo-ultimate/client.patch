@@ -129900,7 +129900,7 @@ index 139a32726..56c9ec61e 100644
 -}
 diff --git a/apps/mobile/components/mochi-bot-avatar.test.tsx b/apps/mobile/components/mochi-bot-avatar.test.tsx
 new file mode 100644
-index 000000000..c9cf95be4
+index 000000000..d7936344d
 --- /dev/null
 +++ b/apps/mobile/components/mochi-bot-avatar.test.tsx
 @@ -0,0 +1,140 @@
@@ -129980,7 +129980,7 @@ index 000000000..c9cf95be4
 +vi.mock("react-native", () => ({
 +  Image: (props: { style?: unknown }) => createElement("span", { "data-image": "1" }),
 +  Pressable: ({ children }: { children?: ReactNode }) => createElement("button", null, children),
-+  InteractionManager: { runAfterInteractions: (cb: () => void) => (cb(), { cancel() {} }) },
++
 +  Platform: { OS: "ios" },
 +}));
 +
@@ -139762,10 +139762,10 @@ index 000000000..23b0970d4
 +}
 diff --git a/apps/mobile/lib/after-first-paint.test.tsx b/apps/mobile/lib/after-first-paint.test.tsx
 new file mode 100644
-index 000000000..842c070e4
+index 000000000..f0cf35886
 --- /dev/null
 +++ b/apps/mobile/lib/after-first-paint.test.tsx
-@@ -0,0 +1,86 @@
+@@ -0,0 +1,97 @@
 +/** @vitest-environment jsdom */
 +
 +import { act, createElement, useEffect } from "react";
@@ -139773,18 +139773,8 @@ index 000000000..842c070e4
 +import type { Root } from "react-dom/client";
 +import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 +
-+const interact = vi.hoisted(() => ({
-+  run: (cb: () => void) => {
-+    cb();
-+    return { cancel: vi.fn() };
-+  },
-+}));
-+
-+vi.mock("react-native", () => ({
-+  InteractionManager: {
-+    runAfterInteractions: (cb: () => void) => interact.run(cb),
-+  },
-+}));
++// React Native 0.88 ships no InteractionManager in release builds: the hook must not need it.
++vi.mock("react-native", () => ({}));
 +
 +import { useAfterFirstPaint } from "./after-first-paint";
 +
@@ -139793,6 +139783,7 @@ index 000000000..842c070e4
 +const frames: Array<FrameRequestCallback> = [];
 +
 +beforeEach(() => {
++  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
 +  container = document.createElement("div");
 +  document.body.appendChild(container);
 +  root = createRoot(container);
@@ -139810,6 +139801,7 @@ index 000000000..842c070e4
 +  act(() => root.unmount());
 +  container.remove();
 +  vi.unstubAllGlobals();
++  vi.useRealTimers();
 +});
 +
 +function Probe({ onValue }: { onValue: (value: boolean) => void }) {
@@ -139823,6 +139815,12 @@ index 000000000..842c070e4
 +function flushFrame() {
 +  const next = frames.shift();
 +  if (next) act(() => next(0));
++}
++
++function flushIdle() {
++  act(() => {
++    vi.runOnlyPendingTimers();
++  });
 +}
 +
 +describe("useAfterFirstPaint", () => {
@@ -139839,6 +139837,7 @@ index 000000000..842c070e4
 +    flushFrame();
 +    expect(container.querySelector("span")?.getAttribute("data-ready")).toBe("false");
 +    flushFrame();
++    flushIdle();
 +    expect(container.querySelector("span")?.getAttribute("data-ready")).toBe("true");
 +    expect(values.at(-1)).toBe(true);
 +  });
@@ -139851,30 +139850,45 @@ index 000000000..842c070e4
 +    flushFrame();
 +    expect(values.at(-1)).toBe(false);
 +  });
++
++  it("uses requestIdleCallback when the host has it", () => {
++    const idle: Array<() => void> = [];
++    vi.stubGlobal("requestIdleCallback", (cb: () => void) => idle.push(cb));
++    vi.stubGlobal("cancelIdleCallback", () => undefined);
++    act(() => root.render(<Probe onValue={() => undefined} />));
++    flushFrame();
++    flushFrame();
++    expect(idle).toHaveLength(1);
++    act(() => idle[0]!());
++    expect(container.querySelector("span")?.getAttribute("data-ready")).toBe("true");
++  });
 +});
 diff --git a/apps/mobile/lib/after-first-paint.ts b/apps/mobile/lib/after-first-paint.ts
 new file mode 100644
-index 000000000..7cdb5d1a4
+index 000000000..fd051d523
 --- /dev/null
 +++ b/apps/mobile/lib/after-first-paint.ts
-@@ -0,0 +1,30 @@
+@@ -0,0 +1,33 @@
 +import { useEffect, useState } from "react";
-+import { InteractionManager } from "react-native";
++import { runWhenIdle } from "./run-when-idle";
 +
 +/**
 + * False on the first commit, then true once the first two frames have been
 + * drawn and the JS thread is idle. Callers should keep first paint cheap
 + * (static pictures, no Reanimated loops) until this flips.
++ *
++ * Nothing here may throw at startup: this runs on the home screen and on every avatar.
 + */
 +export function useAfterFirstPaint(): boolean {
 +  const [ready, setReady] = useState(false);
 +  useEffect(() => {
 +    let cancelled = false;
 +    let inner = 0;
-+    let interaction: { cancel: () => void } | undefined;
++    let cancelIdle: (() => void) | undefined;
 +    const outer = requestAnimationFrame(() => {
 +      inner = requestAnimationFrame(() => {
-+        interaction = InteractionManager.runAfterInteractions(() => {
++        if (cancelled) return;
++        cancelIdle = runWhenIdle(() => {
 +          if (!cancelled) setReady(true);
 +        });
 +      });
@@ -139883,7 +139897,7 @@ index 000000000..7cdb5d1a4
 +      cancelled = true;
 +      cancelAnimationFrame(outer);
 +      cancelAnimationFrame(inner);
-+      interaction?.cancel();
++      cancelIdle?.();
 +    };
 +  }, []);
 +  return ready;
@@ -149628,6 +149642,47 @@ index 0ecc0cd3a..83c679581 100644
    style?: StyleProp<ViewStyle>;
  } & (
    | { label: string; accessibilityLabel?: string; icon?: ComponentProps<typeof NativeSymbol> }
+diff --git a/apps/mobile/lib/no-removed-rn-apis.test.ts b/apps/mobile/lib/no-removed-rn-apis.test.ts
+new file mode 100644
+index 000000000..c7e4b17e0
+--- /dev/null
++++ b/apps/mobile/lib/no-removed-rn-apis.test.ts
+@@ -0,0 +1,35 @@
++import { readdirSync, readFileSync, statSync } from "node:fs";
++import { join } from "node:path";
++import { describe, expect, it } from "vitest";
++
++// React Native 0.88 removed these from release builds: the export is undefined there, so using
++// one throws at runtime even though tests that mock react-native pass. v24 crashed on launch
++// this way (InteractionManager on the home screen). Use lib/run-when-idle.ts instead.
++const REMOVED = ["InteractionManager"];
++const ROOT = join(__dirname, "..");
++const DIRS = ["app", "components", "lib", "hooks"];
++
++function sources(dir: string): string[] {
++  let entries: string[];
++  try {
++    entries = readdirSync(dir);
++  } catch {
++    return [];
++  }
++  return entries.flatMap((name) => {
++    const path = join(dir, name);
++    if (name === "node_modules") return [];
++    if (statSync(path).isDirectory()) return sources(path);
++    return /\.(ts|tsx)$/.test(name) && !/\.test\.(ts|tsx)$/.test(name) ? [path] : [];
++  });
++}
++
++describe("removed React Native APIs", () => {
++  it("are not used by app code", () => {
++    const offenders = DIRS.flatMap((dir) => sources(join(ROOT, dir))).filter((file) => {
++      const text = readFileSync(file, "utf8").replace(/\/\/.*$|\/\*[\s\S]*?\*\//gm, "");
++      return REMOVED.some((api) => new RegExp(`\\b${api}\\b`).test(text));
++    });
++    expect(offenders).toEqual([]);
++  });
++});
 diff --git a/apps/mobile/lib/office-thumbnail.test.ts b/apps/mobile/lib/office-thumbnail.test.ts
 new file mode 100644
 index 000000000..cdc57ccd0
@@ -151329,14 +151384,15 @@ index 000000000..edfdaa97f
 +});
 diff --git a/apps/mobile/lib/preload-chats.ts b/apps/mobile/lib/preload-chats.ts
 new file mode 100644
-index 000000000..8253b9f56
+index 000000000..a2c9d1db3
 --- /dev/null
 +++ b/apps/mobile/lib/preload-chats.ts
-@@ -0,0 +1,151 @@
+@@ -0,0 +1,147 @@
 +import { isRetryableError } from "@rakazo/core";
 +import { selectedSpaceId } from "./api";
 +import { chatRpc } from "./chat-rpc";
 +import { onConversationCleared } from "./conversation-cleared";
++import { runWhenIdle as runIdle } from "./run-when-idle";
 +import type { InboxItem } from "./inbox-spaces";
 +import { isIntegrationsScopeCurrent } from "./integrations-cache";
 +import type { MobileSnapshot } from "./mobile-types";
@@ -151379,12 +151435,7 @@ index 000000000..8253b9f56
 +
 +/** How later waves wait so they do not overlap remaining first-paint work. */
 +let runWhenIdle: (task: () => void) => void = (task) => {
-+  try {
-+    const { InteractionManager } = require("react-native") as typeof import("react-native");
-+    InteractionManager.runAfterInteractions(task);
-+  } catch {
-+    queueMicrotask(task);
-+  }
++  runIdle(task);
 +};
 +
 +export function setPreloadIdleSchedulerForTests(scheduler: (task: () => void) => void): void {
@@ -152785,6 +152836,43 @@ index 000000000..773e1933f
 +/** The request context a plan was made in, so its socket is opened in the same one. */
 +export async function realtimeRequestContext(): Promise<ApiRequestContext> {
 +  return captureApiRequestContext();
++}
+diff --git a/apps/mobile/lib/run-when-idle.ts b/apps/mobile/lib/run-when-idle.ts
+new file mode 100644
+index 000000000..0d5396c7c
+--- /dev/null
++++ b/apps/mobile/lib/run-when-idle.ts
+@@ -0,0 +1,31 @@
++/**
++ * Runs `task` once the JS thread is idle and returns a cancel function.
++ *
++ * React Native 0.88 removed `InteractionManager`: in a release build the export is `undefined`,
++ * so `InteractionManager.runAfterInteractions` throws a TypeError from inside a frame callback,
++ * which the app treats as a fatal startup error. This uses `requestIdleCallback` when the host
++ * has it and a zero-delay timer otherwise, and a task that throws is reported, never rethrown.
++ */
++export function runWhenIdle(task: () => void): () => void {
++  const guarded = () => {
++    try {
++      task();
++    } catch (error) {
++      console.warn("An idle task failed", error);
++    }
++  };
++  const host = globalThis as {
++    requestIdleCallback?: (cb: () => void) => number;
++    cancelIdleCallback?: (id: number) => void;
++  };
++  if (typeof host.requestIdleCallback === "function") {
++    try {
++      const id = host.requestIdleCallback(guarded);
++      return () => host.cancelIdleCallback?.(id);
++    } catch {
++      // Fall through to a timer.
++    }
++  }
++  const timer = setTimeout(guarded, 0);
++  return () => clearTimeout(timer);
 +}
 diff --git a/apps/mobile/lib/saved-chats.ts b/apps/mobile/lib/saved-chats.ts
 index b186afb60..10e0dc72b 100644

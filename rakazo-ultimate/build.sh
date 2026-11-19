@@ -98,6 +98,15 @@ grep -q 'export const PRELOADED_CHATS = 20;' apps/mobile/lib/preload-chats.ts
 grep -q 'export const COLD_START_PRELOAD_CHATS = 5;' apps/mobile/lib/preload-chats.ts
 grep -q 'allowPreloadAfterFirstPaint' apps/mobile/lib/preload-chats.ts
 grep -q 'allowPreloadAfterFirstPaint' apps/mobile/app/index.tsx
+# v24 crashed on launch: React Native 0.88 ships no InteractionManager in release builds, and the
+# home screen's after-first-paint hook called it. Idle work goes through run-when-idle.ts only.
+test -f apps/mobile/lib/run-when-idle.ts
+grep -q 'runWhenIdle' apps/mobile/lib/after-first-paint.ts
+if grep -RnsE '\bInteractionManager\b' apps/mobile/app apps/mobile/components apps/mobile/lib apps/mobile/hooks \
+  --include='*.ts' --include='*.tsx' --exclude='*.test.ts' --exclude='*.test.tsx' | grep -v '^\S*:[0-9]*: *\(//\|\*\)'; then
+  echo "::error::app code uses InteractionManager, which React Native 0.88 removed from release builds"
+  exit 1
+fi
 grep -q 'export function currentSavedChatsScope' apps/mobile/lib/saved-chats.ts
 grep -q 'void preloadChats(inboxChats(listData))' apps/mobile/app/index.tsx
 grep -q 'initialNumToRender={6}' apps/mobile/components/thread/thread-message-list.tsx

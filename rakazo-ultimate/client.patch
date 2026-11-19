@@ -78711,10 +78711,10 @@ index 33a71724b..7e9d5457b 100644
    it("updates native SVG hosts with finite six-value matrices and numeric eye props", () => {
      render("#3EC5A8", "rakazo");
 diff --git a/apps/mobile/lib/bot-avatar.test.ts b/apps/mobile/lib/bot-avatar.test.ts
-index 180908eb4..c1e0a8f32 100644
+index 180908eb4..8e5ed105e 100644
 --- a/apps/mobile/lib/bot-avatar.test.ts
 +++ b/apps/mobile/lib/bot-avatar.test.ts
-@@ -1,24 +1,103 @@
+@@ -1,24 +1,102 @@
 -import { shippedBotAvatarShapePath } from "@rakazo/core";
  import { describe, expect, it } from "vitest";
 -import { mobileBotAvatarPresentation } from "./bot-avatar.js";
@@ -78780,10 +78780,9 @@ index 180908eb4..c1e0a8f32 100644
 +      kind: "color",
 +      color: "#A369D9",
 +    });
-+    // A colour outside the palette draws as its nearest palette colour (here the black body).
 +    expect(mobileBotAvatarPresentation("#123456", "bot-a")).toMatchObject({
 +      kind: "color",
-+      color: "#171922",
++      color: "#123456",
 +    });
 +  });
 +
@@ -93786,20 +93785,6 @@ index d163cd66d..c2d1672f7 100644
                  }}
                  onPasskey={mode === "in" && passkey.supported ? passkey.start : undefined}
                />
-diff --git a/apps/web/src/pages/shell/composer.test.tsx b/apps/web/src/pages/shell/composer.test.tsx
-index c6fb45f22..7c8367a10 100644
---- a/apps/web/src/pages/shell/composer.test.tsx
-+++ b/apps/web/src/pages/shell/composer.test.tsx
-@@ -343,7 +343,8 @@ describe("Composer", () => {
-     const field = container?.querySelector('[data-testid="composer-field"]');
-     const card = field?.querySelector('[data-testid="mention-chip"]');
-     expect(card?.textContent).toBe("@Bob");
--    expect((card as HTMLElement | null)?.style.color).toBe("rgb(51, 102, 255)");
-+    // #3366FF is outside the palette, so the chip wears its nearest palette blue (#5C7EE9).
-+    expect((card as HTMLElement | null)?.style.color).toBe("rgb(92, 126, 233)");
-     expect(card?.closest("[inert]")?.textContent).toBe("ask @Bob now");
-     expect(container?.querySelector('[aria-label="Remove mention Bob"]')).toBeNull();
-     expect(textarea.className).toContain("text-transparent");
 diff --git a/apps/web/src/pages/shell/create-bot-dialog.test.tsx b/apps/web/src/pages/shell/create-bot-dialog.test.tsx
 index 2f5df3108..b0470938d 100644
 --- a/apps/web/src/pages/shell/create-bot-dialog.test.tsx
@@ -99597,7 +99582,7 @@ index ce82a7a77..9a5df17ab 100644
  
  export const ATTACHMENT_ALLOWED_MIME_TYPES = [
 diff --git a/packages/contracts/src/bot-avatar.ts b/packages/contracts/src/bot-avatar.ts
-index c2e91d367..93c7e7b8b 100644
+index c2e91d367..3e2718be6 100644
 --- a/packages/contracts/src/bot-avatar.ts
 +++ b/packages/contracts/src/bot-avatar.ts
 @@ -6,7 +6,10 @@ export type BotAvatarSet = z.infer<typeof BotAvatarSetSchema>;
@@ -99612,7 +99597,7 @@ index c2e91d367..93c7e7b8b 100644
  }
  
  export interface BotColorDef {
-@@ -14,79 +17,159 @@ export interface BotColorDef {
+@@ -14,79 +17,122 @@ export interface BotColorDef {
    name: string;
    /** The bot's one color: its avatar, name and bubble all start from it. */
    hex: string;
@@ -99755,43 +99740,6 @@ index c2e91d367..93c7e7b8b 100644
 +      color.hex.toLowerCase() === clean ||
 +      (color.legacyHexes ?? []).some((legacy) => legacy.toLowerCase() === clean),
 +  );
-+}
-+
-+function oklab(hex: string): [number, number, number] {
-+  let c = hex.replace("#", "");
-+  if (c.length === 3) c = c.replace(/./g, (x) => x + x);
-+  const [r, g, b] = [0, 2, 4].map((i) => {
-+    const v = Number.parseInt(c.slice(i, i + 2), 16) / 255;
-+    return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
-+  }) as [number, number, number];
-+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
-+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
-+  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
-+  return [
-+    0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
-+    1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
-+    0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s,
-+  ];
-+}
-+
-+/**
-+ * The palette colour closest to any `#rgb`/`#rrggbb` value (OKLab distance). Every bot wears a
-+ * palette colour: a custom or unknown stored value draws as its nearest one, so no bot keeps a
-+ * colour from outside Rakazo's palette and no stored row has to be rewritten.
-+ */
-+export function nearestBotColorDef(hex: string): BotColorDef {
-+  const [l, a, b] = oklab(hex);
-+  let best = BOT_COLOR_LIST[0]!;
-+  let bestDistance = Number.POSITIVE_INFINITY;
-+  for (const color of BOT_COLOR_LIST) {
-+    const [l2, a2, b2] = oklab(color.hex);
-+    const distance = Math.hypot(l - l2, a - a2, b - b2);
-+    if (distance < bestDistance) {
-+      best = color;
-+      bestDistance = distance;
-+    }
-+  }
-+  return best;
 +}
 +
 +/** Whether a stored colour is the palette's white, which pages treat as a pale body. */
@@ -104213,25 +104161,20 @@ index be9defcd6..2272bb078 100644
 +  });
  });
 diff --git a/packages/core/src/bot-avatar-colors.ts b/packages/core/src/bot-avatar-colors.ts
-index 7916fec51..1b620248e 100644
+index 7916fec51..b1b0ad5e4 100644
 --- a/packages/core/src/bot-avatar-colors.ts
 +++ b/packages/core/src/bot-avatar-colors.ts
-@@ -1,7 +1,12 @@
+@@ -1,7 +1,7 @@
  import type { BotColorDef } from "@rakazo/contracts";
 -import { BOT_COLOR_LIST, parseBotAvatarValue } from "@rakazo/contracts";
-+import {
-+  BOT_COLOR_LIST,
-+  botColorDefForHex,
-+  nearestBotColorDef,
-+  parseBotAvatarValue,
-+} from "@rakazo/contracts";
++import { BOT_COLOR_LIST, botColorDefForHex, parseBotAvatarValue } from "@rakazo/contracts";
  
 -/** Shared identity color for Avatar Studio reset/fallback (Executive Violet). */
 +/** Shared identity color for Avatar Studio reset/fallback (Iris, the violet). */
  export const DEFAULT_BOT_AVATAR_COLOR = BOT_COLOR_LIST.find((color) => color.id === "violet")!.hex;
  
  /** The bots the invite artwork draws, in order; white would vanish on a light page. */
-@@ -35,12 +40,12 @@ export function resolvePersonaColorDef(
+@@ -35,9 +35,8 @@ export function resolvePersonaColorDef(
      const clean = explicitColor.toLowerCase();
      const foundById = BOT_COLOR_LIST.find((c) => c.id === clean || c.name.toLowerCase() === clean);
      if (foundById) return foundById;
@@ -104241,14 +104184,9 @@ index 7916fec51..1b620248e 100644
 +    // A colour stored by an earlier build (an earlier palette) draws as the colour that replaced it.
 +    const foundByHex = botColorDefForHex(clean);
      if (foundByHex) return foundByHex;
-+    // Any other colour (a custom pick, an unknown stored value) draws as its nearest palette one.
      if (/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(explicitColor)) {
--      return { id: "custom", name: "Custom", hex: explicitColor };
-+      return nearestBotColorDef(explicitColor);
-     }
-   }
-   const seed = (shippedHash(identity) ^ Math.imul(1, 2654435769)) >>> 0;
-@@ -122,15 +127,54 @@ export function botEyeTone(bodyHex: string): "page" | "dark" | "light" {
+       return { id: "custom", name: "Custom", hex: explicitColor };
+@@ -122,15 +121,54 @@ export function botEyeTone(bodyHex: string): "page" | "dark" | "light" {
    return "page";
  }
  
@@ -105668,7 +105606,7 @@ index 0e9e48b49..ba8a5f846 100644
  export * from "./model-connection-form.js";
  export * from "./model-oauth.js";
 diff --git a/packages/core/src/logo-avatar-traits.test.ts b/packages/core/src/logo-avatar-traits.test.ts
-index 9feb827e1..ce56a0a9a 100644
+index 9feb827e1..fbf887e07 100644
 --- a/packages/core/src/logo-avatar-traits.test.ts
 +++ b/packages/core/src/logo-avatar-traits.test.ts
 @@ -1,3 +1,4 @@
@@ -105676,26 +105614,15 @@ index 9feb827e1..ce56a0a9a 100644
  import { BOT_COLORS } from "@rakazo/contracts";
  import { describe, expect, it } from "vitest";
  import { seededLogoAvatarColor } from "./logo-avatar-traits.js";
-@@ -28,7 +29,8 @@ describe("seeded logo colours", () => {
-       ...chosen
-     } = logoAvatarTraits("persistent-bot-1", "#123456");
-     expect(color).toBe(seededLogoAvatarColor("persistent-bot-1"));
--    expect(explicit).toBe("#123456");
-+    // A saved colour outside the palette is kept as its nearest palette colour.
-+    expect(explicit).toBe("#171922");
-     expect(chosen).toEqual(seeded);
-   });
- });
-@@ -73,7 +75,9 @@ describe("stable logo avatar traits", () => {
+@@ -73,7 +74,9 @@ describe("stable logo avatar traits", () => {
        ...second
      } = logoAvatarTraits("bot-1", "blue");
      expect(first).toEqual(second);
 -    expect(logoAvatarTraits("bot-1", "blue").color).toBe("#2A92FE");
--    expect(logoAvatarTraits("bot-1", "#abc").color).toBe("#abc");
 +    expect(logoAvatarTraits("bot-1", "blue").color).toBe(
 +      BOT_COLOR_LIST.find((color) => color.id === "blue")!.hex,
 +    );
-+    expect(logoAvatarTraits("bot-1", "#abc").color).toBe("#2BB8CA");
+     expect(logoAvatarTraits("bot-1", "#abc").color).toBe("#abc");
    });
  });
 diff --git a/packages/core/src/message-reactions.test.ts b/packages/core/src/message-reactions.test.ts
@@ -107212,7 +107139,7 @@ index 4074f42e2..37393e715 100644
    overlay: "rgba(0, 0, 0, 0.19)",
    scrollbar: "#C8C8C4",
 diff --git a/packages/ui-web/src/bot-avatar.test.tsx b/packages/ui-web/src/bot-avatar.test.tsx
-index 25445d099..527cb2a27 100644
+index 25445d099..a52af95b2 100644
 --- a/packages/ui-web/src/bot-avatar.test.tsx
 +++ b/packages/ui-web/src/bot-avatar.test.tsx
 @@ -2,6 +2,7 @@ import { ACTIVE_RUN_STATUSES } from "@rakazo/core";
@@ -107223,7 +107150,7 @@ index 25445d099..527cb2a27 100644
    BOT_COLORS,
    BotAvatar,
    BotShapePreview,
-@@ -67,8 +68,20 @@ describe("BotAvatar", () => {
+@@ -67,8 +68,15 @@ describe("BotAvatar", () => {
    });
  
    it("resolves explicit colors and shapes", () => {
@@ -107237,12 +107164,7 @@ index 25445d099..527cb2a27 100644
 +    );
 +    // Pure white, long or short, is a value the palette's white was stored as.
 +    expect(resolvePersonaColorDef("bot", "#fff").id).toBe("white");
-+    // A colour outside the palette draws as its nearest palette colour: the custom blue a bot
-+    // was saved with becomes the palette's blue.
-+    expect(resolvePersonaColorDef("bot", "#1084FE").id).toBe("blue");
-+    expect(BOT_COLOR_LIST.map((color) => color.hex)).toContain(
-+      resolvePersonaColorDef("bot", "#ABCDEF").hex,
-+    );
++    expect(resolvePersonaColorDef("bot", "#ABCDEF").hex).toBe("#ABCDEF");
      expect(BOT_COLORS.length).toBeGreaterThan(0);
    });
  
@@ -107280,22 +107202,6 @@ index f0319929f..545e310da 100644
            </g>
          </svg>
        )}
-diff --git a/packages/ui-web/src/logo-avatar.test.tsx b/packages/ui-web/src/logo-avatar.test.tsx
-index e37006f63..68edc1ace 100644
---- a/packages/ui-web/src/logo-avatar.test.tsx
-+++ b/packages/ui-web/src/logo-avatar.test.tsx
-@@ -68,9 +68,9 @@ describe("logo-derived avatar prototype", () => {
-     expect(html).not.toContain("<image");
-   });
- 
--  it("retains a supplied body colour and uses light eyes on a dark body", () => {
-+  it("draws a supplied dark colour as the palette's black, with light eyes", () => {
-     const html = renderToString(<LogoAvatar identity="dark-bot" avatarValue="#101014" />);
--    expect(html).toContain('data-color="#101014"');
-+    expect(html).toContain('data-color="#171922"');
-     const eyeInk = html.match(
-       /<linearGradient[^>]*id="logo-eye[^>]*>[\s\S]*?stop-color="([^"]+)"/,
-     )?.[1];
 diff --git a/scripts/build-server.mjs b/scripts/build-server.mjs
 index 2bec7b3ac..5606d5389 100644
 --- a/scripts/build-server.mjs

@@ -96,6 +96,36 @@ grep -q 'void preloadChats(inboxChats(listData, { bots, groups }))' apps/mobile/
 grep -q 'initialNumToRender={6}' apps/mobile/components/thread/thread-message-list.tsx
 grep -q 'maxToRenderPerBatch={4}' apps/mobile/components/thread/thread-message-list.tsx
 
+# This round: a third-party connection can refresh its model list, and each row shows
+# known context size and image support (or unknown). A patch that lost either would
+# still compile a page that never says it is working.
+test -f apps/mobile/lib/model-capability-line.ts
+test -f apps/mobile/lib/connection-model-list.test.tsx
+grep -q 'models/refreshModels' "apps/mobile/app/(settings)/model-connection.tsx"
+grep -q 't`Refresh models`' "apps/mobile/app/(settings)/model-connection.tsx"
+grep -q 'showCapabilities' apps/mobile/components/connection-model-list.tsx
+grep -q 'refreshModels:' packages/contracts/src/rpc.ts
+
+# This round: only the orange star on the home hero, live avatars blink, the
+# shipped mark is the Bot icon, and a chat shows stacked images plus a composer
+# tray. The Photos/Vision native module has to be in the tree before prebuild.
+test -f apps/mobile/lib/avatar-badges.ts
+grep -q 'export const HERO_AVATAR_SIZE = 103;' apps/mobile/lib/avatar-badges.ts
+test -f packages/core/src/mochi-avatar.ts
+test -f packages/core/src/mochi-avatar.test.ts
+test -f apps/mobile/components/mochi-bot-avatar.tsx
+grep -q 'MochiBotAvatar' apps/mobile/components/bot-avatar.tsx
+test -f apps/mobile/lib/after-first-paint.ts
+grep -q 'useAfterFirstPaint' apps/mobile/components/mochi-bot-avatar.tsx
+test -f apps/mobile/components/image-card-stack.tsx
+test -f apps/mobile/components/composer-attach-tray.tsx
+test -f apps/mobile/modules/message-image-actions/ios/MessageImageActionsModule.swift
+test -f apps/mobile/modules/message-image-actions/ios/MessageImageActions.podspec
+test -f apps/mobile/modules/message-image-actions/expo-module.config.json
+grep -q 'stackOwnsLongPress' apps/mobile/components/thread/message-row.tsx
+grep -q 'visibleThreadBlocks' apps/mobile/components/thread/message-bubble.tsx
+grep -q 'NSPhotoLibraryAddUsageDescription' apps/mobile/app.json
+
 npm i -g pnpm@12.18.0
 pnpm install --frozen-lockfile
 
@@ -122,11 +152,21 @@ if grep -Rqs 'F97A10\|fb7a11\|FB7A11' ios/Rakazo/Images.xcassets 2>/dev/null; th
   echo "::warning::an upstream orange survived in Images.xcassets"
 fi
 
+# expo.name must remain Rakazo so prebuild still writes this folder and scheme.
+# The home-screen label is CFBundleDisplayName (Bot), not the project name.
+if [ -d ios/Bot ] && [ ! -d ios/Rakazo ]; then
+  echo "::error::prebuild created ios/Bot; expo.name must stay Rakazo so the Xcode project stays Rakazo"
+  exit 1
+fi
+test -f ios/Rakazo/Info.plist || { echo "::error::prebuild did not write ios/Rakazo/Info.plist"; exit 1; }
+
 # The typeface has to be in the built bundle, not merely in the source.
 /usr/libexec/PlistBuddy -c 'Print :UIAppFonts' ios/Rakazo/Info.plist | tee /dev/stderr | grep -q 'XVF-Regular.ttf'
 
 cd ios
 pod install --repo-update || pod install
+grep -q 'MessageImageActions' Podfile.lock ||
+  { echo "::error::message-image-actions was not autolinked"; exit 1; }
 xcodebuild -workspace Rakazo.xcworkspace -scheme Rakazo -configuration Release \
   -destination 'generic/platform=iOS' -derivedDataPath build \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build \
@@ -145,6 +185,8 @@ IPA_PLIST="$(mktemp -d)"
 unzip -q -o Rakazo-unsigned.ipa 'Payload/Rakazo.app/Info.plist' -d "$IPA_PLIST"
 /usr/libexec/PlistBuddy -c 'Print :UIAppFonts' "$IPA_PLIST/Payload/Rakazo.app/Info.plist" | grep -q 'XVF-Regular.ttf'
 /usr/libexec/PlistBuddy -c 'Print :CADisableMinimumFrameDurationOnPhone' "$IPA_PLIST/Payload/Rakazo.app/Info.plist" || true
+/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$IPA_PLIST/Payload/Rakazo.app/Info.plist" | grep -qx Bot
+/usr/libexec/PlistBuddy -c 'Print :NSPhotoLibraryAddUsageDescription' "$IPA_PLIST/Payload/Rakazo.app/Info.plist" | grep -q 'photo library'
 unzip -l Rakazo-unsigned.ipa | grep -E 'XVF-Regular.ttf|ping_4_chime_a|RakazoDocumentScanner'
 
 # The icon that ships is the one in the source tree, byte for byte, and no ghost PNG rides along.

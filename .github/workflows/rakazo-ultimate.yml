@@ -14,7 +14,7 @@ concurrency: { group: "rakazo-ios-${{ github.ref }}", cancel-in-progress: false 
 jobs:
   build:
     runs-on: xcode-27
-    timeout-minutes: 240
+    timeout-minutes: 300
     steps:
       - { uses: actions/checkout@v4, with: { ref: "${{ github.ref }}" } }
       - name: Build
@@ -23,8 +23,7 @@ jobs:
       - { if: always(), uses: actions/upload-artifact@v4, with: { name: rakazo-ultimate-ipa, path: rakazo-ultimate/Rakazo-unsigned.ipa, if-no-files-found: warn, retention-days: 30 } }
       - { if: always(), uses: actions/upload-artifact@v4, with: { name: rakazo-ultimate-log, path: rakazo-ultimate/xcodebuild.log, if-no-files-found: warn, retention-days: 30 } }
       - name: Simulator launch check
-        continue-on-error: true
-        timeout-minutes: 75
+        timeout-minutes: 150
         run: bash rakazo-ultimate/sim-crashcheck.sh
         env: { GH_TOKEN: "${{ github.token }}", BUNDLE_RELEASES: "${{ inputs.bundle_releases }}" }
       - { if: always(), uses: actions/upload-artifact@v4, with: { name: rakazo-sim-check, path: rakazo-ultimate/sim-check/, if-no-files-found: warn, retention-days: 30 } }

@@ -25,6 +25,7 @@ xcrun simctl bootstatus "$UDID" -b
 
 xcodebuild -workspace Rakazo.xcworkspace -scheme Rakazo -configuration Release \
   -destination "platform=iOS Simulator,id=$UDID" -derivedDataPath build-sim \
+  ONLY_ACTIVE_ARCH=YES ARCHS=arm64 \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build \
   > "$OUT/xcodebuild-sim.log" 2>&1 || { tail -80 "$OUT/xcodebuild-sim.log"; exit 1; }
 tail -3 "$OUT/xcodebuild-sim.log"
@@ -55,7 +56,9 @@ launch_check() { # label
   sleep 1
   pid="$(xcrun simctl launch "$UDID" "$BID" | awk '{print $NF}')"
   sleep 30
-  if ps -p "$pid" >/dev/null 2>&1; then alive=ALIVE; else alive=CRASHED; FAIL=1; fi
+  if ps -p "$pid" >/dev/null 2>&1; then alive=ALIVE; else alive=CRASHED; fi
+  # Only this tree's own bundle gates the step; an earlier release seeding data may crash itself.
+  case "$label" in *tree*) [ "$alive" = ALIVE ] || FAIL=1 ;; esac
   xcrun simctl io "$UDID" screenshot "$OUT/$label.png" || true
   xcrun simctl spawn "$UDID" log show --start "$start" --predicate 'process == "Rakazo"' --style compact \
     > "$OUT/$label.log" 2>/dev/null || true
@@ -87,4 +90,5 @@ cp ~/Library/Logs/DiagnosticReports/Rakazo* "$OUT/crash/" 2>/dev/null || true
 ls -la "$OUT/crash"
 cat "$OUT/RESULTS.txt"
 for f in "$OUT"/*.errors.txt; do echo "== $f"; cat "$f"; done
-exit 0
+grep -q "tree.*ALIVE" "$OUT/RESULTS.txt" || FAIL=1
+exit "$FAIL"

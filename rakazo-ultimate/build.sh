@@ -106,6 +106,20 @@ grep -q 't`Refresh models`' "apps/mobile/app/(settings)/model-connection.tsx"
 grep -q 'showCapabilities' apps/mobile/components/connection-model-list.tsx
 grep -q 'refreshModels:' packages/contracts/src/rpc.ts
 
+# This round: only the orange star on the home hero, live avatars blink, the
+# shipped mark is the Bot icon, and a chat shows stacked images plus a composer
+# tray. The Photos/Vision native module has to be in the tree before prebuild.
+test -f apps/mobile/lib/avatar-badges.ts
+grep -q 'export const HERO_AVATAR_SIZE = 103;' apps/mobile/lib/avatar-badges.ts
+test -f packages/core/src/avatar-life.ts
+test -f apps/mobile/components/image-card-stack.tsx
+test -f apps/mobile/components/composer-attach-tray.tsx
+test -f apps/mobile/modules/message-image-actions/ios/MessageImageActionsModule.swift
+test -f apps/mobile/modules/message-image-actions/ios/MessageImageActions.podspec
+test -f apps/mobile/modules/message-image-actions/expo-module.config.json
+grep -q 'stackOwnsLongPress' apps/mobile/components/thread/message-row.tsx
+grep -q 'visibleThreadBlocks' apps/mobile/components/thread/message-bubble.tsx
+grep -q 'NSPhotoLibraryAddUsageDescription' apps/mobile/app.json
 
 npm i -g pnpm@12.18.0
 pnpm install --frozen-lockfile
@@ -138,6 +152,8 @@ fi
 
 cd ios
 pod install --repo-update || pod install
+grep -q 'MessageImageActions' Podfile.lock ||
+  { echo "::error::message-image-actions was not autolinked"; exit 1; }
 xcodebuild -workspace Rakazo.xcworkspace -scheme Rakazo -configuration Release \
   -destination 'generic/platform=iOS' -derivedDataPath build \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build \
@@ -156,6 +172,8 @@ IPA_PLIST="$(mktemp -d)"
 unzip -q -o Rakazo-unsigned.ipa 'Payload/Rakazo.app/Info.plist' -d "$IPA_PLIST"
 /usr/libexec/PlistBuddy -c 'Print :UIAppFonts' "$IPA_PLIST/Payload/Rakazo.app/Info.plist" | grep -q 'XVF-Regular.ttf'
 /usr/libexec/PlistBuddy -c 'Print :CADisableMinimumFrameDurationOnPhone' "$IPA_PLIST/Payload/Rakazo.app/Info.plist" || true
+/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$IPA_PLIST/Payload/Rakazo.app/Info.plist" | grep -qx Bot
+/usr/libexec/PlistBuddy -c 'Print :NSPhotoLibraryAddUsageDescription' "$IPA_PLIST/Payload/Rakazo.app/Info.plist" | grep -q 'photo library'
 unzip -l Rakazo-unsigned.ipa | grep -E 'XVF-Regular.ttf|ping_4_chime_a|RakazoDocumentScanner'
 
 # The icon that ships is the one in the source tree, byte for byte, and no ghost PNG rides along.

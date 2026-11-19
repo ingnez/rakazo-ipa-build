@@ -2295,7 +2295,7 @@ index 9852476dc..6d0d32765 100644
    });
  }
 diff --git a/apps/mobile/app/(settings)/model-connection.tsx b/apps/mobile/app/(settings)/model-connection.tsx
-index 9ac425f46..e37036058 100644
+index 9ac425f46..b770be27e 100644
 --- a/apps/mobile/app/(settings)/model-connection.tsx
 +++ b/apps/mobile/app/(settings)/model-connection.tsx
 @@ -4,6 +4,8 @@ import type { ModelApiProtocol, ModelHeaderRow, ThinkingLevel } from "@rakazo/co
@@ -2348,8 +2348,12 @@ index 9ac425f46..e37036058 100644
    const router = useRouter();
    const navigation = useNavigation();
    const { requestId = "" } = useLocalSearchParams<{ requestId?: string }>();
-@@ -99,6 +114,9 @@ export default function ModelConnection() {
-   const [pending, setPending] = useState<"connect" | "disconnect" | null>(null);
+@@ -96,9 +111,12 @@ export default function ModelConnection() {
+   const [modelProbe] = useState(() => createModelProbe(setProbe));
+   const resetOpenAiCompatibleProbe = modelProbe.reset;
+   const [loading, setLoading] = useState(true);
+-  const [pending, setPending] = useState<"connect" | "disconnect" | null>(null);
++  const [pending, setPending] = useState<"connect" | "disconnect" | "refresh" | null>(null);
    const [error, setError] = useState<string | null>(null);
    const [savedNotice, setSavedNotice] = useState<string | null>(null);
 +  // The name this connection goes by in lists; a remark keeps several relays apart.
@@ -2385,7 +2389,7 @@ index 9ac425f46..e37036058 100644
    const selectedProviderLabel = credential
      ? connectionDisplayName(credential, providerName)
      : (endpointPreset?.name ?? providerName);
-@@ -316,17 +341,7 @@ export default function ModelConnection() {
+@@ -316,19 +341,15 @@ export default function ModelConnection() {
      await modelProbe.probe({
        baseUrl,
        apiKey,
@@ -2403,8 +2407,16 @@ index 9ac425f46..e37036058 100644
 +      request: (input) => probeEndpointModels(input),
        onSuccess: (models) => {
          setModelId(modelId.trim() || models[0] || "");
++        // A new connection starts with every listed model ticked; a ticked list stays as it is.
++        if (!credential) {
++          setEnabledModelIds((ticked) =>
++            ticked.length ? ticked : models.slice(0, MAX_ENABLED_MODEL_IDS),
++          );
++        }
          publishFeedback("probe", {
-@@ -345,6 +360,49 @@ export default function ModelConnection() {
+           notice:
+             models.length === 0
+@@ -345,6 +366,77 @@ export default function ModelConnection() {
      });
    }
  
@@ -2451,10 +2463,38 @@ index 9ac425f46..e37036058 100644
 +    }
 +  }
 +
++  /** Reads this third-party server's model list again; models already on it stay. */
++  async function refreshModels() {
++    if (!credential) return;
++    clearFeedback();
++    setPending("refresh");
++    try {
++      const result = await rpc(
++        "models/refreshModels",
++        { credentialId: credential.id },
++        { timeoutMs: MODEL_CONNECT_TIMEOUT_MS },
++      );
++      await load({ modelId });
++      const added = result.added.length;
++      publishFeedback("connection", {
++        notice:
++          added === 0
++            ? t`No new models. ${ph({ listed: result.listed })} listed by the server.`
++            : added === 1
++              ? t`Added 1 new model.`
++              : t`Added ${ph({ added })} new models.`,
++      });
++    } catch (err) {
++      publishFeedback("connection", { error: errorText(err, t`Could not refresh models`) });
++    } finally {
++      setPending(null);
++    }
++  }
++
    async function disconnectCredential() {
      if (!selected || !credential) return;
      cancelOAuth();
-@@ -367,29 +425,55 @@ export default function ModelConnection() {
+@@ -367,29 +459,55 @@ export default function ModelConnection() {
  
    async function connectKey() {
      if (!selected) return;
@@ -2529,7 +2569,7 @@ index 9ac425f46..e37036058 100644
        const saved = await rpc("models/connect", connect.input, {
          timeoutMs: MODEL_CONNECT_TIMEOUT_MS,
        });
-@@ -447,6 +531,16 @@ export default function ModelConnection() {
+@@ -447,6 +565,16 @@ export default function ModelConnection() {
      setShowAdvanced((visible) => !visible);
    }
  
@@ -2546,7 +2586,7 @@ index 9ac425f46..e37036058 100644
    const savedHeaderEndpointMatches = savedCompatibleEndpointMatches(baseUrl, credential?.baseUrl);
    const visibleHeaderRows =
      headerRows ??
-@@ -517,6 +611,7 @@ export default function ModelConnection() {
+@@ -517,6 +645,7 @@ export default function ModelConnection() {
              editable={!busy}
              importantForAutofill="no"
              onChangeText={updateApiKey}
@@ -2554,7 +2594,7 @@ index 9ac425f46..e37036058 100644
              placeholder={
                credential?.hasKey
                  ? t`Paste a replacement key`
-@@ -681,6 +776,7 @@ export default function ModelConnection() {
+@@ -681,6 +810,7 @@ export default function ModelConnection() {
                    editable={!busy}
                    importantForAutofill="no"
                    onChangeText={updateApiKey}
@@ -2562,7 +2602,7 @@ index 9ac425f46..e37036058 100644
                    placeholder={credential?.hasKey ? t`Paste a replacement key` : t`sk-…`}
                    placeholderTextColor={native.tertiaryLabel}
                    secureTextEntry
-@@ -720,6 +816,31 @@ export default function ModelConnection() {
+@@ -720,6 +850,47 @@ export default function ModelConnection() {
        </>
      ) : null;
  
@@ -2591,10 +2631,34 @@ index 9ac425f46..e37036058 100644
 +    </View>
 +  ) : null;
 +
++  const refreshModelsRow =
++    credential && isOpenAiCompatible ? (
++      <View style={styles.statusRow}>
++        <View style={styles.providerCopy}>
++          <Text style={styles.secondary}>{t`New models from this server`}</Text>
++        </View>
++        <NativeActionButton
++          disabled={busy}
++          fill={false}
++          label={pending === "refresh" ? t`Refreshing…` : t`Refresh models`}
++          onPress={() => void refreshModels()}
++          variant="text"
++        />
++      </View>
++    ) : null;
++
    const connectedStatusRow = credential ? (
      <View style={styles.statusRow}>
        <View style={styles.providerCopy}>
-@@ -775,8 +896,10 @@ export default function ModelConnection() {
+@@ -751,6 +922,7 @@ export default function ModelConnection() {
+   const modelList = credential ? (
+     <ConnectionModelList
+       models={connectionModels(credential, catalog)}
++      showCapabilities={isOpenAiCompatible}
+       onOpen={(id) =>
+         router.push({
+           pathname: "/model-settings",
+@@ -775,8 +947,10 @@ export default function ModelConnection() {
    return (
      <SafeAreaView edges={["bottom"]} style={styles.screen}>
        <ScrollView
@@ -2605,12 +2669,13 @@ index 9ac425f46..e37036058 100644
          keyboardDismissMode="on-drag"
          keyboardShouldPersistTaps="handled"
        >
-@@ -786,12 +909,14 @@ export default function ModelConnection() {
+@@ -786,12 +960,15 @@ export default function ModelConnection() {
                {compatConfig}
                {compatKeySection}
                {feedbackAnchor === "probe" ? null : feedback}
 +              {aliasSection}
                {connectedStatusRow}
++              {refreshModelsRow}
                {modelList}
              </>
            ) : credential ? (
@@ -66095,6 +66160,42 @@ index 000000000..d4e095fe1
 +    </Pressable>
 +  );
 +}
+diff --git a/apps/mobile/components/connection-model-list.tsx b/apps/mobile/components/connection-model-list.tsx
+index f40ba64a2..cb575efdd 100644
+--- a/apps/mobile/components/connection-model-list.tsx
++++ b/apps/mobile/components/connection-model-list.tsx
+@@ -2,6 +2,7 @@ import { useLingui } from "@lingui/react/macro";
+ import type { ConnectionModel } from "@rakazo/core";
+ import { useEffect } from "react";
+ import { AccessibilityInfo } from "react-native";
++import { useModelCapabilityLine } from "../lib/model-capability-line";
+ import { useListSearch } from "../lib/use-list-search";
+ import { ListSearchInput } from "./list-search-input";
+ import { SettingsGroup, SettingsRow } from "./settings-group";
+@@ -10,11 +11,15 @@ import { SettingsGroup, SettingsRow } from "./settings-group";
+ export function ConnectionModelList({
+   models,
+   onOpen,
++  showCapabilities = false,
+ }: {
+   models: ConnectionModel[];
+   onOpen: (modelId: string) => void;
++  /** A third-party server's models show their known context size and image support. */
++  showCapabilities?: boolean;
+ }) {
+   const { t } = useLingui();
++  const capabilityLine = useModelCapabilityLine();
+   const search = useListSearch(models, {
+     text: (model) => `${model.label} ${model.id}`,
+     id: (model) => model.id,
+@@ -37,6 +42,7 @@ export function ConnectionModelList({
+             key={model.id}
+             accessibilityRole="button"
+             title={model.label}
++            detail={showCapabilities ? capabilityLine(model) : undefined}
+             chevron="right"
+             onPress={() => onOpen(model.id)}
+           />
 diff --git a/apps/mobile/components/connector-icon.tsx b/apps/mobile/components/connector-icon.tsx
 index 15e00d7bf..4179f9d50 100644
 --- a/apps/mobile/components/connector-icon.tsx
@@ -81688,6 +81789,77 @@ index 000000000..656f98b16
 +export function isComputerPointerStateMessage(data: unknown): boolean {
 +  return typeof data === "string" && data.startsWith(`${COMPUTER_POINTER_STATE_MESSAGE}:`);
 +}
+diff --git a/apps/mobile/lib/connection-model-list.test.tsx b/apps/mobile/lib/connection-model-list.test.tsx
+new file mode 100644
+index 000000000..68710b9a4
+--- /dev/null
++++ b/apps/mobile/lib/connection-model-list.test.tsx
+@@ -0,0 +1,65 @@
++// @vitest-environment jsdom
++
++import type { ReactNode } from "react";
++import { act, createElement } from "react";
++import type { Root } from "react-dom/client";
++import { createRoot } from "react-dom/client";
++import { afterEach, beforeEach, expect, it, vi } from "vitest";
++import { ConnectionModelList } from "../components/connection-model-list";
++
++// The list's own logic under test; native rows render as plain text.
++vi.mock("react-native", () => ({ AccessibilityInfo: { announceForAccessibility: () => {} } }));
++vi.mock("../components/list-search-input", () => ({ ListSearchInput: () => null }));
++vi.mock("../components/settings-group", async () => {
++  const { createElement: h } = await import("react");
++  return {
++    SettingsGroup: ({ children }: { children?: ReactNode }) => h("ul", null, children),
++    SettingsRow: ({ title, detail }: { title: string; detail?: string }) =>
++      h("li", null, h("span", null, title), detail ? h("small", null, detail) : null),
++  };
++});
++
++const models = [
++  { id: "gpt-4o", label: "gpt-4o", settings: { contextWindow: 128_000, images: true } },
++  { id: "long-text", label: "long-text", settings: { contextWindow: 1_048_576, images: false } },
++  { id: "mystery-1", label: "mystery-1" },
++];
++
++let root: Root | undefined;
++let container: HTMLDivElement;
++
++beforeEach(() => {
++  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
++  container = document.createElement("div");
++  document.body.append(container);
++});
++afterEach(() => {
++  act(() => root?.unmount());
++  root = undefined;
++  container.remove();
++  vi.unstubAllGlobals();
++});
++
++async function render(showCapabilities?: boolean) {
++  root = createRoot(container);
++  await act(async () => {
++    root?.render(
++      createElement(ConnectionModelList, { models, onOpen: () => {}, showCapabilities }),
++    );
++  });
++  return container.textContent ?? "";
++}
++
++it("shows each third-party model's context and image support, and unknown when unknown", async () => {
++  const text = await render(true);
++  expect(text).toContain("128K context · Reads images");
++  expect(text).toContain("1M context · Text only");
++  expect(text).toContain("Context unknown · Image support unknown");
++});
++
++it("shows no capability line for catalog providers", async () => {
++  const text = await render(false);
++  expect(text).toContain("gpt-4o");
++  expect(text).not.toContain("context");
++  expect(text).not.toContain("Image support");
++});
 diff --git a/apps/mobile/lib/count-label.ts b/apps/mobile/lib/count-label.ts
 new file mode 100644
 index 000000000..8cae3d870
@@ -85273,6 +85445,42 @@ index 27e01acb8..f136d3ca9 100644
    | "status"
    | "threadStatus"
    | "sectionId"
+diff --git a/apps/mobile/lib/model-capability-line.ts b/apps/mobile/lib/model-capability-line.ts
+new file mode 100644
+index 000000000..8d1f36f29
+--- /dev/null
++++ b/apps/mobile/lib/model-capability-line.ts
+@@ -0,0 +1,30 @@
++import { ph } from "@lingui/core/macro";
++import { useLingui } from "@lingui/react/macro";
++import type { ConnectionModel } from "@rakazo/core";
++
++/**
++ * A short, honest line about what is known of a model: its context size and whether it reads
++ * images. A value nobody knows reads as unknown. The wording matches the web app's model rows.
++ */
++export function useModelCapabilityLine() {
++  const { t } = useLingui();
++  return (model: ConnectionModel): string => {
++    const settings = model.settings;
++    const context = settings?.contextWindow;
++    const millions = context === undefined ? 0 : Math.round(context / 104_857.6) / 10;
++    const thousands = context === undefined ? 0 : Math.round(context / 1000);
++    const size =
++      context === undefined
++        ? t`Context unknown`
++        : context >= 1_000_000
++          ? t`${ph({ millions })}M context`
++          : t`${ph({ thousands })}K context`;
++    const images =
++      settings?.images === true
++        ? t`Reads images`
++        : settings?.images === false
++          ? t`Text only`
++          : t`Image support unknown`;
++    return `${size} · ${images}`;
++  };
++}
 diff --git a/apps/mobile/lib/model-provider-label.ts b/apps/mobile/lib/model-provider-label.ts
 new file mode 100644
 index 000000000..aea2f9d31
@@ -100606,7 +100814,7 @@ index c1eddc1d4..6003f8281 100644
 +
  export type MessageReaction = z.infer<typeof MessageReactionSchema>;
 diff --git a/packages/contracts/src/rpc.ts b/packages/contracts/src/rpc.ts
-index 94ad5b05f..dfc86453e 100644
+index 94ad5b05f..bc493a34a 100644
 --- a/packages/contracts/src/rpc.ts
 +++ b/packages/contracts/src/rpc.ts
 @@ -102,12 +102,16 @@ import {
@@ -100703,7 +100911,27 @@ index 94ad5b05f..dfc86453e 100644
      credentials: oc.output(z.array(ModelCredentialSchema)),
      backups: oc.output(z.array(ModelBackupChoiceSchema)),
      setBackups: oc.input(ModelBackupListSchema).output(z.object({ ok: z.literal(true) })),
-@@ -609,8 +644,17 @@ export const appContract = {
+@@ -542,6 +577,19 @@ export const appContract = {
+         }),
+       )
+       .output(z.object({ models: z.array(z.string()) })),
++    /**
++     * Reads a saved third-party connection's model list again with its saved key, so newly
++     * released models appear. Models already on it stay; new ones are added with whatever
++     * context limit and image support the server or the family table states.
++     */
++    refreshModels: oc.input(z.object({ credentialId: Id })).output(
++      z.object({
++        added: z.array(z.string()),
++        missing: z.array(z.string()),
++        listed: z.number().int().min(0),
++        enabled: z.number().int().min(0),
++      }),
++    ),
+     probeCatalog: oc
+       .input(
+         z.object({
+@@ -609,8 +657,17 @@ export const appContract = {
      importCreate: oc.input(AgentImportCreateInput).output(BotSchema),
      importSetupState: oc.input(AgentImportSetupStateInput).output(AgentImportSetupStateSchema),
      templates: oc.output(z.array(BotTemplateListingSchema)),
@@ -100721,7 +100949,7 @@ index 94ad5b05f..dfc86453e 100644
      reorder: oc.input(ReorderBotsInput).output(z.object({ ok: z.literal(true) })),
      update: oc.input(UpdateBotInput).output(BotSchema),
      restoreInstructions: oc
-@@ -638,6 +682,19 @@ export const appContract = {
+@@ -638,6 +695,19 @@ export const appContract = {
        ),
      /** Groups this delete removes because fewer than two active bots would remain. */
      removePreview: oc.input(botId).output(z.array(z.object({ id: Id, name: z.string() }))),
@@ -100741,7 +100969,7 @@ index 94ad5b05f..dfc86453e 100644
      emailAddress: oc.input(botId).output(BotEmailAddressSchema),
      emailAddresses: oc.output(BotEmailAddressesSchema),
      claimEmailAddress: oc
-@@ -683,6 +740,11 @@ export const appContract = {
+@@ -683,6 +753,11 @@ export const appContract = {
        }),
      ),
      get: oc.input(threadTarget).output(ThreadSnapshotSchema),
@@ -100753,7 +100981,7 @@ index 94ad5b05f..dfc86453e 100644
      messages: oc
        .input(
          threadTarget.safeExtend({
-@@ -720,9 +782,11 @@ export const appContract = {
+@@ -720,9 +795,11 @@ export const appContract = {
        )
        .output(z.object({ ok: z.literal(true), runIds: z.array(Id).optional() })),
      stop: oc.input(threadTarget).output(z.object({ ok: z.literal(true) })),
@@ -100767,7 +100995,7 @@ index 94ad5b05f..dfc86453e 100644
        .output(z.object({ ok: z.literal(true) })),
      followUp: oc
        .input(
-@@ -915,6 +979,41 @@ export const appContract = {
+@@ -915,6 +992,41 @@ export const appContract = {
        )
        .output(MemoryDocumentSchema),
      remove: oc.input(z.object({ documentId: Id })).output(z.object({ ok: z.literal(true) })),
@@ -100809,7 +101037,7 @@ index 94ad5b05f..dfc86453e 100644
      exportMarkdown: oc.input(z.object({ botId: Id.optional() })).output(z.string()),
      providerConfig: oc.output(SpaceMemoryConfigSchema.nullable()),
      connectProvider: oc
-@@ -1473,6 +1572,25 @@ export const appContract = {
+@@ -1473,6 +1585,25 @@ export const appContract = {
    usage: {
      list: oc.output(z.array(UsageRecordSchema)),
      summary: oc.output(UsageSummarySchema),
@@ -100835,7 +101063,7 @@ index 94ad5b05f..dfc86453e 100644
      /** Subscription sign-ins whose allowance could be read; others are left out. */
      limits: oc.output(z.array(PlanLimitsSchema)),
    },
-@@ -1571,6 +1689,11 @@ export const appContract = {
+@@ -1571,6 +1702,11 @@ export const appContract = {
        // The longest origin: a scheme, a 253-character host name and a port.
        .input(z.object({ origin: z.string().max("https://".length + 253 + ":65535".length) }))
        .output(z.object({ icon: z.string().nullable(), retry: z.boolean().optional() })),
@@ -100847,7 +101075,7 @@ index 94ad5b05f..dfc86453e 100644
    },
    runs: {
      list: oc.input(z.object({ filter: z.enum(["active", "recent"]) })).output(RunsListOutputSchema),
-@@ -1661,6 +1784,13 @@ export const appContract = {
+@@ -1661,6 +1797,13 @@ export const appContract = {
          }),
        )
        .output(z.object({ ready: z.boolean(), utterances: z.array(z.string()) })),
@@ -105890,10 +106118,10 @@ index 3770a9290..9bf3d6efe 100644
      existing.push({ id: families[11]!, color: blue.hex });
      for (let seed = 1; seed <= 20; seed++) {
 diff --git a/packages/i18n/locales/de/messages.po b/packages/i18n/locales/de/messages.po
-index e4aceef75..71daefe05 100644
+index e4aceef75..023017260 100644
 --- a/packages/i18n/locales/de/messages.po
 +++ b/packages/i18n/locales/de/messages.po
-@@ -11755,3 +11755,7 @@ msgstr "Der Schlüssel deines Stimmanbieters wurde abgelehnt."
+@@ -11755,3 +11755,66 @@ msgstr "Der Schlüssel deines Stimmanbieters wurde abgelehnt."
  #: apps/web/src/components/vault/VaultItemEditor.tsx
  msgid "ZIP or postal code"
  msgstr "Postleitzahl"
@@ -105901,11 +106129,70 @@ index e4aceef75..71daefe05 100644
 +#: apps/mobile/app/(settings)/models.tsx
 +msgid "Same as Everyday help"
 +msgstr "Wie Alltagshilfe"
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Refresh models"
++msgstr "Modelle aktualisieren"
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Added 1 new model."
++msgstr "1 neues Modell hinzugefügt."
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Added {added} new models."
++msgstr "{added} neue Modelle hinzugefügt."
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "No new models. {listed} listed by the server."
++msgstr "Keine neuen Modelle. Der Server listet {listed}."
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/use-model-settings.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Could not refresh models"
++msgstr "Modelle konnten nicht aktualisiert werden"
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++msgid "New models from this server"
++msgstr "Neue Modelle von diesem Server"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Context unknown"
++msgstr "Kontext unbekannt"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "{millions}M context"
++msgstr "{millions}M Kontext"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "{thousands}K context"
++msgstr "{thousands}K Kontext"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Reads images"
++msgstr "Liest Bilder"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Text only"
++msgstr "Nur Text"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Image support unknown"
++msgstr "Bildunterstützung unbekannt"
 diff --git a/packages/i18n/locales/en/messages.po b/packages/i18n/locales/en/messages.po
-index eb2063571..73d152069 100644
+index eb2063571..80fdc59eb 100644
 --- a/packages/i18n/locales/en/messages.po
 +++ b/packages/i18n/locales/en/messages.po
-@@ -11755,3 +11755,40 @@ msgstr "Your voice provider key was rejected."
+@@ -11755,3 +11755,99 @@ msgstr "Your voice provider key was rejected."
  #: apps/web/src/components/vault/VaultItemEditor.tsx
  msgid "ZIP or postal code"
  msgstr "ZIP or postal code"
@@ -105946,11 +106233,70 @@ index eb2063571..73d152069 100644
 +
 +msgid "Flags"
 +msgstr "Flags"
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Refresh models"
++msgstr "Refresh models"
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Added 1 new model."
++msgstr "Added 1 new model."
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Added {added} new models."
++msgstr "Added {added} new models."
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "No new models. {listed} listed by the server."
++msgstr "No new models. {listed} listed by the server."
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/use-model-settings.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Could not refresh models"
++msgstr "Could not refresh models"
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++msgid "New models from this server"
++msgstr "New models from this server"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Context unknown"
++msgstr "Context unknown"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "{millions}M context"
++msgstr "{millions}M context"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "{thousands}K context"
++msgstr "{thousands}K context"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Reads images"
++msgstr "Reads images"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Text only"
++msgstr "Text only"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Image support unknown"
++msgstr "Image support unknown"
 diff --git a/packages/i18n/locales/es/messages.po b/packages/i18n/locales/es/messages.po
-index bcddddb57..11cc83618 100644
+index bcddddb57..4d041a11b 100644
 --- a/packages/i18n/locales/es/messages.po
 +++ b/packages/i18n/locales/es/messages.po
-@@ -11755,3 +11755,7 @@ msgstr "Tu proveedor de voz rechazó la clave."
+@@ -11755,3 +11755,66 @@ msgstr "Tu proveedor de voz rechazó la clave."
  #: apps/web/src/components/vault/VaultItemEditor.tsx
  msgid "ZIP or postal code"
  msgstr "Código postal"
@@ -105958,11 +106304,70 @@ index bcddddb57..11cc83618 100644
 +#: apps/mobile/app/(settings)/models.tsx
 +msgid "Same as Everyday help"
 +msgstr "Igual que Ayuda diaria"
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Refresh models"
++msgstr "Actualizar modelos"
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Added 1 new model."
++msgstr "Se añadió 1 modelo nuevo."
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Added {added} new models."
++msgstr "Se añadieron {added} modelos nuevos."
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "No new models. {listed} listed by the server."
++msgstr "No hay modelos nuevos. El servidor muestra {listed}."
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/use-model-settings.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Could not refresh models"
++msgstr "No se pudieron actualizar los modelos"
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++msgid "New models from this server"
++msgstr "Modelos nuevos de este servidor"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Context unknown"
++msgstr "Contexto desconocido"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "{millions}M context"
++msgstr "Contexto de {millions}M"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "{thousands}K context"
++msgstr "Contexto de {thousands}K"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Reads images"
++msgstr "Lee imágenes"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Text only"
++msgstr "Solo texto"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Image support unknown"
++msgstr "Compatibilidad con imágenes desconocida"
 diff --git a/packages/i18n/locales/fr/messages.po b/packages/i18n/locales/fr/messages.po
-index 846cfb633..8e38432a5 100644
+index 846cfb633..aa46c9c97 100644
 --- a/packages/i18n/locales/fr/messages.po
 +++ b/packages/i18n/locales/fr/messages.po
-@@ -11755,3 +11755,7 @@ msgstr "Votre fournisseur vocal a refusé la clé."
+@@ -11755,3 +11755,66 @@ msgstr "Votre fournisseur vocal a refusé la clé."
  #: apps/web/src/components/vault/VaultItemEditor.tsx
  msgid "ZIP or postal code"
  msgstr "Code postal"
@@ -105970,11 +106375,70 @@ index 846cfb633..8e38432a5 100644
 +#: apps/mobile/app/(settings)/models.tsx
 +msgid "Same as Everyday help"
 +msgstr "Identique à Aide quotidienne"
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Refresh models"
++msgstr "Actualiser les modèles"
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Added 1 new model."
++msgstr "1 nouveau modèle ajouté."
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Added {added} new models."
++msgstr "{added} nouveaux modèles ajoutés."
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "No new models. {listed} listed by the server."
++msgstr "Aucun nouveau modèle. Le serveur en liste {listed}."
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/use-model-settings.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Could not refresh models"
++msgstr "Impossible d’actualiser les modèles"
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++msgid "New models from this server"
++msgstr "Nouveaux modèles de ce serveur"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Context unknown"
++msgstr "Contexte inconnu"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "{millions}M context"
++msgstr "Contexte de {millions}M"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "{thousands}K context"
++msgstr "Contexte de {thousands}K"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Reads images"
++msgstr "Lit les images"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Text only"
++msgstr "Texte uniquement"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Image support unknown"
++msgstr "Prise en charge des images inconnue"
 diff --git a/packages/i18n/locales/he/messages.po b/packages/i18n/locales/he/messages.po
-index 92ced0a86..ac65f43f9 100644
+index 92ced0a86..36ac3de2d 100644
 --- a/packages/i18n/locales/he/messages.po
 +++ b/packages/i18n/locales/he/messages.po
-@@ -11755,3 +11755,7 @@ msgstr "ספק הקול שלך דחה את המפתח."
+@@ -11755,3 +11755,66 @@ msgstr "ספק הקול שלך דחה את המפתח."
  #: apps/web/src/components/vault/VaultItemEditor.tsx
  msgid "ZIP or postal code"
  msgstr "מיקוד"
@@ -105982,11 +106446,70 @@ index 92ced0a86..ac65f43f9 100644
 +#: apps/mobile/app/(settings)/models.tsx
 +msgid "Same as Everyday help"
 +msgstr "כמו עזרה יומיומית"
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Refresh models"
++msgstr "רענון מודלים"
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Added 1 new model."
++msgstr "נוסף מודל חדש אחד."
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Added {added} new models."
++msgstr "נוספו {added} מודלים חדשים."
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "No new models. {listed} listed by the server."
++msgstr "אין מודלים חדשים. השרת מציג {listed}."
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/use-model-settings.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Could not refresh models"
++msgstr "לא ניתן לרענן את המודלים"
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++msgid "New models from this server"
++msgstr "מודלים חדשים מהשרת הזה"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Context unknown"
++msgstr "הקשר לא ידוע"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "{millions}M context"
++msgstr "הקשר של {millions}M"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "{thousands}K context"
++msgstr "הקשר של {thousands}K"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Reads images"
++msgstr "קורא תמונות"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Text only"
++msgstr "טקסט בלבד"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Image support unknown"
++msgstr "תמיכה בתמונות לא ידועה"
 diff --git a/packages/i18n/locales/hi/messages.po b/packages/i18n/locales/hi/messages.po
-index accf374f2..de2213fd8 100644
+index accf374f2..f77887a93 100644
 --- a/packages/i18n/locales/hi/messages.po
 +++ b/packages/i18n/locales/hi/messages.po
-@@ -11755,3 +11755,7 @@ msgstr "आपके आवाज़ प्रोवाइडर ने कु
+@@ -11755,3 +11755,66 @@ msgstr "आपके आवाज़ प्रोवाइडर ने कु
  #: apps/web/src/components/vault/VaultItemEditor.tsx
  msgid "ZIP or postal code"
  msgstr "ZIP या पिन कोड"
@@ -105994,11 +106517,70 @@ index accf374f2..de2213fd8 100644
 +#: apps/mobile/app/(settings)/models.tsx
 +msgid "Same as Everyday help"
 +msgstr "दैनिक सहायता जैसा"
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Refresh models"
++msgstr "मॉडल रीफ़्रेश करें"
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Added 1 new model."
++msgstr "1 नया मॉडल जोड़ा गया।"
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Added {added} new models."
++msgstr "{added} नए मॉडल जोड़े गए।"
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "No new models. {listed} listed by the server."
++msgstr "कोई नया मॉडल नहीं। सर्वर {listed} दिखाता है।"
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/use-model-settings.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Could not refresh models"
++msgstr "मॉडल रीफ़्रेश नहीं हो सके"
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++msgid "New models from this server"
++msgstr "इस सर्वर के नए मॉडल"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Context unknown"
++msgstr "संदर्भ अज्ञात"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "{millions}M context"
++msgstr "{millions}M संदर्भ"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "{thousands}K context"
++msgstr "{thousands}K संदर्भ"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Reads images"
++msgstr "इमेज पढ़ता है"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Text only"
++msgstr "केवल टेक्स्ट"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Image support unknown"
++msgstr "इमेज सपोर्ट अज्ञात"
 diff --git a/packages/i18n/locales/ja/messages.po b/packages/i18n/locales/ja/messages.po
-index 1046b263a..376d4f7bd 100644
+index 1046b263a..1bd49e722 100644
 --- a/packages/i18n/locales/ja/messages.po
 +++ b/packages/i18n/locales/ja/messages.po
-@@ -11755,3 +11755,7 @@ msgstr "音声プロバイダーのキーが拒否されました。"
+@@ -11755,3 +11755,66 @@ msgstr "音声プロバイダーのキーが拒否されました。"
  #: apps/web/src/components/vault/VaultItemEditor.tsx
  msgid "ZIP or postal code"
  msgstr "郵便番号"
@@ -106006,11 +106588,70 @@ index 1046b263a..376d4f7bd 100644
 +#: apps/mobile/app/(settings)/models.tsx
 +msgid "Same as Everyday help"
 +msgstr "日常ヘルプと同じ"
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Refresh models"
++msgstr "モデルを更新"
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Added 1 new model."
++msgstr "新しいモデルを 1 件追加しました。"
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Added {added} new models."
++msgstr "新しいモデルを {added} 件追加しました。"
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "No new models. {listed} listed by the server."
++msgstr "新しいモデルはありません。サーバーには {listed} 件あります。"
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/use-model-settings.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Could not refresh models"
++msgstr "モデルを更新できませんでした"
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++msgid "New models from this server"
++msgstr "このサーバーの新しいモデル"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Context unknown"
++msgstr "コンテキスト不明"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "{millions}M context"
++msgstr "{millions}M コンテキスト"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "{thousands}K context"
++msgstr "{thousands}K コンテキスト"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Reads images"
++msgstr "画像対応"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Text only"
++msgstr "テキストのみ"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Image support unknown"
++msgstr "画像対応は不明"
 diff --git a/packages/i18n/locales/ko/messages.po b/packages/i18n/locales/ko/messages.po
-index b3b0634e1..0219cfc8d 100644
+index b3b0634e1..0de931438 100644
 --- a/packages/i18n/locales/ko/messages.po
 +++ b/packages/i18n/locales/ko/messages.po
-@@ -11755,3 +11755,7 @@ msgstr "음성 서비스에서 키를 거부했습니다."
+@@ -11755,3 +11755,66 @@ msgstr "음성 서비스에서 키를 거부했습니다."
  #: apps/web/src/components/vault/VaultItemEditor.tsx
  msgid "ZIP or postal code"
  msgstr "우편번호"
@@ -106018,11 +106659,70 @@ index b3b0634e1..0219cfc8d 100644
 +#: apps/mobile/app/(settings)/models.tsx
 +msgid "Same as Everyday help"
 +msgstr "일상 도움말과 동일"
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Refresh models"
++msgstr "모델 새로 고침"
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Added 1 new model."
++msgstr "새 모델 1개를 추가했습니다."
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Added {added} new models."
++msgstr "새 모델 {added}개를 추가했습니다."
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "No new models. {listed} listed by the server."
++msgstr "새 모델이 없습니다. 서버에 {listed}개가 있습니다."
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/use-model-settings.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Could not refresh models"
++msgstr "모델을 새로 고칠 수 없습니다"
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++msgid "New models from this server"
++msgstr "이 서버의 새 모델"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Context unknown"
++msgstr "컨텍스트 알 수 없음"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "{millions}M context"
++msgstr "{millions}M 컨텍스트"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "{thousands}K context"
++msgstr "{thousands}K 컨텍스트"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Reads images"
++msgstr "이미지 읽기 지원"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Text only"
++msgstr "텍스트 전용"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Image support unknown"
++msgstr "이미지 지원 여부 알 수 없음"
 diff --git a/packages/i18n/locales/nl/messages.po b/packages/i18n/locales/nl/messages.po
-index ca72391c9..09df6ff6c 100644
+index ca72391c9..d5a0f060c 100644
 --- a/packages/i18n/locales/nl/messages.po
 +++ b/packages/i18n/locales/nl/messages.po
-@@ -11755,3 +11755,7 @@ msgstr "Je spraakaanbieder heeft de sleutel geweigerd."
+@@ -11755,3 +11755,66 @@ msgstr "Je spraakaanbieder heeft de sleutel geweigerd."
  #: apps/web/src/components/vault/VaultItemEditor.tsx
  msgid "ZIP or postal code"
  msgstr "Postcode"
@@ -106030,11 +106730,70 @@ index ca72391c9..09df6ff6c 100644
 +#: apps/mobile/app/(settings)/models.tsx
 +msgid "Same as Everyday help"
 +msgstr "Zelfde als Dagelijkse hulp"
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Refresh models"
++msgstr "Modellen vernieuwen"
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Added 1 new model."
++msgstr "1 nieuw model toegevoegd."
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Added {added} new models."
++msgstr "{added} nieuwe modellen toegevoegd."
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "No new models. {listed} listed by the server."
++msgstr "Geen nieuwe modellen. De server toont er {listed}."
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/use-model-settings.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Could not refresh models"
++msgstr "Kan modellen niet vernieuwen"
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++msgid "New models from this server"
++msgstr "Nieuwe modellen van deze server"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Context unknown"
++msgstr "Context onbekend"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "{millions}M context"
++msgstr "{millions}M context"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "{thousands}K context"
++msgstr "{thousands}K context"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Reads images"
++msgstr "Leest afbeeldingen"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Text only"
++msgstr "Alleen tekst"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Image support unknown"
++msgstr "Ondersteuning voor afbeeldingen onbekend"
 diff --git a/packages/i18n/locales/pl/messages.po b/packages/i18n/locales/pl/messages.po
-index 204ac75e0..67b2c81a9 100644
+index 204ac75e0..3ab556840 100644
 --- a/packages/i18n/locales/pl/messages.po
 +++ b/packages/i18n/locales/pl/messages.po
-@@ -11755,3 +11755,7 @@ msgstr "Klucz dostawcy głosu został odrzucony."
+@@ -11755,3 +11755,66 @@ msgstr "Klucz dostawcy głosu został odrzucony."
  #: apps/web/src/components/vault/VaultItemEditor.tsx
  msgid "ZIP or postal code"
  msgstr "Kod pocztowy"
@@ -106042,11 +106801,70 @@ index 204ac75e0..67b2c81a9 100644
 +#: apps/mobile/app/(settings)/models.tsx
 +msgid "Same as Everyday help"
 +msgstr "Tak samo jak Codzienna pomoc"
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Refresh models"
++msgstr "Odśwież modele"
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Added 1 new model."
++msgstr "Dodano 1 nowy model."
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Added {added} new models."
++msgstr "Dodano nowe modele: {added}."
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "No new models. {listed} listed by the server."
++msgstr "Brak nowych modeli. Serwer wymienia: {listed}."
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/use-model-settings.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Could not refresh models"
++msgstr "Nie udało się odświeżyć modeli"
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++msgid "New models from this server"
++msgstr "Nowe modele z tego serwera"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Context unknown"
++msgstr "Kontekst nieznany"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "{millions}M context"
++msgstr "Kontekst {millions}M"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "{thousands}K context"
++msgstr "Kontekst {thousands}K"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Reads images"
++msgstr "Czyta obrazy"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Text only"
++msgstr "Tylko tekst"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Image support unknown"
++msgstr "Obsługa obrazów nieznana"
 diff --git a/packages/i18n/locales/pt-BR/messages.po b/packages/i18n/locales/pt-BR/messages.po
-index 736dfc3ba..9d5c3959a 100644
+index 736dfc3ba..448c898c7 100644
 --- a/packages/i18n/locales/pt-BR/messages.po
 +++ b/packages/i18n/locales/pt-BR/messages.po
-@@ -11755,3 +11755,7 @@ msgstr "Seu provedor de voz recusou a chave."
+@@ -11755,3 +11755,66 @@ msgstr "Seu provedor de voz recusou a chave."
  #: apps/web/src/components/vault/VaultItemEditor.tsx
  msgid "ZIP or postal code"
  msgstr "CEP ou código postal"
@@ -106054,11 +106872,70 @@ index 736dfc3ba..9d5c3959a 100644
 +#: apps/mobile/app/(settings)/models.tsx
 +msgid "Same as Everyday help"
 +msgstr "Igual à Ajuda diária"
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Refresh models"
++msgstr "Atualizar modelos"
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Added 1 new model."
++msgstr "1 modelo novo adicionado."
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Added {added} new models."
++msgstr "{added} modelos novos adicionados."
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "No new models. {listed} listed by the server."
++msgstr "Nenhum modelo novo. O servidor lista {listed}."
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/use-model-settings.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Could not refresh models"
++msgstr "Não foi possível atualizar os modelos"
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++msgid "New models from this server"
++msgstr "Modelos novos deste servidor"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Context unknown"
++msgstr "Contexto desconhecido"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "{millions}M context"
++msgstr "Contexto de {millions}M"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "{thousands}K context"
++msgstr "Contexto de {thousands}K"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Reads images"
++msgstr "Lê imagens"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Text only"
++msgstr "Somente texto"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Image support unknown"
++msgstr "Suporte a imagens desconhecido"
 diff --git a/packages/i18n/locales/ru/messages.po b/packages/i18n/locales/ru/messages.po
-index 69ca0d53f..8867616e5 100644
+index 69ca0d53f..94eaf2608 100644
 --- a/packages/i18n/locales/ru/messages.po
 +++ b/packages/i18n/locales/ru/messages.po
-@@ -11755,3 +11755,7 @@ msgstr "Ваш голосовой провайдер отклонил ключ."
+@@ -11755,3 +11755,66 @@ msgstr "Ваш голосовой провайдер отклонил ключ."
  #: apps/web/src/components/vault/VaultItemEditor.tsx
  msgid "ZIP or postal code"
  msgstr "Почтовый индекс"
@@ -106066,11 +106943,70 @@ index 69ca0d53f..8867616e5 100644
 +#: apps/mobile/app/(settings)/models.tsx
 +msgid "Same as Everyday help"
 +msgstr "Как в повседневной помощи"
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Refresh models"
++msgstr "Обновить модели"
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Added 1 new model."
++msgstr "Добавлена 1 новая модель."
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Added {added} new models."
++msgstr "Добавлено новых моделей: {added}."
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "No new models. {listed} listed by the server."
++msgstr "Новых моделей нет. На сервере: {listed}."
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/use-model-settings.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Could not refresh models"
++msgstr "Не удалось обновить модели"
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++msgid "New models from this server"
++msgstr "Новые модели с этого сервера"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Context unknown"
++msgstr "Контекст неизвестен"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "{millions}M context"
++msgstr "Контекст {millions}M"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "{thousands}K context"
++msgstr "Контекст {thousands}K"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Reads images"
++msgstr "Понимает изображения"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Text only"
++msgstr "Только текст"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Image support unknown"
++msgstr "Поддержка изображений неизвестна"
 diff --git a/packages/i18n/locales/tr/messages.po b/packages/i18n/locales/tr/messages.po
-index 73652a3c4..5a4a9007d 100644
+index 73652a3c4..7a638920c 100644
 --- a/packages/i18n/locales/tr/messages.po
 +++ b/packages/i18n/locales/tr/messages.po
-@@ -11755,3 +11755,7 @@ msgstr "Ses sağlayıcınız anahtarı reddetti."
+@@ -11755,3 +11755,66 @@ msgstr "Ses sağlayıcınız anahtarı reddetti."
  #: apps/web/src/components/vault/VaultItemEditor.tsx
  msgid "ZIP or postal code"
  msgstr "Posta kodu"
@@ -106078,8 +107014,67 @@ index 73652a3c4..5a4a9007d 100644
 +#: apps/mobile/app/(settings)/models.tsx
 +msgid "Same as Everyday help"
 +msgstr "Günlük yardımla aynı"
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Refresh models"
++msgstr "Modelleri yenile"
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Added 1 new model."
++msgstr "1 yeni model eklendi."
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Added {added} new models."
++msgstr "{added} yeni model eklendi."
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "No new models. {listed} listed by the server."
++msgstr "Yeni model yok. Sunucu {listed} model listeliyor."
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/use-model-settings.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Could not refresh models"
++msgstr "Modeller yenilenemedi"
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++msgid "New models from this server"
++msgstr "Bu sunucudaki yeni modeller"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Context unknown"
++msgstr "Bağlam bilinmiyor"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "{millions}M context"
++msgstr "{millions}M bağlam"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "{thousands}K context"
++msgstr "{thousands}K bağlam"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Reads images"
++msgstr "Görselleri okur"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Text only"
++msgstr "Yalnızca metin"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Image support unknown"
++msgstr "Görsel desteği bilinmiyor"
 diff --git a/packages/i18n/locales/zh-CN/messages.po b/packages/i18n/locales/zh-CN/messages.po
-index 422c5af1e..714c802a7 100644
+index 422c5af1e..6aef61cb8 100644
 --- a/packages/i18n/locales/zh-CN/messages.po
 +++ b/packages/i18n/locales/zh-CN/messages.po
 @@ -281,7 +281,7 @@ msgstr "{count} 个需要处理"
@@ -106197,7 +107192,7 @@ index 422c5af1e..714c802a7 100644
  #. js-lingui-explicit-id
  #: packages/i18n/src/run-error.ts
  msgid "The model hit its output limit before finishing its reply."
-@@ -11755,3 +11803,327 @@ msgstr "你的语音提供商拒绝了该密钥。"
+@@ -11755,3 +11803,386 @@ msgstr "你的语音提供商拒绝了该密钥。"
  #: apps/web/src/components/vault/VaultItemEditor.tsx
  msgid "ZIP or postal code"
  msgstr "邮政编码"
@@ -106525,11 +107520,70 @@ index 422c5af1e..714c802a7 100644
 +#: apps/mobile/app/(settings)/integrations.tsx
 +msgid "No apps connected yet."
 +msgstr "还没有已连接的应用。"
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Refresh models"
++msgstr "刷新模型"
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Added 1 new model."
++msgstr "新增了 1 个模型。"
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Added {added} new models."
++msgstr "新增了 {added} 个模型。"
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "No new models. {listed} listed by the server."
++msgstr "没有新模型，服务器共列出 {listed} 个。"
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/use-model-settings.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Could not refresh models"
++msgstr "刷新模型失败"
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++msgid "New models from this server"
++msgstr "获取该服务器的新模型"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Context unknown"
++msgstr "上下文未知"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "{millions}M context"
++msgstr "{millions}M 上下文"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "{thousands}K context"
++msgstr "{thousands}K 上下文"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Reads images"
++msgstr "支持图片"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Text only"
++msgstr "仅文字"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Image support unknown"
++msgstr "是否支持图片未知"
 diff --git a/packages/i18n/locales/zh-TW/messages.po b/packages/i18n/locales/zh-TW/messages.po
-index 796df8775..d90c130ef 100644
+index 796df8775..fbbb7b804 100644
 --- a/packages/i18n/locales/zh-TW/messages.po
 +++ b/packages/i18n/locales/zh-TW/messages.po
-@@ -11756,3 +11756,167 @@ msgstr "你的語音供應商拒絕了該金鑰。"
+@@ -11756,3 +11756,226 @@ msgstr "你的語音供應商拒絕了該金鑰。"
  #: apps/web/src/components/vault/VaultItemEditor.tsx
  msgid "ZIP or postal code"
  msgstr "郵遞區號"
@@ -106697,6 +107751,65 @@ index 796df8775..d90c130ef 100644
 +#: apps/mobile/components/thread/file-attachment-card.tsx
 +msgid "Archive file"
 +msgstr "壓縮檔"
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Refresh models"
++msgstr "重新整理模型"
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Added 1 new model."
++msgstr "新增了 1 個模型。"
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Added {added} new models."
++msgstr "新增了 {added} 個模型。"
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "No new models. {listed} listed by the server."
++msgstr "沒有新模型，伺服器共列出 {listed} 個。"
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++#: apps/web/src/pages/model-settings/use-model-settings.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Could not refresh models"
++msgstr "無法重新整理模型"
++
++#: apps/mobile/app/(settings)/model-connection.tsx
++msgid "New models from this server"
++msgstr "取得此伺服器的新模型"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Context unknown"
++msgstr "上下文未知"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "{millions}M context"
++msgstr "{millions}M 上下文"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "{thousands}K context"
++msgstr "{thousands}K 上下文"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Reads images"
++msgstr "支援圖片"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Text only"
++msgstr "僅文字"
++
++#: apps/mobile/lib/model-capability-line.ts
++#: apps/web/src/pages/model-settings/provider-page.tsx
++msgid "Image support unknown"
++msgstr "是否支援圖片未知"
 diff --git a/packages/logging/src/sentry.test.ts b/packages/logging/src/sentry.test.ts
 index 0176e8170..a6dac0d02 100644
 --- a/packages/logging/src/sentry.test.ts

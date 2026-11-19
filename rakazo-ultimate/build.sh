@@ -96,6 +96,17 @@ grep -q 'void preloadChats(inboxChats(listData, { bots, groups }))' apps/mobile/
 grep -q 'initialNumToRender={6}' apps/mobile/components/thread/thread-message-list.tsx
 grep -q 'maxToRenderPerBatch={4}' apps/mobile/components/thread/thread-message-list.tsx
 
+# This round: a third-party connection can refresh its model list, and each row shows
+# known context size and image support (or unknown). A patch that lost either would
+# still compile a page that never says it is working.
+test -f apps/mobile/lib/model-capability-line.ts
+test -f apps/mobile/lib/connection-model-list.test.tsx
+grep -q 'models/refreshModels' "apps/mobile/app/(settings)/model-connection.tsx"
+grep -q 't`Refresh models`' "apps/mobile/app/(settings)/model-connection.tsx"
+grep -q 'showCapabilities' apps/mobile/components/connection-model-list.tsx
+grep -q 'refreshModels:' packages/contracts/src/rpc.ts
+
+
 npm i -g pnpm@12.18.0
 pnpm install --frozen-lockfile
 

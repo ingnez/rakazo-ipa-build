@@ -147,6 +147,14 @@ if grep -Rqs 'F97A10\|fb7a11\|FB7A11' ios/Rakazo/Images.xcassets 2>/dev/null; th
   echo "::warning::an upstream orange survived in Images.xcassets"
 fi
 
+# expo.name must remain Rakazo so prebuild still writes this folder and scheme.
+# The home-screen label is CFBundleDisplayName (Bot), not the project name.
+if [ -d ios/Bot ] && [ ! -d ios/Rakazo ]; then
+  echo "::error::prebuild created ios/Bot; expo.name must stay Rakazo so the Xcode project stays Rakazo"
+  exit 1
+fi
+test -f ios/Rakazo/Info.plist || { echo "::error::prebuild did not write ios/Rakazo/Info.plist"; exit 1; }
+
 # The typeface has to be in the built bundle, not merely in the source.
 /usr/libexec/PlistBuddy -c 'Print :UIAppFonts' ios/Rakazo/Info.plist | tee /dev/stderr | grep -q 'XVF-Regular.ttf'
 

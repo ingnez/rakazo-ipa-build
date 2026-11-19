@@ -223,17 +223,10 @@ index 18ed00eff..e056c69f4 100644
    }
  }
 diff --git a/apps/mobile/app.json b/apps/mobile/app.json
-index d0e806932..dab5e0bc9 100644
+index d0e806932..0e3909acc 100644
 --- a/apps/mobile/app.json
 +++ b/apps/mobile/app.json
-@@ -1,14 +1,27 @@
- {
-   "expo": {
--    "name": "Rakazo",
-+    "name": "Bot",
-     "slug": "rakazo",
-     "owner": "inbox-zero",
-     "scheme": "rakazo",
+@@ -7,8 +7,21 @@
      "version": "1.0.14",
      "orientation": "default",
      "userInterfaceStyle": "automatic",
@@ -338,7 +331,7 @@ index d0e806932..dab5e0bc9 100644
        },
        "entitlements": {
          "com.apple.developer.usernotifications.time-sensitive": true,
-@@ -127,7 +158,7 @@
+@@ -127,12 +158,13 @@
        "package": "com.rakazo.app",
        "versionCode": 10,
        "softwareKeyboardLayoutMode": "resize",
@@ -347,7 +340,14 @@ index d0e806932..dab5e0bc9 100644
        "adaptiveIcon": {
          "foregroundImage": "./assets/adaptive-icon.png",
          "monochromeImage": "./assets/monochrome-icon.png",
-@@ -154,7 +185,9 @@
+         "backgroundImage": "./assets/icon-background.png"
+-      }
++      },
++      "label": "Bot"
+     },
+     "web": {
+       "favicon": "./assets/favicon.png"
+@@ -154,7 +186,9 @@
                    "targetName": "expo-sharing-extension",
                    "bundleIdentifier": "com.rakazo.app.expo-sharing-extension",
                    "entitlements": {
@@ -358,7 +358,7 @@ index d0e806932..dab5e0bc9 100644
                    }
                  },
                  {
-@@ -174,7 +207,9 @@
+@@ -174,7 +208,9 @@
        "policy": "appVersion"
      },
      "updates": {

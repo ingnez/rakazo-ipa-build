@@ -4306,7 +4306,7 @@ index 6b8ea3a7c..070adc682 100644
      </SafeAreaProvider>
    );
 diff --git a/apps/mobile/app/index.tsx b/apps/mobile/app/index.tsx
-index 0a5db832f..e27c4936c 100644
+index 0a5db832f..ec5f30401 100644
 --- a/apps/mobile/app/index.tsx
 +++ b/apps/mobile/app/index.tsx
 @@ -26,8 +26,12 @@ import {
@@ -4363,15 +4363,17 @@ index 0a5db832f..e27c4936c 100644
  import { native, useThemedStyles } from "../lib/native";
  import { iosAtLeast } from "../lib/native-controls";
  import {
-@@ -82,6 +98,7 @@ import type { OrganizeTarget } from "../lib/organize-target";
+@@ -82,6 +98,9 @@ import type { OrganizeTarget } from "../lib/organize-target";
  import { findOrganizeTarget } from "../lib/organize-target";
  import { offerPasskeyOnce } from "../lib/passkey";
  import { INBOX_POLL_INTERVAL_MS, INBOX_SIGNALLED_POLL_INTERVAL_MS } from "../lib/poll-cadence";
-+import { inboxChats, preloadChats } from "../lib/preload-chats";
++import { chatRpc } from "../lib/chat-rpc";
++import { useAfterFirstPaint } from "../lib/after-first-paint";
++import { allowPreloadAfterFirstPaint, inboxChats, preloadChats } from "../lib/preload-chats";
  import { registerPushToken } from "../lib/push";
  import { hasSignedInBefore, rememberSignedIn } from "../lib/returning-user";
  import { useRosterSignals } from "../lib/roster-signals";
-@@ -93,6 +110,7 @@ import {
+@@ -93,12 +112,13 @@ import {
    subscribeSessionGeneration,
  } from "../lib/session";
  import { useSplitView } from "../lib/split-view";
@@ -4379,7 +4381,14 @@ index 0a5db832f..e27c4936c 100644
  import { confirmUnsentSendLoss } from "../lib/unsent-send-warning";
  import { useArchivedCount } from "../lib/use-archived-count";
  import { useCollapsedSections } from "../lib/use-collapsed-sections";
-@@ -158,7 +176,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+ import { useHomeHeader } from "../lib/use-home-header";
+ import { useHomeInbox } from "../lib/use-home-inbox";
+-import { chatRpc, useInboxChatActions } from "../lib/use-inbox-chat-actions";
++import { useInboxChatActions } from "../lib/use-inbox-chat-actions";
+ import { useInboxDay } from "../lib/use-inbox-day";
+ import { usePublishSearchInbox } from "../lib/use-publish-search-inbox";
+ import { useSnoozeClock } from "../lib/use-snooze-clock";
+@@ -158,7 +178,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
    const tokens = mobileTokens();
    const appearance = resolveMobileAppearance();
    const styles = useThemedStyles(createHomeStyles);
@@ -4388,7 +4397,7 @@ index 0a5db832f..e27c4936c 100644
    const locale = useUiLocale();
    const isFocused = useIsFocused();
    const day = useInboxDay();
-@@ -198,10 +216,27 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -198,10 +218,27 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
    const [spaceBusy, setSpaceBusy] = useState(false);
    const [spaceRecoveryId, setSpaceRecoveryId] = useState<string | null>(null);
    const userId = me?.userId;
@@ -4416,7 +4425,7 @@ index 0a5db832f..e27c4936c 100644
    useEffect(() => {
      void loadActivityMode().then((on) => {
        setActivityMode(on);
-@@ -278,6 +313,13 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -278,6 +315,13 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
      rosterSignalsLive ? INBOX_SIGNALLED_POLL_INTERVAL_MS : INBOX_POLL_INTERVAL_MS,
      inboxShown,
    );
@@ -4430,7 +4439,7 @@ index 0a5db832f..e27c4936c 100644
    useEffect(() => onInboxChanged(() => void refreshBots().catch(() => undefined)), [refreshBots]);
  
    const archivedCount = useArchivedCount(me?.spaceId, hasSession);
-@@ -318,6 +360,12 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -318,6 +362,12 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
        withoutArchiving("group", applyUnreadOverrides("group", groups, unreadOverrides), archiving),
      [groups, unreadOverrides, archiving],
    );
@@ -4443,7 +4452,7 @@ index 0a5db832f..e27c4936c 100644
    const shownSpaces = useMemo(
      () =>
        archiving.size === 0
-@@ -334,7 +382,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -334,7 +384,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
        shownSpaces.length > 0
          ? shownSpaces.map((space) =>
              space.id === me?.spaceId
@@ -4452,7 +4461,7 @@ index 0a5db832f..e27c4936c 100644
                : space,
            )
          : me
-@@ -344,21 +392,29 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -344,21 +394,29 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
                  name: t`Personal`,
                  isDefault: true,
                  hasContent: true,
@@ -4485,7 +4494,7 @@ index 0a5db832f..e27c4936c 100644
    const spaceSections = retainInboxValue(
      keptSections,
      inboxSpaces.map(({ id, botSections }) => ({ id, botSections })),
-@@ -378,7 +434,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -378,7 +436,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
      // Android pins sit above the list; iOS keeps rows with native swipe and context menus.
      const otherSpaces = shownSpaces.filter((space) => space.id !== me?.spaceId);
      const pinned: PinnedChat[] = [
@@ -4494,7 +4503,7 @@ index 0a5db832f..e27c4936c 100644
          .filter((bot) => bot.pinned && !chatSnoozed(bot, snoozeNow))
          .map((bot) => ({ kind: "bot" as const, bot })),
        ...[...visibleGroups, ...otherSpaces.flatMap((space) => space.groups)]
-@@ -400,17 +456,25 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -400,17 +458,30 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
      collapsed,
      me?.spaceId,
      shownSpaces,
@@ -4506,11 +4515,16 @@ index 0a5db832f..e27c4936c 100644
      snoozeNow,
    ]);
 -  // Snoozed chats stay off the icon until they wake.
-+  // The first chats this Space lists open from a saved copy on their first tap.
++  // Preload waits until the first frames are on screen so it cannot compete with startup.
++  const afterFirstPaint = useAfterFirstPaint();
++  useEffect(() => {
++    if (afterFirstPaint) allowPreloadAfterFirstPaint();
++  }, [afterFirstPaint]);
++  // The first chats the inbox lists, in any Space, open from a saved copy on their first tap.
 +  useEffect(() => {
 +    if (inboxLoaded.current && !onShareSelect)
-+      void preloadChats(inboxChats(listData, { bots, groups })).catch(() => undefined);
-+  }, [listData, bots, groups, onShareSelect]);
++      void preloadChats(inboxChats(listData)).catch(() => undefined);
++  }, [listData, onShareSelect]);
 +  // Snoozed chats stay off the icon until they wake. The hero's bot counts too, though it is
 +  // drawn above the list rather than as a row.
    const badgeCount = me
@@ -4523,7 +4537,7 @@ index 0a5db832f..e27c4936c 100644
            groups: space.groups.filter((group) => !chatSnoozed(group, snoozeNow)),
          })),
        )
-@@ -472,7 +536,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -472,7 +543,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
      listRef,
      // The Liquid Glass header floats over the list; the older header sits above it.
      topInset: nativeHeader ? headerHeight : 0,
@@ -4532,7 +4546,7 @@ index 0a5db832f..e27c4936c 100644
    });
    const router = useRouter();
    const pathname = usePathname();
-@@ -641,9 +705,10 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -641,9 +712,10 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
    const runCreateAction = useCallback(
      (action: CreateAction) => {
        if (action === "bot") newBot();
@@ -4544,7 +4558,7 @@ index 0a5db832f..e27c4936c 100644
    );
  
    const organizations = useOrganizations(hasSession && !onShareSelect).data;
-@@ -655,11 +720,11 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -655,11 +727,11 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
  
    useHomeHeader({
      nativeHeader,
@@ -4558,7 +4572,7 @@ index 0a5db832f..e27c4936c 100644
      runCreateAction,
      headerTitle,
    });
-@@ -667,6 +732,8 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -667,6 +739,8 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
    const openBot = useCallback(
      (bot: MobileBot | SpaceBot) => {
        if (spaceActionRef.current.busy || spaceActionRef.current.recoveryId) return;
@@ -4567,7 +4581,7 @@ index 0a5db832f..e27c4936c 100644
        void openMobileSpace(bot.spaceId, () => {
          if (onShareSelect) onShareSelect(bot);
          else openChat({ pathname: "/thread", params: { botId: bot.id, name: bot.name } });
-@@ -674,6 +741,49 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -674,6 +748,49 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
      },
      [openChat, onShareSelect],
    );
@@ -4617,7 +4631,7 @@ index 0a5db832f..e27c4936c 100644
    const openGroup = useCallback(
      (group: MobileGroup | SpaceGroup) => {
        if (spaceActionRef.current.busy || spaceActionRef.current.recoveryId) return;
-@@ -728,6 +838,21 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -728,6 +845,21 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
    const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: ListViewToken[] }) =>
      avatarViewport.update(viewableItems.map((token) => token.key)),
    ).current;
@@ -4639,7 +4653,7 @@ index 0a5db832f..e27c4936c 100644
    const renderItem = useInboxRenderItem({
      appearance,
      botAction,
-@@ -737,6 +862,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -737,6 +869,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
      day,
      now: snoozeNow,
      deleteSection,
@@ -4647,7 +4661,7 @@ index 0a5db832f..e27c4936c 100644
      editSectionFromMenu,
      groupAction,
      spaceId: me?.spaceId,
-@@ -751,6 +877,10 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -751,6 +884,10 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
      sharing: !!onShareSelect,
      spaces: spaceSections,
      toggleCollapsed,
@@ -4658,7 +4672,7 @@ index 0a5db832f..e27c4936c 100644
    });
  
    if (!ready) {
-@@ -770,9 +900,34 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -770,9 +907,34 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
    const activityView = !onShareSelect && activityMode && Boolean(userId);
    const showActivity = activityView && !showLoadFailure;
    const rows = activityView || showLoadFailure ? [] : listData;
@@ -4694,7 +4708,7 @@ index 0a5db832f..e27c4936c 100644
        {inlineError ? <Text style={styles.error}>{inlineError}</Text> : null}
        {spaceRecoveryId ? (
          <Pressable
-@@ -830,6 +985,11 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -830,6 +992,11 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
    const refreshInbox = async () => {
      await Promise.all([refreshBots(), loadActivity()]);
    };
@@ -4706,7 +4720,7 @@ index 0a5db832f..e27c4936c 100644
  
    return (
      <View style={styles.screen}>
-@@ -837,8 +997,6 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -837,8 +1004,6 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
          <InboxHeader
            embedded={embedded}
            initials={initials}
@@ -4715,7 +4729,7 @@ index 0a5db832f..e27c4936c 100644
            runCreateAction={runCreateAction}
            columnInsets={columnInsets}
            title={headerTitle?.()}
-@@ -860,6 +1018,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -860,6 +1025,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
                      (!onShareSelect && (item.type === "bot" || item.type === "group"))
                    }
                    header={hasListHeader ? listHeader : null}
@@ -4723,7 +4737,7 @@ index 0a5db832f..e27c4936c 100644
                    empty={listEmpty}
                    footer={listFooter}
                    gutters={{
-@@ -871,6 +1030,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -871,6 +1037,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
                    onRefresh={refreshInbox}
                    signals={jumpSignals}
                    showJumpPills={!onShareSelect && !refreshing && !inboxHasNoChats(rows)}
@@ -4731,7 +4745,7 @@ index 0a5db832f..e27c4936c 100644
                  />
                ) : (
                  <FlatList<InboxItem>
-@@ -887,7 +1047,11 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -887,7 +1054,11 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
                    indicatorStyle={appearance === "dark" ? "white" : "black"}
                    contentContainerStyle={[
                      styles.list,
@@ -4744,7 +4758,7 @@ index 0a5db832f..e27c4936c 100644
                    ]}
                    contentInsetAdjustmentBehavior="automatic"
                    refreshControl={
-@@ -915,6 +1079,15 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -915,6 +1086,15 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
            </View>
          </CompactRowsContext.Provider>
        </SelectedChatContext.Provider>
@@ -4760,7 +4774,7 @@ index 0a5db832f..e27c4936c 100644
        {organizeChat && organizeTarget ? (
          <BotOrganizeModal
            bot={organizeChat}
-@@ -938,6 +1111,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -938,6 +1118,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
            }}
          />
        ) : null}
@@ -5943,6 +5957,137 @@ index 5eae03917..7d63a1dc1 100644
      preview: {
        color: native.secondaryLabel,
        ...typeScale.secondary,
+diff --git a/apps/mobile/app/server.tsx b/apps/mobile/app/server.tsx
+index c91de4311..58e1755dc 100644
+--- a/apps/mobile/app/server.tsx
++++ b/apps/mobile/app/server.tsx
+@@ -8,21 +8,26 @@ import { SafeAreaView } from "react-native-safe-area-context";
+ import { HeaderRowsEditor } from "../components/header-rows-editor";
+ import { NativeActionButton } from "../components/native-action-button";
+ import { cancelHeaderOptions, trailingHeaderOptions } from "../components/sheet-header";
++import { SettingsGroup, SettingsRow } from "../components/settings-group";
++import { LongPressMenu } from "../components/long-press-menu";
+ import { currentApiBase } from "../lib/api";
+ import { resetApiBase, saveApiBase } from "../lib/api-server";
+-import { CallKeyboardContext } from "../lib/call-keyboard-context";
+ import {
+   apiBaseWarning,
+   defaultApiBase,
++  displaySavedServer,
+   normalizeApiBase,
+   probeApiBase,
+   usesCustomApiBase,
+ } from "../lib/endpoint";
+-import { useMobileTokens } from "../lib/native";
++import type { SavedServer } from "../lib/saved-servers";
++import { removeSavedServer, savedServers } from "../lib/saved-servers";
+ import { serverHeaders } from "../lib/server-headers";
++import { errorText } from "../lib/user-error";
++import { CallKeyboardContext } from "../lib/call-keyboard-context";
+ import { useSideInsets } from "../lib/side-insets";
++import { useMobileTokens, useResolvedAppearance } from "../lib/native";
+ import { confirmUnsentSendLoss } from "../lib/unsent-send-warning";
+-import { errorText } from "../lib/user-error";
+ 
+ export default function ServerScreen() {
+   const call = useContext(CallKeyboardContext);
+@@ -37,8 +42,11 @@ export default function ServerScreen() {
+   );
+   const [error, setError] = useState<string | null>(null);
+   const [pending, setPending] = useState(false);
++  const [saved, setSaved] = useState(savedServers);
++  const colorScheme = useResolvedAppearance();
+   const active = useRef(true);
+   const saving = useRef(false);
++  const removing = useRef(new Set<string>());
+ 
+   useEffect(() => {
+     return () => {
+@@ -56,8 +64,10 @@ export default function ServerScreen() {
+   const parsedDraft = normalizeApiBase(draft);
+   const warning = parsedDraft.ok ? apiBaseWarning(parsedDraft.url) : null;
+ 
+-  async function save() {
+-    if (saving.current) return;
++  // A saved server brings the headers it was set up with; typing an address uses the rows.
++  async function save(target?: SavedServer) {
++    // A switch to a server whose removal is still running would list it again once it lands.
++    if (saving.current || (target && removing.current.has(target.apiBase))) return;
+     // Held across the confirmation, so a second submit cannot start a parallel switch.
+     saving.current = true;
+     try {
+@@ -65,12 +75,12 @@ export default function ServerScreen() {
+       setError(null);
+       let headers: Record<string, string>;
+       try {
+-        headers = serverHeadersFromRows(headerRows);
++        headers = target ? target.headers : serverHeadersFromRows(headerRows);
+       } catch (headerError) {
+         setError(errorText(headerError));
+         return;
+       }
+-      const probed = await probeApiBase(draft, fetch, headers);
++      const probed = await probeApiBase(target ? target.apiBase : draft, fetch, headers);
+       if (!active.current) return;
+       if (!probed.ok) {
+         setError(probed.error);
+@@ -92,6 +102,25 @@ export default function ServerScreen() {
+     }
+   }
+ 
++  async function forget(apiBase: string) {
++    // A switch in progress records its server when it lands, which would bring this one back.
++    if (saving.current) return;
++    if (removing.current.has(apiBase)) return;
++    removing.current.add(apiBase);
++    try {
++      if (!(await removeSavedServer(apiBase))) {
++        if (active.current) setError(t`Could not remove the server`);
++        return;
++      }
++      if (active.current) {
++        setError(null);
++        setSaved(savedServers());
++      }
++    } finally {
++      removing.current.delete(apiBase);
++    }
++  }
++
+   async function restoreDefault() {
+     if (saving.current) return;
+     // Held across the confirmation, like save, so the two cannot run a switch in parallel.
+@@ -172,6 +201,30 @@ export default function ServerScreen() {
+             disabled={pending}
+           />
+           {error ? <Text style={{ color: tokens.destructive, marginTop: 12 }}>{error}</Text> : null}
++          <SettingsGroup label={t`Recent servers`}>
++            {saved
++              .filter((entry) => entry.apiBase !== current)
++              .map((entry) => (
++                <LongPressMenu
++                  key={entry.apiBase}
++                  colorScheme={colorScheme}
++                  title={displaySavedServer(entry.apiBase)}
++                  actions={[{ id: "remove", title: t`Remove`, attributes: { destructive: true } }]}
++                  onPressAction={() => void forget(entry.apiBase)}
++                >
++                  {(onLongPress) => (
++                    <SettingsRow
++                      accessibilityRole="button"
++                      title={displaySavedServer(entry.apiBase)}
++                      disabled={pending}
++                      dimmed={pending}
++                      onPress={() => void save(entry)}
++                      onLongPress={onLongPress}
++                    />
++                  )}
++                </LongPressMenu>
++              ))}
++          </SettingsGroup>
+           {usesCustomApiBase(current) || draft.trim() !== current ? (
+             <NativeActionButton
+               disabled={pending}
 diff --git a/apps/mobile/app/sign-in.tsx b/apps/mobile/app/sign-in.tsx
 index 6a58f17d8..21ec1c0c6 100644
 --- a/apps/mobile/app/sign-in.tsx
@@ -121808,6 +121953,146 @@ z|CxzSfcS4a?HBUWYuK31o$ui@S>N|1ZsyI4weMcN+jlwK{a0V?-HU$@-@IFU{`|XF
 zKlkpuxKH0~+4Q=)vZNm#*=y>LPrdlBwD|Gg?WV_e|ND0I;zHH>dn^AsdG5Cl54^_D
 qFbYOPU^E0qLtyBHfWmM4_w`Ih9kMfg^Cwq>-0kV==d#Wzp$Pz!5>MFx
 
+diff --git a/apps/mobile/components/AskActions.tsx b/apps/mobile/components/AskActions.tsx
+index cf9f7f215..19957c917 100644
+--- a/apps/mobile/components/AskActions.tsx
++++ b/apps/mobile/components/AskActions.tsx
+@@ -1,15 +1,38 @@
+ import { useLingui } from "@lingui/react/macro";
+ import { BOT_INSTRUCTIONS_MAX_LENGTH } from "@rakazo/contracts";
+ import { resolveAskChoice } from "@rakazo/core";
++import { typeScale } from "@rakazo/ui-tokens";
+ import { useState } from "react";
+ import type { ViewProps } from "react-native";
+-import { Alert, TextInput, View } from "react-native";
++import {
++  ActivityIndicator,
++  Alert,
++  Pressable,
++  StyleSheet,
++  Text,
++  TextInput,
++  View,
++} from "react-native";
++import { errorText } from "../lib/user-error";
+ import { mobileTokens } from "../lib/appearance";
+ import type { AskAction } from "../lib/ask-action-label";
+ import { askActionLabel } from "../lib/ask-action-label";
+ import { native } from "../lib/native";
+-import { errorText } from "../lib/user-error";
+ import { NativeActionButton } from "./native-action-button";
++import { NativeSymbol } from "./native-symbol";
++
++const styles = StyleSheet.create({
++  option: {
++    alignItems: "center",
++    borderRadius: 12,
++    flexDirection: "row",
++    gap: 10,
++    minHeight: 44,
++    paddingHorizontal: 14,
++    paddingVertical: 11,
++  },
++  optionLabel: { ...typeScale.body, flex: 1 },
++});
+ 
+ export function AskActions({
+   actions,
+@@ -74,10 +97,10 @@ export function AskActions({
+       <View
+         style={{
+           flexDirection: approval ? "row" : "column",
+-          // Option buttons stack full width; a wrapping column sizes its line to the
+-          // widest button's own width, which collapses stretched buttons.
++          // Option rows stack full width; a wrapping column sizes its line to the
++          // widest row's own width, which collapses stretched rows.
+           flexWrap: approval ? "wrap" : "nowrap",
+-          gap: 6,
++          gap: approval ? 6 : 8,
+         }}
+       >
+         {displayActions.map((action) => {
+@@ -110,24 +133,67 @@ export function AskActions({
+                 }
+               />
+             );
++          const label = askActionLabel(action, { approval, site });
++          if (approval)
++            return (
++              <NativeActionButton
++                key={action.id}
++                accessibilityActions={accessibilityActions}
++                onAccessibilityAction={onAccessibilityAction}
++                label={label}
++                prominence={emphasized ? "primary" : "secondary"}
++                fill={false}
++                disabled={disabled || submitting}
++                busy={pendingAction === action.id}
++                onPress={() => void submit(action.id)}
++              />
++            );
++          // A question's options read as a list of answers, not a stack of call-to-action pills.
++          const chosen =
++            selectedAnswer !== undefined &&
++            resolveAskChoice(selectedAnswer, actions)?.id === action.id;
++          const inactive = disabled || submitting;
+           return (
+-            <NativeActionButton
++            <Pressable
+               key={action.id}
++              accessibilityRole="button"
++              accessibilityLabel={label}
++              accessibilityState={{
++                disabled: inactive,
++                // Options carry a selection state only once the question has an answer.
++                ...(selectedAnswer === undefined ? {} : { selected: chosen }),
++              }}
+               accessibilityActions={accessibilityActions}
+               onAccessibilityAction={onAccessibilityAction}
+-              label={askActionLabel(action, { approval, site })}
+-              prominence={emphasized ? "primary" : "secondary"}
+-              fill={!approval}
+-              selected={
+-                approval || selectedAnswer === undefined
+-                  ? undefined
+-                  : resolveAskChoice(selectedAnswer, actions)?.id === action.id
+-              }
+-              align={approval ? "center" : "start"}
+-              disabled={disabled || submitting}
+-              busy={pendingAction === action.id}
++              disabled={inactive}
+               onPress={() => void submit(action.id)}
+-            />
++              style={({ pressed }) => [
++                styles.option,
++                {
++                  backgroundColor: pressed || chosen ? native.fillPressed : native.page,
++                  opacity: inactive && !chosen && pendingAction !== action.id ? 0.6 : 1,
++                },
++              ]}
++            >
++              <Text
++                style={[
++                  styles.optionLabel,
++                  { color: disabled && !chosen ? tokens.mutedForeground : tokens.foreground },
++                ]}
++              >
++                {label}
++              </Text>
++              {pendingAction === action.id ? (
++                <ActivityIndicator size="small" color={tokens.mutedForeground} />
++              ) : chosen ? (
++                <NativeSymbol
++                  ios="checkmark"
++                  android="checkmark"
++                  size={15}
++                  color={tokens.mutedForeground}
++                />
++              ) : null}
++            </Pressable>
+           );
+         })}
+       </View>
 diff --git a/apps/mobile/components/CallCard.tsx b/apps/mobile/components/CallCard.tsx
 index 81e0d4afe..ced51a2d9 100644
 --- a/apps/mobile/components/CallCard.tsx
@@ -130414,6 +130699,36 @@ index 595069cce..d579fc2d6 100644
    const ownLabel = stretches || filled || variant !== undefined;
    const measuredWidth = StyleSheet.flatten(style)?.width;
    const labelModifiers = variant
+diff --git a/apps/mobile/components/native-action-button.tsx b/apps/mobile/components/native-action-button.tsx
+index 52c76713d..10f4020b3 100644
+--- a/apps/mobile/components/native-action-button.tsx
++++ b/apps/mobile/components/native-action-button.tsx
+@@ -19,7 +19,6 @@ export function NativeActionButton({
+   prominence = "primary",
+   variant,
+   fill,
+-  align = "center",
+   style,
+   size = "default",
+   icon,
+@@ -63,7 +62,7 @@ export function NativeActionButton({
+                 : 48,
+           borderRadius: 12,
+           alignItems: "center",
+-          justifyContent: align === "start" ? "flex-start" : "center",
++          justifyContent: "center",
+           alignSelf: stretches ? "stretch" : "flex-start",
+           paddingHorizontal: variant === "text" ? 0 : small ? 6 : compact ? 0 : 16,
+           paddingVertical: variant === "text" ? 8 : small ? 6 : compact ? 8 : 12,
+@@ -88,7 +87,7 @@ export function NativeActionButton({
+               style={{
+                 color: colors.label,
+                 flexShrink: 1,
+-                textAlign: align === "start" ? "left" : "center",
++                textAlign: "center",
+                 fontSize:
+                   variant === "text"
+                     ? 16
 diff --git a/apps/mobile/components/native-inbox-list.ios.tsx b/apps/mobile/components/native-inbox-list.ios.tsx
 index 844dc2b03..071fc6387 100644
 --- a/apps/mobile/components/native-inbox-list.ios.tsx
@@ -135746,7 +136061,7 @@ index aa623d6be..d87cebe6c 100644
 +  );
 +}
 diff --git a/apps/mobile/components/thread/message-row.tsx b/apps/mobile/components/thread/message-row.tsx
-index db15142a1..a62cc2561 100644
+index db15142a1..97635a69e 100644
 --- a/apps/mobile/components/thread/message-row.tsx
 +++ b/apps/mobile/components/thread/message-row.tsx
 @@ -6,7 +6,7 @@ import type {
@@ -135780,7 +136095,8 @@ index db15142a1..a62cc2561 100644
 +import { firstMessageLink } from "../../lib/link-preview";
  import { presentMessageActionSheet } from "../../lib/message-action-sheet";
 -import { buildMessageContextMenu, messageMenuReaction } from "../../lib/message-context-menu";
- import { messageHasInlineControls, quotableMessageSegments } from "../../lib/message-presentation";
+-import { messageHasInlineControls, quotableMessageSegments } from "../../lib/message-presentation";
++import { hasQuotableText, messageHasInlineControls } from "../../lib/message-presentation";
  import { messageRowLayout } from "../../lib/message-row-layout";
  import type { MobileBot, MobileMessage, MobileSnapshot } from "../../lib/mobile-types";
  import { blockText } from "../../lib/mobile-types";
@@ -135846,7 +136162,7 @@ index db15142a1..a62cc2561 100644
  export const MessageRow = memo(function MessageRow({
    message,
    actions,
-@@ -171,18 +199,25 @@ export const MessageRow = memo(function MessageRow({
+@@ -171,37 +199,46 @@ export const MessageRow = memo(function MessageRow({
    );
    const [optimisticLike, setOptimisticLike] = useState(false);
    const likeInFlight = useRef(false);
@@ -135876,7 +136192,10 @@ index db15142a1..a62cc2561 100644
    }>(() => {
      const messageText = selectableMessageText(message);
      const includeQuote =
-@@ -192,16 +227,18 @@ export const MessageRow = memo(function MessageRow({
+       !readOnly &&
+       !message.id.startsWith("progress:") &&
+-      quotableMessageSegments(message.role, message.blocks).length > 0;
++      hasQuotableText(message.role, message.blocks);
      const includeReact = !readOnly && canReactToThreadMessage(message);
      // The call already reads replies aloud; a second voice would talk over it.
      const includeSpeak = message.role === "bot" && !onCall && Boolean(blockText(message));
@@ -140065,6 +140384,75 @@ index 0659ba7a3..7cc1cdb36 100644
 -  });
 +  return Promise.resolve(true);
  }
+diff --git a/apps/mobile/lib/api-server.ts b/apps/mobile/lib/api-server.ts
+index 74ecac53e..4186fb8bb 100644
+--- a/apps/mobile/lib/api-server.ts
++++ b/apps/mobile/lib/api-server.ts
+@@ -1,5 +1,6 @@
+ import { t } from "@lingui/core/macro";
+ import * as SecureStore from "expo-secure-store";
++import { resumeLiveNotifications } from "./live-notifications";
+ import type { PendingSignOut } from "./api";
+ import {
+   clearStoredValue,
+@@ -23,7 +24,7 @@ import {
+ } from "./api";
+ import type { EndpointResult } from "./endpoint";
+ import { defaultApiBase, normalizeApiBase } from "./endpoint";
+-import { resumeLiveNotifications } from "./live-notifications";
++import { loadSavedServers, recordSavedServer } from "./saved-servers";
+ import { API_BASE_STORAGE_KEY as ENDPOINT_KEY } from "./server-config";
+ import { loadServerHeaders, saveServerHeaders, serverHeaders } from "./server-headers";
+ import {
+@@ -63,6 +64,7 @@ export async function loadApiBase() {
+     // SecureStore is unavailable in some test / web hosts.
+   }
+   await loadServerHeaders(apiBase);
++  await loadSavedServers();
+   setCachedApiBase(apiBase);
+   try {
+     const storedSpace = (await SecureStore.getItemAsync(SPACE_KEY)) ?? "";
+@@ -439,15 +441,17 @@ export async function saveApiBase(
+     await clearStoredValue(SPACE_ROLLBACK_KEY);
+     if (cleared?.pendingSignOut) await promotePendingSignOut(cleared.pendingSignOut);
+     if (cleared) await clearStoredValue(ORGANIZATION_SPACES_KEY);
++    await rememberServers(switching ? previous : undefined, previousHeaders, parsed.url, headers);
+     return parsed;
+   });
+ }
+ export async function resetApiBase(): Promise<EndpointResult> {
+   const url = defaultApiBase();
+   return queueEndpointChange(url, async (previous, switching) => {
++    const previousHeaders = serverHeaders(previous);
+     let cleared: ClearedCredentials | undefined;
+     if (switching) {
+-      const result = await clearCredentialsForEndpointChange(previous, serverHeaders(previous));
++      const result = await clearCredentialsForEndpointChange(previous, previousHeaders);
+       if (!result.ok) return result.result;
+       cleared = result;
+     }
+@@ -475,6 +479,21 @@ export async function resetApiBase(): Promise<EndpointResult> {
+     await clearStoredValue(SPACE_ROLLBACK_KEY);
+     if (cleared?.pendingSignOut) await promotePendingSignOut(cleared.pendingSignOut);
+     if (cleared) await clearStoredValue(ORGANIZATION_SPACES_KEY);
++    if (switching) await rememberServers(previous, previousHeaders);
+     return { ok: true, url };
+   });
+ }
++/**
++ * Lists the server a switch left, so one set up before the list existed can be returned to, and
++ * the one it moved to. Runs only after the switch committed; the list is a convenience, so a
++ * write that fails leaves the switch standing.
++ */
++async function rememberServers(
++  left: string | undefined,
++  leftHeaders: Record<string, string>,
++  entered?: string,
++  enteredHeaders: Record<string, string> = {},
++): Promise<void> {
++  if (left) await recordSavedServer(left, leftHeaders, { keepHeaders: true });
++  if (entered) await recordSavedServer(entered, enteredHeaders);
++}
 diff --git a/apps/mobile/lib/app-font.test.ts b/apps/mobile/lib/app-font.test.ts
 new file mode 100644
 index 000000000..e9986995d
@@ -140631,11 +141019,138 @@ index bd85003f9..7e5caf4b1 100644
 -  expect(runCreateAction.mock.calls).toEqual([["bot"], ["group"], ["space"]]);
 +  expect(runCreateAction.mock.calls).toEqual([["bot"], ["group"], ["space"], ["activity"]]);
  });
+diff --git a/apps/mobile/lib/ask-actions.test.tsx b/apps/mobile/lib/ask-actions.test.tsx
+index 4cd3d7325..27b0722ca 100644
+--- a/apps/mobile/lib/ask-actions.test.tsx
++++ b/apps/mobile/lib/ask-actions.test.tsx
+@@ -7,12 +7,37 @@ import { createRoot } from "react-dom/client";
+ import { afterEach, beforeEach, expect, it, vi } from "vitest";
+ 
+ vi.mock("react-native", () => ({
++  ActivityIndicator: () => null,
+   Alert: { alert: vi.fn() },
++  Pressable: ({
++    children,
++    accessibilityLabel,
++    accessibilityState,
++    onPress,
++  }: {
++    children?: ReactNode;
++    accessibilityLabel?: string;
++    accessibilityState?: { selected?: boolean };
++    onPress?: () => void;
++  }) =>
++    createElement(
++      "button",
++      {
++        type: "button",
++        "aria-label": accessibilityLabel,
++        "aria-pressed": accessibilityState?.selected ? "true" : "false",
++        onClick: onPress,
++      },
++      children,
++    ),
++  StyleSheet: { create: <T,>(styles: T) => styles },
++  Text: ({ children }: { children?: ReactNode }) => createElement("span", null, children),
+   TextInput: () => null,
+   View: ({ children }: { children?: ReactNode }) => createElement("div", null, children),
+ }));
+ vi.mock("./appearance", () => ({ mobileTokens: () => ({}) }));
+ vi.mock("./native", () => ({ native: {} }));
++vi.mock("../components/native-symbol", () => ({ NativeSymbol: () => null }));
+ vi.mock("../components/native-action-button", () => ({
+   NativeActionButton: ({ label }: { label: string }) =>
+     createElement("button", { type: "button" }, label),
+@@ -50,3 +75,34 @@ it("offers Always allow only when the approval card does", async () => {
+   await show(actions.filter((action) => action.id !== "always"));
+   expect(labels()).toEqual(["Allow once", "Deny"]);
+ });
++
++it("lists a question's options as rows and marks the chosen one", async () => {
++  const onAnswer = vi.fn(async () => undefined);
++  const actions = [
++    { id: "research", label: "Research markets" },
++    { id: "draft", label: "Draft emails" },
++  ];
++  await act(async () =>
++    root.render(<AskActions actions={actions} approval={false} onAnswer={onAnswer} />),
++  );
++  const rows = () => [...container.querySelectorAll("button")];
++  expect(rows().map((row) => row.getAttribute("aria-label"))).toEqual([
++    "Research markets",
++    "Draft emails",
++  ]);
++  await act(async () => rows()[1]?.click());
++  expect(onAnswer).toHaveBeenCalledWith("draft");
++
++  await act(async () =>
++    root.render(
++      <AskActions
++        actions={actions}
++        approval={false}
++        disabled
++        selectedAnswer="draft"
++        onAnswer={onAnswer}
++      />,
++    ),
++  );
++  expect(rows().map((row) => row.getAttribute("aria-pressed"))).toEqual(["false", "true"]);
++});
 diff --git a/apps/mobile/lib/ask-card.test.tsx b/apps/mobile/lib/ask-card.test.tsx
-index 75ac63462..f54e210e9 100644
+index 75ac63462..448851e14 100644
 --- a/apps/mobile/lib/ask-card.test.tsx
 +++ b/apps/mobile/lib/ask-card.test.tsx
-@@ -703,6 +703,33 @@ it.each([undefined, "pending", "answered"] as const)(
+@@ -40,7 +40,30 @@ vi.mock("react-native", async () => {
+       ? Object.assign({}, ...style.map(flatten))
+       : ((style as CSSProperties) ?? {});
+   return {
++    ActivityIndicator: () => null,
+     Platform: { OS: "ios" },
++    Pressable: ({
++      children,
++      onPress,
++      disabled,
++      accessibilityState,
++    }: {
++      children?: ReactNode;
++      onPress?: () => void;
++      disabled?: boolean;
++      accessibilityState?: { selected?: boolean };
++    }) =>
++      createElement(
++        "button",
++        {
++          type: "button",
++          onClick: onPress,
++          disabled,
++          "data-row": "true",
++          "data-selected": accessibilityState?.selected?.toString(),
++        },
++        children,
++      ),
+     StyleSheet: { create: <T,>(styles: T) => styles },
+     View: ({ children, style }: { children?: ReactNode; style?: unknown }) =>
+       createElement("div", { style: flatten(style) }, children),
+@@ -663,7 +686,7 @@ it.each([
+   },
+ );
+ 
+-it("stacks option buttons in a non-wrapping full-width column and keeps approvals in a wrapping row", async () => {
++it("stacks option rows in a non-wrapping full-width column and keeps approvals in a wrapping row", async () => {
+   const actions = [
+     { id: "choice-1", label: "Plan a trip" },
+     { id: "choice-2", label: "Write something" },
+@@ -676,7 +699,8 @@ it("stacks option buttons in a non-wrapping full-width column and keeps approval
+     );
+     const buttons = [...container.querySelectorAll("button")];
+     const row = buttons[0]!.parentElement!;
+-    expect(buttons.map((b) => b.getAttribute("data-fill"))).toEqual(
++    // Question options are full-width rows; approvals stay native buttons sized to their label.
++    expect(buttons.map((b) => b.getAttribute(approval ? "data-fill" : "data-row"))).toEqual(
+       approval ? ["false", "false"] : ["true", "true"],
+     );
+     expect(row.style.flexDirection).toBe(approval ? "row" : "column");
+@@ -703,6 +727,33 @@ it.each([undefined, "pending", "answered"] as const)(
    },
  );
  
@@ -140669,6 +141184,33 @@ index 75ac63462..f54e210e9 100644
  it("keeps pending approvals primary without adding a selection state", async () => {
    await act(async () =>
      root.render(
+diff --git a/apps/mobile/lib/async.test-support.ts b/apps/mobile/lib/async.test-support.ts
+new file mode 100644
+index 000000000..efe2ce1d6
+--- /dev/null
++++ b/apps/mobile/lib/async.test-support.ts
+@@ -0,0 +1,21 @@
++export type Deferred<T = void> = {
++  promise: Promise<T>;
++  resolve: (value: T | PromiseLike<T>) => void;
++  reject: (reason?: unknown) => void;
++};
++
++/** A promise a test holds open and settles when it chooses. */
++export function deferred<T = void>(): Deferred<T> {
++  let resolve!: Deferred<T>["resolve"];
++  let reject!: Deferred<T>["reject"];
++  const promise = new Promise<T>((yes, no) => {
++    resolve = yes;
++    reject = no;
++  });
++  return { promise, resolve, reject };
++}
++
++/** Waits for a timer that is already due, so every promise callback queued before it has run. */
++export function flush() {
++  return new Promise<void>((resolve) => setTimeout(resolve, 0));
++}
 diff --git a/apps/mobile/lib/avatar-badges.test.ts b/apps/mobile/lib/avatar-badges.test.ts
 new file mode 100644
 index 000000000..be24df2ee
@@ -143555,6 +144097,35 @@ index 6b65ae982..648d1f0d9 100644
          button.getAttribute("aria-label"),
        ),
      ).toEqual(["Model 1 (OpenRouter) options", "Model 1 (OpenRouter, Work) options"]);
+diff --git a/apps/mobile/lib/chat-rpc.ts b/apps/mobile/lib/chat-rpc.ts
+new file mode 100644
+index 000000000..d06e246d2
+--- /dev/null
++++ b/apps/mobile/lib/chat-rpc.ts
+@@ -0,0 +1,23 @@
++import type { RpcInput, RpcPath } from "@rakazo/contracts";
++import type { ApiRequestContext, RpcArgs } from "./api";
++import { captureApiRequestContext, rpc, selectedSpaceId } from "./api";
++
++/** Sends a request about a chat to that chat's space without switching to it. */
++export async function chatRequestContext(
++  spaceId: string | undefined,
++): Promise<ApiRequestContext | undefined> {
++  if (!spaceId || spaceId === selectedSpaceId()) return undefined;
++  const context = await captureApiRequestContext();
++  return { ...context, headers: { ...context.headers, "x-rakazo-space-id": spaceId } };
++}
++
++export async function chatRpc<P extends RpcPath>(
++  spaceId: string | undefined,
++  proc: P,
++  body: RpcInput<P>,
++) {
++  const requestContext = await chatRequestContext(spaceId);
++  return requestContext
++    ? rpc(proc, ...([body, { requestContext, skipSpaceAuthRecovery: true }] as RpcArgs<P>))
++    : rpc(proc, ...([body] as RpcArgs<P>));
++}
 diff --git a/apps/mobile/lib/choice-card-quiz.test.tsx b/apps/mobile/lib/choice-card-quiz.test.tsx
 new file mode 100644
 index 000000000..3d5074751
@@ -144879,6 +145450,47 @@ index 000000000..6a80a1fcb
 +    ),
 +  })).filter((category) => category.entries.length > 0);
 +}
+diff --git a/apps/mobile/lib/endpoint.test.ts b/apps/mobile/lib/endpoint.test.ts
+index 6ea333f37..eba51e2b8 100644
+--- a/apps/mobile/lib/endpoint.test.ts
++++ b/apps/mobile/lib/endpoint.test.ts
+@@ -4,6 +4,7 @@ import {
+   apiBaseWarning,
+   defaultApiBase,
+   displayApiHost,
++  displaySavedServer,
+   MAX_API_PROBE_RESPONSE_BYTES,
+   normalizeApiBase,
+   probeApiBase,
+@@ -75,6 +76,12 @@ describe("display and warnings", () => {
+     expect(displayApiHost("http://10.0.0.8:3100")).toBe("10.0.0.8:3100");
+   });
+ 
++  it("keeps http visible on a saved server so it differs from its https twin", () => {
++    expect(displaySavedServer("https://10.0.0.8")).toBe("10.0.0.8");
++    expect(displaySavedServer("http://10.0.0.8")).toBe("http://10.0.0.8");
++    expect(displaySavedServer("http://10.0.0.8:3100")).toBe("http://10.0.0.8:3100");
++  });
++
+   it("warns on public http but not LAN or loopback", () => {
+     expect(apiBaseWarning("https://app.example.com")).toBeNull();
+     expect(apiBaseWarning("http://127.0.0.1:3100")).toBeNull();
+diff --git a/apps/mobile/lib/endpoint.ts b/apps/mobile/lib/endpoint.ts
+index ee82f3646..9a4f2a79f 100644
+--- a/apps/mobile/lib/endpoint.ts
++++ b/apps/mobile/lib/endpoint.ts
+@@ -43,6 +43,11 @@ export function displayApiHost(url: string) {
+   }
+ }
+ 
++/** The host, with `http://` kept so a plain-http server never reads like its https twin. */
++export function displaySavedServer(url: string) {
++  return url.startsWith("http://") ? url : displayApiHost(url);
++}
++
+ export function usesCustomApiBase(url: string, fallback = defaultApiBase()) {
+   return url !== fallback;
+ }
 diff --git a/apps/mobile/lib/file-name.test.ts b/apps/mobile/lib/file-name.test.ts
 new file mode 100644
 index 000000000..ea67a0d9d
@@ -148556,11 +149168,19 @@ index b6d4acd3f..32dc2778b 100644
  import { MessageBubble } from "../components/thread/message-bubble";
  
 diff --git a/apps/mobile/lib/message-presentation.test.ts b/apps/mobile/lib/message-presentation.test.ts
-index d353694df..0987a83c9 100644
+index d353694df..a769c0111 100644
 --- a/apps/mobile/lib/message-presentation.test.ts
 +++ b/apps/mobile/lib/message-presentation.test.ts
-@@ -6,10 +6,12 @@ import {
+@@ -1,17 +1,34 @@
+ import type { MessageBlock } from "@rakazo/contracts";
+-import { describe, expect, it } from "vitest";
++import type * as MessageQuote from "@rakazo/core/message-quote";
++import { beforeEach, describe, expect, it, vi } from "vitest";
+ import {
+   applyLocalChoiceDismissals,
+   choiceCardOptions,
    DISMISSED_CHOICE_ANSWER_ID,
++  hasQuotableText,
    hasVisibleMessagePresentation,
    isCenteredAgentEvent,
 +  isThreadWorkCardBlock,
@@ -148571,8 +149191,79 @@ index d353694df..0987a83c9 100644
 +  visibleThreadBlocks,
  } from "./message-presentation";
  
++const parsedMarkdown = vi.hoisted(() => vi.fn());
++vi.mock("@rakazo/core/message-quote", async (importOriginal) => {
++  const actual = await importOriginal<typeof MessageQuote>();
++  return {
++    ...actual,
++    visibleTextFromMarkdown: (markdown: string) => {
++      parsedMarkdown(markdown);
++      return actual.visibleTextFromMarkdown(markdown);
++    },
++  };
++});
++beforeEach(() => parsedMarkdown.mockClear());
++
  describe("mobile message presentation", () => {
-@@ -273,3 +275,65 @@ describe("messageHasInlineControls", () => {
+   it("centers handoffs, inter-agent messages, and channel mirrors", () => {
+     const blocks = [
+@@ -250,6 +267,55 @@ describe("quotableMessageSegments", () => {
+   });
+ });
+ 
++describe("hasQuotableText", () => {
++  const text = (value: string) => [{ kind: "text", text: value } as MessageBlock];
++
++  it("agrees with the quote sheet's segments", () => {
++    const samples = [
++      "Plain words",
++      "## Heading\n\n- **bold** item\n1. step",
++      "2024 was a year",
++      "> quoted line",
++      "```ts\nconst a = 1;\n```",
++      "    indented code",
++      "| a | b |\n|---|---|\n| 1 | 2 |",
++      "![](https://example.com/chart.png)",
++      "![chart](https://example.com/chart.png)",
++      "<!-- hidden -->",
++      "<div>\nhidden\n</div>",
++      "[ref]:\nhttps://example.com",
++      "[](\nhttps://example.com)",
++      "1.",
++      "1. \n2. ",
++      "---",
++      "* * *",
++      "&nbsp;",
++      "`inline` code",
++      "   ",
++    ];
++    for (const sample of samples) {
++      for (const role of ["bot", "user"] as const) {
++        const expected = quotableMessageSegments(role, text(sample)).length > 0;
++        expect([sample, role, hasQuotableText(role, text(sample))]).toEqual([
++          sample,
++          role,
++          expected,
++        ]);
++      }
++    }
++    expect(hasQuotableText("bot", [])).toBe(false);
++    expect(hasQuotableText("bot", text("x".repeat(100_001)))).toBe(false);
++  });
++
++  it("skips the Markdown parse when the words plainly show", () => {
++    const blocks = text("**Done**, the report is ready.");
++    expect(hasQuotableText("bot", blocks)).toBe(true);
++    expect(parsedMarkdown).not.toHaveBeenCalled();
++    expect(hasQuotableText("bot", text("![](https://example.com/chart.png)"))).toBe(false);
++    expect(parsedMarkdown).toHaveBeenCalledTimes(1);
++  });
++});
++
+ describe("messageHasInlineControls", () => {
+   it("leaves a plain message to the row gestures", () => {
+     expect(messageHasInlineControls([{ kind: "text", text: "hello" } as MessageBlock])).toBe(false);
+@@ -273,3 +339,65 @@ describe("messageHasInlineControls", () => {
      ).toBe(true);
    });
  });
@@ -148639,7 +149330,7 @@ index d353694df..0987a83c9 100644
 +  });
 +});
 diff --git a/apps/mobile/lib/message-presentation.ts b/apps/mobile/lib/message-presentation.ts
-index 7d18d6cbc..789e9345d 100644
+index 7d18d6cbc..ed3b86a91 100644
 --- a/apps/mobile/lib/message-presentation.ts
 +++ b/apps/mobile/lib/message-presentation.ts
 @@ -1,4 +1,4 @@
@@ -148709,6 +149400,41 @@ index 7d18d6cbc..789e9345d 100644
  /** Pads the content, not the scroll view, so the scroll indicator stays on the screen edge. */
  export const THREAD_COLUMN_GUTTER = 20;
  const MESSAGE_COLUMN_RATIO = 0.9;
+@@ -135,3 +167,34 @@ export function quotableMessageSegments(
+   byRole.set(role, segments);
+   return segments;
+ }
++
++// Markup that can hide a line's words: raw HTML, an image's alt text, a link definition, or a
++// link target on a line of its own.
++const HIDING_MARKUP = /<|!\[|\]:|\]\(\s*\n/;
++// A line whose words survive Markdown: past block markers it opens with a letter, or a number
++// that is not an ordered-list marker.
++const VISIBLE_LINE = /^[\t >#*+\-_]*(?:\p{L}|\p{N}+(?![\p{N}.)]))/mu;
++
++/**
++ * Whether the quote sheet would offer any text, as `quotableMessageSegments` decides it. Every row
++ * asks when it is drawn, so a message whose words plainly show skips the Markdown parse.
++ */
++export function hasQuotableText(
++  role: "user" | "bot" | "system",
++  blocks: readonly MessageBlock[],
++): boolean {
++  const cached = quotableSegmentsCache.get(blocks)?.get(role);
++  if (cached) return cached.length > 0;
++  let sourceLength = 0;
++  let visible = false;
++  for (const block of blocks) {
++    if (block.kind !== "text" || !block.text) continue;
++    sourceLength += block.text.length;
++    if (sourceLength > MAX_QUOTABLE_SOURCE_LENGTH) return false;
++    visible ||=
++      role === "user"
++        ? block.text.trim() !== ""
++        : !HIDING_MARKUP.test(block.text) && VISIBLE_LINE.test(block.text);
++  }
++  return visible || quotableMessageSegments(role, blocks).length > 0;
++}
 diff --git a/apps/mobile/lib/message-row-layout.ts b/apps/mobile/lib/message-row-layout.ts
 index 6249152ac..7b905faa2 100644
 --- a/apps/mobile/lib/message-row-layout.ts
@@ -148889,6 +149615,19 @@ index 6ff9437b8..dd75df8f4 100644
            expect(modifiers).toContainEqual({
              name: "foregroundStyle",
              value: tokensForAppearance(scheme).primaryForeground,
+diff --git a/apps/mobile/lib/native-controls.ts b/apps/mobile/lib/native-controls.ts
+index 0ecc0cd3a..83c679581 100644
+--- a/apps/mobile/lib/native-controls.ts
++++ b/apps/mobile/lib/native-controls.ts
+@@ -34,8 +34,6 @@ export type NativeActionButtonProps = {
+   selected?: boolean;
+   /** Stretch to the container width. Defaults to true for primary and destructive. */
+   fill?: boolean;
+-  /** Label placement on Android; iOS keeps the system layout. Defaults to center. */
+-  align?: "start" | "center";
+   style?: StyleProp<ViewStyle>;
+ } & (
+   | { label: string; accessibilityLabel?: string; icon?: ComponentProps<typeof NativeSymbol> }
 diff --git a/apps/mobile/lib/office-thumbnail.test.ts b/apps/mobile/lib/office-thumbnail.test.ts
 new file mode 100644
 index 000000000..cdc57ccd0
@@ -150368,10 +151107,10 @@ index c9997f15a..c539270f9 100644
            let resizedSize: number | undefined;
 diff --git a/apps/mobile/lib/preload-chats.test.ts b/apps/mobile/lib/preload-chats.test.ts
 new file mode 100644
-index 000000000..595c079b0
+index 000000000..edfdaa97f
 --- /dev/null
 +++ b/apps/mobile/lib/preload-chats.test.ts
-@@ -0,0 +1,150 @@
+@@ -0,0 +1,216 @@
 +import { beforeEach, expect, it, vi } from "vitest";
 +import type { InboxItem } from "./inbox-spaces";
 +
@@ -150381,7 +151120,11 @@ index 000000000..595c079b0
 +  scope: true,
 +  rpc: vi.fn(),
 +}));
-+vi.mock("./api", () => ({ rpc: state.rpc, selectedSpaceId: () => state.space }));
++vi.mock("./api", () => ({ selectedSpaceId: () => state.space }));
++vi.mock("./chat-rpc", () => ({
++  chatRpc: (spaceId: string | undefined, path: string, input: object) =>
++    state.rpc(path, input, spaceId),
++}));
 +vi.mock("./integrations-cache", () => ({
 +  isIntegrationsScopeCurrent: (scope: { selectionId: string }) => scope.selectionId === state.space,
 +}));
@@ -150391,14 +151134,22 @@ index 000000000..595c079b0
 +    state.scope ? { namespace: "ns", selectionId: state.space, spaceId: state.space } : null,
 +  savedChatTarget: ({ botId, groupId }: { botId?: string; groupId?: string }) =>
 +    groupId ? `group:${groupId}` : `bot:${botId}`,
-+  readSavedThread: (scope: { selectionId: string }, target: string) =>
-+    state.saved.get(`${scope.selectionId}/${target}`) ?? null,
-+  writeSavedThread: (scope: { selectionId: string }, target: string, snapshot: unknown) => {
-+    state.saved.set(`${scope.selectionId}/${target}`, snapshot);
++  readSavedThread: (scope: { spaceId: string }, target: string) =>
++    state.saved.get(`${scope.spaceId}/${target}`) ?? null,
++  writeSavedThread: (scope: { spaceId: string }, target: string, snapshot: unknown) => {
++    state.saved.set(`${scope.spaceId}/${target}`, snapshot);
 +  },
 +}));
 +
-+const { inboxChats, preloadChats, PRELOADED_CHATS } = await import("./preload-chats");
++const {
++  allowPreloadAfterFirstPaint,
++  inboxChats,
++  preloadChats,
++  PRELOADED_CHATS,
++  COLD_START_PRELOAD_CHATS,
++  resetPreloadForTests,
++  setPreloadIdleSchedulerForTests,
++} = await import("./preload-chats");
 +const { notifyConversationCleared } = await import("./conversation-cleared");
 +
 +/** A promise the test resolves when it wants the request to answer. */
@@ -150418,9 +151169,23 @@ index 000000000..595c079b0
 +  state.space = `space-${Math.random()}`;
 +  state.rpc.mockReset();
 +  state.rpc.mockImplementation(async (_path: string, input: object) => snapshotOf(input));
++  resetPreloadForTests();
++  setPreloadIdleSchedulerForTests((task) => {
++    queueMicrotask(task);
++  });
 +});
 +
-+it("saves a copy of the first chats that have none, one request at a time", async () => {
++it("does not fetch until first paint is idle", async () => {
++  const pass = preloadChats([{ botId: "b1" }]);
++  await pass;
++  expect(state.rpc).not.toHaveBeenCalled();
++  allowPreloadAfterFirstPaint();
++  await vi.waitFor(() => expect(state.rpc).toHaveBeenCalledTimes(1));
++  expect(state.rpc.mock.calls.map(([, input]) => input)).toEqual([{ botId: "b1" }]);
++});
++
++it("saves a copy of the first chats that have none, one request at a time, capping the cold-start wave", async () => {
++  allowPreloadAfterFirstPaint();
 +  state.saved.set(`${state.space}/bot:b2`, { kept: true });
 +  const chats = Array.from({ length: PRELOADED_CHATS + 2 }, (_, index) => ({
 +    botId: `b${index + 1}`,
@@ -150432,18 +151197,31 @@ index 000000000..595c079b0
 +  first.resolve(snapshotOf({ botId: "b1" }));
 +  await pass;
 +
-+  expect(state.rpc.mock.calls.map(([, input]) => input)).toEqual([
-+    { botId: "b1" },
-+    { botId: "b3" },
-+    { botId: "b4" },
-+    { botId: "b5" },
-+  ]);
++  expect(state.rpc.mock.calls.map(([, input]) => input)).toEqual(
++    chats.slice(0, COLD_START_PRELOAD_CHATS).filter(({ botId }) => botId !== "b2"),
++  );
 +  expect(state.saved.get(`${state.space}/bot:b2`)).toEqual({ kept: true });
 +  expect(state.saved.get(`${state.space}/bot:b1`)).toEqual(snapshotOf({ botId: "b1" }));
-+  expect(state.saved.has(`${state.space}/bot:b6`)).toBe(false);
++  expect(state.saved.has(`${state.space}/bot:b${COLD_START_PRELOAD_CHATS + 1}`)).toBe(false);
++});
++
++it("fills the rest up to the full cap after the cold-start wave is idle", async () => {
++  allowPreloadAfterFirstPaint();
++  const chats = Array.from({ length: PRELOADED_CHATS + 2 }, (_, index) => ({
++    botId: `b${index + 1}`,
++  }));
++  await preloadChats(chats);
++  await vi.waitFor(() =>
++    expect(state.rpc.mock.calls.map(([, input]) => input)).toEqual(
++      chats.slice(0, PRELOADED_CHATS),
++    ),
++  );
++  expect(state.saved.has(`${state.space}/bot:b${PRELOADED_CHATS}`)).toBe(true);
++  expect(state.saved.has(`${state.space}/bot:b${PRELOADED_CHATS + 1}`)).toBe(false);
 +});
 +
 +it("asks for each chat once per Space, and again after a failed request", async () => {
++  allowPreloadAfterFirstPaint();
 +  state.rpc.mockRejectedValueOnce(new TypeError("Network request failed"));
 +  await preloadChats([{ botId: "b1" }, { groupId: "g1" }]);
 +  // The pass stops at the first failure.
@@ -150459,6 +151237,7 @@ index 000000000..595c079b0
 +});
 +
 +it("keeps the copy the chat screen saved while the request was out", async () => {
++  allowPreloadAfterFirstPaint();
 +  const answer = deferred<unknown>();
 +  state.rpc.mockImplementationOnce(() => answer.promise);
 +  const pass = preloadChats([{ botId: "b1" }]);
@@ -150470,25 +151249,49 @@ index 000000000..595c079b0
 +});
 +
 +it("does nothing without a saved-chat scope", async () => {
++  allowPreloadAfterFirstPaint();
 +  state.scope = false;
 +  await preloadChats([{ botId: "b1" }]);
 +  expect(state.rpc).not.toHaveBeenCalled();
 +});
 +
-+it("lists the selected Space's chats in inbox order, pinned ones first", () => {
++it("lists every Space's chats in inbox order, pinned ones first", () => {
 +  const items = [
-+    { type: "pinned", chats: [{ kind: "group", group: { id: "g1" } }] },
++    { type: "pinned", chats: [{ kind: "group", group: { id: "g1", spaceId: "s1" } }] },
 +    { type: "heading", key: "h", title: "Bots" },
 +    { type: "bot", bot: { id: "b1" } },
-+    { type: "bot", bot: { id: "elsewhere" } },
-+    { type: "group", group: { id: "g2" } },
++    { type: "bot", bot: { id: "b2", spaceId: "s2" } },
++    { type: "group", group: { id: "g2", spaceId: "s2" } },
 +  ] as unknown as InboxItem[];
-+  expect(inboxChats(items, { bots: [{ id: "b1" }], groups: [{ id: "g1" }, { id: "g2" }] })).toEqual(
-+    [{ groupId: "g1" }, { botId: "b1" }, { groupId: "g2" }],
-+  );
++  expect(inboxChats(items)).toEqual([
++    { groupId: "g1", spaceId: "s1" },
++    { botId: "b1", spaceId: undefined },
++    { botId: "b2", spaceId: "s2" },
++    { groupId: "g2", spaceId: "s2" },
++  ]);
++});
++
++it("saves another Space's chat under that Space, asking that Space for it", async () => {
++  allowPreloadAfterFirstPaint();
++  await preloadChats([{ botId: "b1" }, { botId: "b2", spaceId: "space-other" }]);
++  expect(state.rpc.mock.calls).toEqual([
++    ["threads/get", { botId: "b1" }, undefined],
++    ["threads/get", { botId: "b2" }, "space-other"],
++  ]);
++  expect(state.saved.get(`${state.space}/bot:b1`)).toEqual(snapshotOf({ botId: "b1" }));
++  expect(state.saved.get("space-other/bot:b2")).toEqual(snapshotOf({ botId: "b2" }));
++  expect(state.saved.has(`${state.space}/bot:b2`)).toBe(false);
++});
++
++it("skips another Space's chat that already has a copy there", async () => {
++  allowPreloadAfterFirstPaint();
++  state.saved.set("space-other/bot:b2", { kept: true });
++  await preloadChats([{ botId: "b2", spaceId: "space-other" }]);
++  expect(state.rpc).not.toHaveBeenCalled();
 +});
 +
 +it("stops when the Space changes, and never asks for one Space's chats in another", async () => {
++  allowPreloadAfterFirstPaint();
 +  const answer = deferred<unknown>();
 +  state.rpc.mockImplementationOnce(() => answer.promise);
 +  const first = state.space;
@@ -150506,6 +151309,7 @@ index 000000000..595c079b0
 +});
 +
 +it("does not save a chat that was cleared while its request was out", async () => {
++  allowPreloadAfterFirstPaint();
 +  const answer = deferred<unknown>();
 +  state.rpc.mockImplementationOnce(() => answer.promise);
 +  const pass = preloadChats([{ botId: "b1" }]);
@@ -150517,6 +151321,7 @@ index 000000000..595c079b0
 +});
 +
 +it("passes on a refusal, so it is reported", async () => {
++  allowPreloadAfterFirstPaint();
 +  state.rpc.mockRejectedValueOnce(Object.assign(new Error("Forbidden"), { status: 403 }));
 +  await expect(preloadChats([{ botId: "b1" }])).rejects.toThrow("Forbidden");
 +  await preloadChats([{ botId: "b1" }]);
@@ -150524,12 +151329,13 @@ index 000000000..595c079b0
 +});
 diff --git a/apps/mobile/lib/preload-chats.ts b/apps/mobile/lib/preload-chats.ts
 new file mode 100644
-index 000000000..dc7ad1fbc
+index 000000000..8253b9f56
 --- /dev/null
 +++ b/apps/mobile/lib/preload-chats.ts
-@@ -0,0 +1,94 @@
+@@ -0,0 +1,151 @@
 +import { isRetryableError } from "@rakazo/core";
-+import { rpc, selectedSpaceId } from "./api";
++import { selectedSpaceId } from "./api";
++import { chatRpc } from "./chat-rpc";
 +import { onConversationCleared } from "./conversation-cleared";
 +import type { InboxItem } from "./inbox-spaces";
 +import { isIntegrationsScopeCurrent } from "./integrations-cache";
@@ -150543,31 +151349,65 @@ index 000000000..dc7ad1fbc
 +  writeSavedThread,
 +} from "./saved-chats";
 +
-+/** How many chats from the top of the inbox open from a saved copy on their first tap. */
-+export const PRELOADED_CHATS = 5;
++/** How many chats from the top of the inbox, in any Space, open from a saved copy on their first tap. */
++export const PRELOADED_CHATS = 20;
++/** The first wave after a cold start: enough for the visible inbox, not a crowd of requests. */
++export const COLD_START_PRELOAD_CHATS = 5;
 +
-+type ChatTarget = { botId: string; groupId?: undefined } | { groupId: string; botId?: undefined };
++type ChatTarget = { spaceId?: string } & (
++  | { botId: string; groupId?: undefined }
++  | { groupId: string; botId?: undefined }
++);
 +
 +/** Chats already saved or fetched in this session, by Space and chat; each is fetched once. */
 +const handled = new Set<string>();
 +let running: Promise<void> | null = null;
++let allowed = false;
++let coldStart = true;
++let pending: readonly ChatTarget[] | null = null;
 +
-+/** The chats the inbox lists from the selected Space, in the order it shows them. */
-+export function inboxChats(
-+  items: readonly InboxItem[],
-+  current: { bots: readonly { id: string }[]; groups: readonly { id: string }[] },
-+): ChatTarget[] {
-+  const bots = new Set(current.bots.map((bot) => bot.id));
-+  const groups = new Set(current.groups.map((group) => group.id));
-+  const bot = (id: string): ChatTarget[] => (bots.has(id) ? [{ botId: id }] : []);
-+  const group = (id: string): ChatTarget[] => (groups.has(id) ? [{ groupId: id }] : []);
-+  return items.flatMap((item) => {
++/** Called once the first frames are on screen and the JS thread is idle. */
++export function allowPreloadAfterFirstPaint(): void {
++  if (allowed) return;
++  allowed = true;
++  if (pending) {
++    const chats = pending;
++    pending = null;
++    void preloadChats(chats).catch(() => undefined);
++  }
++}
++
++/** How later waves wait so they do not overlap remaining first-paint work. */
++let runWhenIdle: (task: () => void) => void = (task) => {
++  try {
++    const { InteractionManager } = require("react-native") as typeof import("react-native");
++    InteractionManager.runAfterInteractions(task);
++  } catch {
++    queueMicrotask(task);
++  }
++};
++
++export function setPreloadIdleSchedulerForTests(scheduler: (task: () => void) => void): void {
++  runWhenIdle = scheduler;
++}
++
++export function resetPreloadForTests(): void {
++  handled.clear();
++  running = null;
++  allowed = false;
++  coldStart = true;
++  pending = null;
++}
++
++/** The chats the inbox lists, in every Space, in the order it shows them. */
++export function inboxChats(items: readonly InboxItem[]): ChatTarget[] {
++  const bot = ({ id, spaceId }: { id: string; spaceId?: string }) => ({ botId: id, spaceId });
++  const group = ({ id, spaceId }: { id: string; spaceId?: string }) => ({ groupId: id, spaceId });
++  return items.flatMap((item): ChatTarget[] => {
 +    if (item.type === "pinned")
-+      return item.chats.flatMap((chat) =>
-+        chat.kind === "bot" ? bot(chat.bot.id) : group(chat.group.id),
-+      );
-+    if (item.type === "bot") return bot(item.bot.id);
-+    return item.type === "group" ? group(item.group.id) : [];
++      return item.chats.map((chat) => (chat.kind === "bot" ? bot(chat.bot) : group(chat.group)));
++    if (item.type === "bot") return [bot(item.bot)];
++    return item.type === "group" ? [group(item.group)] : [];
 +  });
 +}
 +
@@ -150575,9 +151415,18 @@ index 000000000..dc7ad1fbc
 + * Saves a copy of the first chats the inbox lists that have none yet, one at a time, so opening
 + * one shows its messages at once instead of waiting on the network. A chat with a saved copy is
 + * left alone: opening it already shows that copy while it refreshes.
++ *
++ * Nothing is fetched until {@link allowPreloadAfterFirstPaint}. The first wave after a cold start
++ * is capped at {@link COLD_START_PRELOAD_CHATS}; later idle waves fill up to {@link PRELOADED_CHATS}.
 + */
 +export function preloadChats(chats: readonly ChatTarget[]): Promise<void> {
-+  const targets = chats.slice(0, PRELOADED_CHATS);
++  if (!allowed) {
++    pending = chats;
++    return running ?? Promise.resolve();
++  }
++  const cap = coldStart ? COLD_START_PRELOAD_CHATS : PRELOADED_CHATS;
++  const targets = chats.slice(0, cap);
++  const shouldContinue = coldStart && chats.length > COLD_START_PRELOAD_CHATS;
 +  // These chats belong to the Space selected now; a pass that starts after a switch skips them.
 +  const selection = selectedSpaceId();
 +  const pass = async () => {
@@ -150586,25 +151435,37 @@ index 000000000..dc7ad1fbc
 +    if (scope && scope.selectionId === selection) await preloadInto(scope, targets);
 +  };
 +  running = (running ?? Promise.resolve()).then(pass, pass);
-+  return running;
++  const result = running;
++  if (shouldContinue) {
++    void result.then(() => {
++      coldStart = false;
++      runWhenIdle(() => {
++        void preloadChats(chats).catch(() => undefined);
++      });
++    });
++  }
++  return result;
 +}
 +
 +async function preloadInto(scope: SavedChatsScope, targets: readonly ChatTarget[]) {
 +  for (const chat of targets) {
 +    // After a Space switch these chats belong to another Space; the new one gets its own pass.
 +    if (!isIntegrationsScopeCurrent(scope)) return;
++    // A copy saved under the chat's own Space is the one opening it there reads.
++    const chatScope = { ...scope, spaceId: chat.spaceId ?? scope.spaceId };
 +    const target = savedChatTarget(chat);
-+    const key = JSON.stringify([scope.namespace, scope.selectionId, target]);
++    const key = JSON.stringify([scope.namespace, chatScope.spaceId, target]);
 +    if (handled.has(key)) continue;
 +    handled.add(key);
-+    if (readSavedThread(scope, target)) continue;
++    if (readSavedThread(chatScope, target)) continue;
 +    let cleared = false;
 +    const stopWatching = onConversationCleared((botId) => {
 +      if (botId === chat.botId) cleared = true;
 +    });
 +    let snapshot: MobileSnapshot;
 +    try {
-+      snapshot = await rpc(
++      snapshot = await chatRpc(
++        chatScope.spaceId === scope.spaceId ? undefined : chatScope.spaceId,
 +        "threads/get",
 +        chat.groupId ? { groupId: chat.groupId } : { botId: chat.botId! },
 +      );
@@ -150619,7 +151480,8 @@ index 000000000..dc7ad1fbc
 +    }
 +    // A chat cleared meanwhile, or opened meanwhile (its screen saved a fresher copy), keeps
 +    // what it has.
-+    if (!cleared && !readSavedThread(scope, target)) writeSavedThread(scope, target, snapshot);
++    if (!cleared && !readSavedThread(chatScope, target))
++      writeSavedThread(chatScope, target, snapshot);
 +  }
 +}
 diff --git a/apps/mobile/lib/query-client-provided.test.ts b/apps/mobile/lib/query-client-provided.test.ts
@@ -151966,6 +152828,498 @@ index b186afb60..10e0dc72b 100644
    try {
      const root = new Directory(Paths.cache, ROOT);
      if (root.exists) root.delete();
+diff --git a/apps/mobile/lib/saved-servers-switch.test.ts b/apps/mobile/lib/saved-servers-switch.test.ts
+new file mode 100644
+index 000000000..554453d49
+--- /dev/null
++++ b/apps/mobile/lib/saved-servers-switch.test.ts
+@@ -0,0 +1,136 @@
++vi.mock("./ai-consent", () => ({ promptAiConsent: vi.fn() }));
++vi.mock("react-native", () => ({ Platform: { OS: "ios" } }));
++
++import * as SecureStore from "expo-secure-store";
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++import { currentApiBase } from "./api.js";
++import { loadApiBase, resetApiBase, saveApiBase } from "./api-server.js";
++import { defaultApiBase } from "./endpoint.js";
++import { loadSavedServers, savedServers } from "./saved-servers.js";
++
++vi.mock("expo-secure-store", () => ({
++  getItemAsync: vi.fn(),
++  setItemAsync: vi.fn(),
++  deleteItemAsync: vi.fn(),
++}));
++vi.mock("./live-notifications.js", () => ({
++  resumeLiveNotifications: vi.fn(async () => undefined),
++  stopLiveNotifications: vi.fn(async () => undefined),
++}));
++vi.mock("./network-cache.js", () => ({ clearNetworkCache: vi.fn() }));
++
++const ONE = "https://one.example.test";
++const TWO = "https://two.example.test";
++const ACCESS = { "CF-Access-Client-Id": "id.access", "CF-Access-Client-Secret": "secret" };
++const SAVED_KEY = "rakazo.saved_servers";
++
++let store: Map<string, string>;
++
++function listed() {
++  return savedServers().map((entry) => entry.apiBase);
++}
++
++beforeEach(async () => {
++  store = new Map();
++  vi.mocked(SecureStore.getItemAsync).mockImplementation(async (key) => store.get(key) ?? null);
++  vi.mocked(SecureStore.setItemAsync).mockImplementation(async (key, value) => {
++    store.set(key, value);
++  });
++  vi.mocked(SecureStore.deleteItemAsync).mockImplementation(async (key) => {
++    store.delete(key);
++  });
++  await resetApiBase();
++  store.clear();
++  await loadSavedServers();
++});
++
++afterEach(() => {
++  vi.unstubAllGlobals();
++});
++
++describe("saved servers across a server switch", () => {
++  it("remembers the server it moved to and the default server it left is not listed", async () => {
++    await expect(saveApiBase(ONE, ACCESS)).resolves.toEqual({ ok: true, url: ONE });
++    expect(savedServers()).toEqual([{ apiBase: ONE, headers: ACCESS }]);
++  });
++
++  it("lists the server it left, with its headers, so it can be returned to", async () => {
++    await saveApiBase(ONE, ACCESS);
++    await saveApiBase(TWO, {});
++    expect(savedServers()).toEqual([
++      { apiBase: TWO, headers: {} },
++      { apiBase: ONE, headers: ACCESS },
++    ]);
++    await resetApiBase();
++    expect(listed()).toEqual([TWO, ONE]);
++  });
++
++  it("keeps a server set up before the list existed when it is left for the default", async () => {
++    store.set("rakazo.api_base", ONE);
++    store.set("rakazo.server_headers", JSON.stringify({ apiBase: ONE, headers: ACCESS }));
++    await loadApiBase();
++    expect(currentApiBase()).toBe(ONE);
++    expect(savedServers()).toEqual([]);
++    await resetApiBase();
++    expect(savedServers()).toEqual([{ apiBase: ONE, headers: ACCESS }]);
++  });
++
++  it("saving the same server again updates its headers without a duplicate", async () => {
++    await saveApiBase(ONE, {});
++    await saveApiBase(ONE, ACCESS);
++    expect(savedServers()).toEqual([{ apiBase: ONE, headers: ACCESS }]);
++  });
++
++  it("lists nothing for the default server, with or without headers", async () => {
++    await saveApiBase(defaultApiBase(), {});
++    expect(savedServers()).toEqual([]);
++    await saveApiBase(defaultApiBase(), ACCESS);
++    expect(savedServers()).toEqual([]);
++    expect(store.has(SAVED_KEY)).toBe(false);
++  });
++
++  it("lists nothing when the switch fails", async () => {
++    vi.mocked(SecureStore.setItemAsync).mockImplementation(async (key, value) => {
++      if (key === "rakazo.api_base") throw new Error("device locked");
++      store.set(key, value);
++    });
++    await expect(saveApiBase(ONE, ACCESS)).resolves.toEqual({
++      ok: false,
++      error: "Could not save the server URL",
++    });
++    expect(currentApiBase()).toBe(defaultApiBase());
++    expect(savedServers()).toEqual([]);
++    expect(store.has(SAVED_KEY)).toBe(false);
++  });
++
++  it("does not fail a committed switch when the list cannot be written", async () => {
++    vi.mocked(SecureStore.setItemAsync).mockImplementation(async (key, value) => {
++      if (key === SAVED_KEY) throw new Error("device locked");
++      store.set(key, value);
++    });
++    await expect(saveApiBase(ONE, ACCESS)).resolves.toEqual({ ok: true, url: ONE });
++    expect(currentApiBase()).toBe(ONE);
++    expect(savedServers()).toEqual([]);
++    await expect(resetApiBase()).resolves.toEqual({ ok: true, url: defaultApiBase() });
++    expect(currentApiBase()).toBe(defaultApiBase());
++  });
++
++  it("loads the list at launch next to the server it belongs to", async () => {
++    await saveApiBase(ONE, ACCESS);
++    await saveApiBase(TWO, {});
++    await loadSavedServers();
++    store.set("rakazo.api_base", TWO);
++    await loadApiBase();
++    expect(listed()).toEqual([TWO, ONE]);
++  });
++
++  it("leaving a server whose headers did not load keeps the headers it was saved with", async () => {
++    await saveApiBase(ONE, ACCESS);
++    // The headers value is damaged at launch, so the app holds none for the server it is on.
++    store.set("rakazo.server_headers", "damaged");
++    await loadApiBase();
++    expect(currentApiBase()).toBe(ONE);
++    await resetApiBase();
++    expect(savedServers()).toEqual([{ apiBase: ONE, headers: ACCESS }]);
++  });
++});
+diff --git a/apps/mobile/lib/saved-servers.test.ts b/apps/mobile/lib/saved-servers.test.ts
+new file mode 100644
+index 000000000..bd683dd29
+--- /dev/null
++++ b/apps/mobile/lib/saved-servers.test.ts
+@@ -0,0 +1,212 @@
++import { deferred, flush } from "./async.test-support";
++import * as SecureStore from "expo-secure-store";
++import { beforeEach, describe, expect, it, vi } from "vitest";
++import { defaultApiBase } from "./endpoint";
++import {
++  loadSavedServers,
++  MAX_SAVED_SERVERS,
++  recordSavedServer,
++  removeSavedServer,
++  savedServers,
++} from "./saved-servers";
++
++vi.mock("expo-secure-store", () => ({
++  getItemAsync: vi.fn(),
++  setItemAsync: vi.fn(),
++  deleteItemAsync: vi.fn(),
++}));
++
++const KEY = "rakazo.saved_servers";
++const ONE = "https://one.example.test";
++const TWO = "https://two.example.test";
++const ACCESS = { "CF-Access-Client-Id": "id.access", "CF-Access-Client-Secret": "secret" };
++
++let store: Map<string, string>;
++
++beforeEach(async () => {
++  vi.resetAllMocks();
++  store = new Map();
++  vi.mocked(SecureStore.getItemAsync).mockImplementation(async (key) => store.get(key) ?? null);
++  vi.mocked(SecureStore.setItemAsync).mockImplementation(async (key, value) => {
++    store.set(key, value);
++  });
++  vi.mocked(SecureStore.deleteItemAsync).mockImplementation(async (key) => {
++    store.delete(key);
++  });
++  await loadSavedServers();
++});
++
++describe("saved servers", () => {
++  it("lists the most recent server first and keeps one entry per address", async () => {
++    await recordSavedServer(ONE, {});
++    await recordSavedServer(TWO, ACCESS);
++    await recordSavedServer(ONE, ACCESS);
++    expect(savedServers()).toEqual([
++      { apiBase: ONE, headers: ACCESS },
++      { apiBase: TWO, headers: ACCESS },
++    ]);
++    await loadSavedServers();
++    expect(savedServers().map((entry) => entry.apiBase)).toEqual([ONE, TWO]);
++  });
++
++  it("never lists the default server", async () => {
++    expect(await recordSavedServer(defaultApiBase(), {})).toBe(false);
++    expect(savedServers()).toEqual([]);
++    expect(store.has(KEY)).toBe(false);
++  });
++
++  it("drops the oldest entry past the limit", async () => {
++    for (let index = 0; index <= MAX_SAVED_SERVERS; index++) {
++      await recordSavedServer(`https://s${index}.example.test`, {});
++    }
++    const hosts = savedServers().map((entry) => entry.apiBase);
++    expect(hosts).toHaveLength(MAX_SAVED_SERVERS);
++    expect(hosts).not.toContain("https://s0.example.test");
++    expect(hosts[0]).toBe(`https://s${MAX_SAVED_SERVERS}.example.test`);
++  });
++
++  it("removes one server together with its headers and nothing else", async () => {
++    await recordSavedServer(ONE, ACCESS);
++    await recordSavedServer(TWO, ACCESS);
++    expect(await removeSavedServer(ONE)).toBe(true);
++    expect(savedServers()).toEqual([{ apiBase: TWO, headers: ACCESS }]);
++    expect(store.get(KEY)).not.toContain(ONE);
++    await removeSavedServer(TWO);
++    expect(store.has(KEY)).toBe(false);
++  });
++
++  it("matches the exact address, not a prefix or another port", async () => {
++    await recordSavedServer("https://a.example", {});
++    await recordSavedServer("https://a.example.evil", {});
++    await recordSavedServer("https://a.example:8443", {});
++    await removeSavedServer("https://a.example");
++    expect(savedServers().map((entry) => entry.apiBase)).toEqual([
++      "https://a.example:8443",
++      "https://a.example.evil",
++    ]);
++  });
++
++  it("starts empty when nothing is stored, the value is damaged, or the read throws", async () => {
++    store.set(KEY, "not json");
++    await loadSavedServers();
++    expect(savedServers()).toEqual([]);
++    store.set(KEY, JSON.stringify({ apiBase: ONE }));
++    await loadSavedServers();
++    expect(savedServers()).toEqual([]);
++    vi.mocked(SecureStore.getItemAsync).mockRejectedValueOnce(new Error("locked"));
++    await loadSavedServers();
++    expect(savedServers()).toEqual([]);
++  });
++
++  it("drops an entry it could not switch to as it was saved", async () => {
++    store.set(
++      KEY,
++      JSON.stringify([
++        { apiBase: ONE, headers: { "bad header": "x" } },
++        { apiBase: `${TWO}/path`, headers: {} },
++        { apiBase: "http://public.example.test", headers: {} },
++        { apiBase: defaultApiBase(), headers: {} },
++        { apiBase: 5, headers: {} },
++        null,
++        { apiBase: TWO },
++        { apiBase: "https://ok.example.test", headers: ACCESS },
++        { apiBase: "https://ok.example.test", headers: {} },
++      ]),
++    );
++    await loadSavedServers();
++    expect(savedServers()).toEqual([{ apiBase: "https://ok.example.test", headers: ACCESS }]);
++  });
++
++  it("keeps the list as it was when the write fails", async () => {
++    await recordSavedServer(ONE, {});
++    vi.mocked(SecureStore.setItemAsync).mockRejectedValueOnce(new Error("locked"));
++    expect(await recordSavedServer(TWO, {})).toBe(false);
++    expect(savedServers().map((entry) => entry.apiBase)).toEqual([ONE]);
++    // The last entry goes by deleting the key, which can fail on its own.
++    vi.mocked(SecureStore.deleteItemAsync).mockRejectedValueOnce(new Error("locked"));
++    expect(await removeSavedServer(ONE)).toBe(false);
++    expect(savedServers().map((entry) => entry.apiBase)).toEqual([ONE]);
++  });
++
++  it("applies overlapping changes one after another", async () => {
++    await Promise.all([recordSavedServer(ONE, {}), recordSavedServer(TWO, {})]);
++    expect(savedServers().map((entry) => entry.apiBase)).toEqual([TWO, ONE]);
++    await loadSavedServers();
++    expect(savedServers().map((entry) => entry.apiBase)).toEqual([TWO, ONE]);
++  });
++
++  it("does not let a read that started before a write replace the list that write saved", async () => {
++    const stale = deferred<string | null>();
++    vi.mocked(SecureStore.getItemAsync).mockReturnValueOnce(stale.promise);
++    const reading = loadSavedServers();
++    const recording = recordSavedServer(ONE, ACCESS);
++    await flush();
++    stale.resolve(null);
++    await Promise.all([reading, recording]);
++    expect(savedServers()).toEqual([{ apiBase: ONE, headers: ACCESS }]);
++    await recordSavedServer(TWO, {});
++    expect(savedServers().map((entry) => entry.apiBase)).toEqual([TWO, ONE]);
++    expect(store.get(KEY)).toContain(ONE);
++  });
++
++  it("reads the stored list before its first change, so a change before any load keeps it", async () => {
++    store.set(KEY, JSON.stringify([{ apiBase: ONE, headers: {} }]));
++    vi.resetModules();
++    const fresh = await import("./saved-servers");
++    expect(await fresh.recordSavedServer(TWO, {})).toBe(true);
++    expect(fresh.savedServers().map((entry) => entry.apiBase)).toEqual([TWO, ONE]);
++    expect(store.get(KEY)).toContain(ONE);
++  });
++
++  it("writes nothing over a list it could not read, and recovers once it can", async () => {
++    await recordSavedServer(ONE, ACCESS);
++    await recordSavedServer(TWO, ACCESS);
++    vi.mocked(SecureStore.getItemAsync).mockRejectedValue(new Error("locked"));
++    await loadSavedServers();
++    expect(savedServers()).toEqual([]);
++    const before = store.get(KEY);
++    expect(await recordSavedServer("https://three.example.test", {})).toBe(false);
++    expect(await removeSavedServer(ONE)).toBe(false);
++    expect(store.get(KEY)).toBe(before);
++    vi.mocked(SecureStore.getItemAsync).mockImplementation(async (key) => store.get(key) ?? null);
++    expect(await recordSavedServer("https://three.example.test", {})).toBe(true);
++    expect(savedServers().map((entry) => entry.apiBase)).toEqual([
++      "https://three.example.test",
++      TWO,
++      ONE,
++    ]);
++  });
++
++  it("keeps the headers a listed server was saved with when it is left with none", async () => {
++    await recordSavedServer(ONE, ACCESS);
++    await recordSavedServer(TWO, {});
++    await recordSavedServer(ONE, {}, { keepHeaders: true });
++    expect(savedServers()).toEqual([
++      { apiBase: ONE, headers: ACCESS },
++      { apiBase: TWO, headers: {} },
++    ]);
++    await recordSavedServer("https://new.example.test", ACCESS, { keepHeaders: true });
++    expect(savedServers()[0]).toEqual({ apiBase: "https://new.example.test", headers: ACCESS });
++  });
++
++  it("reports a failed read and a failed write instead of dropping them silently", async () => {
++    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
++    try {
++      vi.mocked(SecureStore.getItemAsync).mockRejectedValueOnce(new Error("locked read"));
++      await loadSavedServers();
++      expect(warn).toHaveBeenCalledWith("Saved servers could not be read", expect.any(Error));
++      vi.mocked(SecureStore.setItemAsync).mockRejectedValueOnce(new Error("locked write"));
++      expect(await recordSavedServer(ONE, {})).toBe(false);
++      expect(warn).toHaveBeenCalledWith("Saved servers could not be written", expect.any(Error));
++    } finally {
++      warn.mockRestore();
++    }
++  });
++
++  it("keeps applying changes after one write failed", async () => {
++    vi.mocked(SecureStore.setItemAsync).mockRejectedValueOnce(new Error("locked"));
++    expect(await recordSavedServer(ONE, {})).toBe(false);
++    expect(await recordSavedServer(TWO, {})).toBe(true);
++    expect(savedServers().map((entry) => entry.apiBase)).toEqual([TWO]);
++  });
++});
+diff --git a/apps/mobile/lib/saved-servers.ts b/apps/mobile/lib/saved-servers.ts
+new file mode 100644
+index 000000000..db6288f59
+--- /dev/null
++++ b/apps/mobile/lib/saved-servers.ts
+@@ -0,0 +1,126 @@
++import { parseServerHeaders } from "@rakazo/contracts";
++import * as SecureStore from "expo-secure-store";
++import { defaultApiBase, normalizeApiBase } from "./endpoint";
++
++const SAVED_SERVERS_KEY = "rakazo.saved_servers";
++export const MAX_SAVED_SERVERS = 5;
++
++/** A server the device has used before, with the custom headers it was configured with. */
++export type SavedServer = { apiBase: string; headers: Record<string, string> };
++
++let saved: SavedServer[] = [];
++/** False until the stored list has been read, and while it could not be: an unread list is not an empty one. */
++let readable = false;
++let writes: Promise<unknown> = Promise.resolve();
++
++/** Servers used before, most recent first; empty until `loadSavedServers` has read the device. */
++export function savedServers(): SavedServer[] {
++  return saved;
++}
++
++/** Keeps only entries that can be switched to as they are: an exact normalized origin and valid headers. */
++function parseSavedServers(stored: string | null): SavedServer[] {
++  if (!stored) return [];
++  let value: unknown;
++  try {
++    value = JSON.parse(stored);
++  } catch (error) {
++    console.warn("Saved servers could not be parsed", error);
++    return [];
++  }
++  if (!Array.isArray(value)) return [];
++  const entries: SavedServer[] = [];
++  for (const item of value) {
++    if (!item || typeof item !== "object") continue;
++    const { apiBase, headers } = item as { apiBase?: unknown; headers?: unknown };
++    if (typeof apiBase !== "string") continue;
++    const normalized = normalizeApiBase(apiBase);
++    const parsedHeaders = parseServerHeaders(headers);
++    // A damaged entry is dropped, never switched to without the headers it needs.
++    if (!normalized.ok || normalized.url !== apiBase || parsedHeaders === null) continue;
++    if (apiBase === defaultApiBase() || entries.some((entry) => entry.apiBase === apiBase)) {
++      continue;
++    }
++    entries.push({ apiBase, headers: parsedHeaders });
++  }
++  return entries.slice(0, MAX_SAVED_SERVERS);
++}
++
++async function readSavedServers(): Promise<void> {
++  let stored: string | null = null;
++  try {
++    stored = await SecureStore.getItemAsync(SAVED_SERVERS_KEY);
++    readable = true;
++  } catch (error) {
++    // SecureStore is unavailable in some test / web hosts. Nothing is listed, and nothing is
++    // written over what could not be read.
++    readable = false;
++    console.warn("Saved servers could not be read", error);
++  }
++  saved = parseSavedServers(stored);
++}
++
++async function persist(next: SavedServer[]): Promise<boolean> {
++  try {
++    if (next.length === 0) await SecureStore.deleteItemAsync(SAVED_SERVERS_KEY);
++    else await SecureStore.setItemAsync(SAVED_SERVERS_KEY, JSON.stringify(next));
++    return true;
++  } catch (error) {
++    // The caller decides what a failed write means; this only reports it.
++    console.warn("Saved servers could not be written", error);
++    return false;
++  }
++}
++
++/** Runs one task at a time, so a read never publishes a list older than a write that landed. */
++function enqueue<T>(task: () => Promise<T>): Promise<T> {
++  const result = writes.then(task);
++  writes = result.then(
++    () => undefined,
++    () => undefined,
++  );
++  return result;
++}
++
++export function loadSavedServers(): Promise<void> {
++  return enqueue(readSavedServers);
++}
++
++/** Runs one change at a time against the latest list; the list only changes when the write lands. */
++function change(update: (current: SavedServer[]) => SavedServer[]): Promise<boolean> {
++  return enqueue(async () => {
++    if (!readable) await readSavedServers();
++    if (!readable) return false;
++    const next = update(saved);
++    if (!(await persist(next))) return false;
++    saved = next;
++    return true;
++  });
++}
++
++/**
++ * Remembers a server at the top of the list. The default server is never listed. `keepHeaders`
++ * is for a server being left: its headers as the app read them may be missing, so a server
++ * already listed keeps the headers it was saved with.
++ */
++export function recordSavedServer(
++  apiBase: string,
++  headers: Record<string, string>,
++  options: { keepHeaders?: boolean } = {},
++) {
++  if (apiBase === defaultApiBase()) return Promise.resolve(false);
++  return change((current) => {
++    const existing = options.keepHeaders
++      ? current.find((entry) => entry.apiBase === apiBase)
++      : undefined;
++    return [
++      existing ?? { apiBase, headers },
++      ...current.filter((entry) => entry.apiBase !== apiBase),
++    ].slice(0, MAX_SAVED_SERVERS);
++  });
++}
++
++/** Forgets one server and the headers kept for it. */
++export function removeSavedServer(apiBase: string) {
++  return change((current) => current.filter((entry) => entry.apiBase !== apiBase));
++}
 diff --git a/apps/mobile/lib/scenario-models.ts b/apps/mobile/lib/scenario-models.ts
 new file mode 100644
 index 000000000..ca922cb99
@@ -152139,6 +153493,229 @@ index 5d72f756e..b1c5203e1 100644
    });
  });
  
+diff --git a/apps/mobile/lib/server-screen.test.tsx b/apps/mobile/lib/server-screen.test.tsx
+index 48ae0ca43..74e01d4bb 100644
+--- a/apps/mobile/lib/server-screen.test.tsx
++++ b/apps/mobile/lib/server-screen.test.tsx
+@@ -1,5 +1,6 @@
+ // @vitest-environment jsdom
+ 
++import { deferred, flush } from "./async.test-support";
+ import type { ReactNode } from "react";
+ import { act } from "react";
+ import type { Root } from "react-dom/client";
+@@ -21,6 +22,10 @@ const api = vi.hoisted(() => ({
+   reset: vi.fn(),
+   save: vi.fn(),
+ }));
++const saved = vi.hoisted(() => ({
++  list: [] as Array<{ apiBase: string; headers: Record<string, string> }>,
++  remove: vi.fn(),
++}));
+ 
+ vi.mock("expo-router", () => ({
+   Stack: {
+@@ -61,7 +66,45 @@ vi.mock("react-native", () => {
+ vi.mock("react-native-safe-area-context", () => ({
+   SafeAreaView: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
+ }));
+-vi.mock("../components/header-rows-editor", () => ({ HeaderRowsEditor: () => null }));
++vi.mock("../components/header-rows-editor", () => ({
++  HeaderRowsEditor: () => null,
++}));
++vi.mock("../components/settings-group", () => ({
++  SettingsGroup: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
++  SettingsRow: ({
++    title,
++    onPress,
++    disabled,
++  }: {
++    title: string;
++    onPress?: () => void;
++    disabled?: boolean;
++  }) => (
++    <button disabled={disabled} onClick={onPress} type="button">
++      {title}
++    </button>
++  ),
++}));
++// Shows the row's menu action as its own button, so a test can pick it.
++vi.mock("../components/long-press-menu", () => ({
++  LongPressMenu: ({
++    children,
++    onPressAction,
++    title,
++  }: {
++    children: (onLongPress: undefined) => ReactNode;
++    onPressAction: (event: { nativeEvent: { event: string } }) => void;
++    title: string;
++  }) => (
++    <div>
++      {children(undefined)}
++      <button
++        onClick={() => onPressAction({ nativeEvent: { event: "remove" } })}
++        type="button"
++      >{`Remove ${title}`}</button>
++    </div>
++  ),
++}));
+ vi.mock("../components/native-action-button", () => ({
+   NativeActionButton: ({ label, onPress }: { label: string; onPress?: () => void }) => (
+     <button onClick={onPress} type="button">
+@@ -89,7 +132,14 @@ vi.mock("./endpoint", async () => {
+     usesCustomApiBase: () => server.custom,
+   };
+ });
+-vi.mock("./native", () => ({ useMobileTokens: () => ({}) }));
++vi.mock("./native", () => ({
++  useMobileTokens: () => ({}),
++  useResolvedAppearance: () => "light",
++}));
++vi.mock("./saved-servers", () => ({
++  removeSavedServer: saved.remove,
++  savedServers: () => saved.list,
++}));
+ vi.mock("./server-headers", () => ({ serverHeaders: () => ({}) }));
+ vi.mock("./side-insets", () => ({ useSideInsets: () => ({}) }));
+ vi.mock("./user-error", () => ({ errorText: (_: unknown, fallback: string) => fallback }));
+@@ -105,6 +155,8 @@ let container: HTMLDivElement | undefined;
+ beforeEach(() => {
+   vi.clearAllMocks();
+   server.custom = false;
++  saved.list = [];
++  saved.remove.mockResolvedValue(true);
+   api.probe.mockImplementation(async (draft: string) => ({ ok: true, url: draft }));
+   api.save.mockResolvedValue({ ok: true, url: "" });
+   api.reset.mockResolvedValue({ ok: true, url: "" });
+@@ -232,3 +284,128 @@ it("holds the save lock while the unsent-message confirmation is open", async ()
+     vi.mocked(hasUnsentSends).mockReturnValue(false);
+   }
+ });
++
++const ACCESS = { "CF-Access-Client-Id": "id.access" };
++
++it("lists no saved servers until the device has used one", async () => {
++  await renderServer();
++  expect(container?.textContent).not.toContain("two.example.test");
++});
++
++it("switches to a saved server with the headers it was saved with, not the screen's rows", async () => {
++  saved.list = [{ apiBase: "https://two.example.test", headers: ACCESS }];
++  await renderServer();
++  await pressButton("two.example.test");
++  expect(api.probe).toHaveBeenCalledWith("https://two.example.test", fetch, ACCESS);
++  expect(api.save).toHaveBeenCalledWith("https://two.example.test", ACCESS);
++});
++
++it("does not list the server in use", async () => {
++  saved.list = [
++    { apiBase: "https://one.example.test", headers: {} },
++    { apiBase: "https://two.example.test", headers: {} },
++  ];
++  await renderServer();
++  expect(container?.textContent).toContain("two.example.test");
++  expect(container?.textContent).not.toContain("one.example.test");
++});
++
++it("stays on the current server when a saved server does not answer", async () => {
++  saved.list = [{ apiBase: "https://two.example.test", headers: {} }];
++  api.probe.mockResolvedValueOnce({ ok: false, error: "Could not reach that server" });
++  await renderServer();
++  await pressButton("two.example.test");
++  expect(api.save).not.toHaveBeenCalled();
++  expect(container?.textContent).toContain("Could not reach that server");
++});
++
++it("asks about unsent messages before switching to a saved server", async () => {
++  vi.mocked(hasUnsentSends).mockReturnValue(true);
++  saved.list = [{ apiBase: "https://two.example.test", headers: {} }];
++  try {
++    await renderServer();
++    await pressButton("two.example.test");
++    expect(api.save).not.toHaveBeenCalled();
++    await act(async () => alertButtons()[0]!.onPress?.());
++    expect(api.save).not.toHaveBeenCalled();
++  } finally {
++    vi.mocked(hasUnsentSends).mockReturnValue(false);
++  }
++});
++
++it("removes a saved server from the list", async () => {
++  saved.list = [{ apiBase: "https://two.example.test", headers: {} }];
++  saved.remove.mockImplementation(async () => {
++    saved.list = [];
++    return true;
++  });
++  await renderServer();
++  await pressButton("Remove two.example.test");
++  expect(saved.remove).toHaveBeenCalledWith("https://two.example.test");
++  expect(container?.textContent).not.toContain("two.example.test");
++});
++
++it("keeps a saved server listed and says so when it cannot be removed", async () => {
++  saved.list = [{ apiBase: "https://two.example.test", headers: {} }];
++  saved.remove.mockResolvedValue(false);
++  await renderServer();
++  await pressButton("Remove two.example.test");
++  expect(container?.textContent).toContain("Could not remove the server");
++  expect(container?.textContent).toContain("two.example.test");
++});
++
++it("clears the failure message once a retried removal works", async () => {
++  saved.list = [{ apiBase: "https://two.example.test", headers: {} }];
++  saved.remove.mockResolvedValueOnce(false);
++  await renderServer();
++  await pressButton("Remove two.example.test");
++  expect(container?.textContent).toContain("Could not remove the server");
++  saved.remove.mockImplementationOnce(async () => {
++    saved.list = [];
++    return true;
++  });
++  await pressButton("Remove two.example.test");
++  expect(container?.textContent).not.toContain("Could not remove the server");
++});
++
++it("does not switch to a server whose removal is still running, so it is not listed again", async () => {
++  saved.list = [
++    { apiBase: "https://two.example.test", headers: {} },
++    { apiBase: "https://three.example.test", headers: {} },
++  ];
++  const removal = deferred<boolean>();
++  saved.remove.mockReturnValueOnce(removal.promise);
++  await renderServer();
++  await pressButton("Remove two.example.test");
++  await pressButton("two.example.test");
++  expect(api.probe).not.toHaveBeenCalled();
++  expect(api.save).not.toHaveBeenCalled();
++  // A switch to another saved server cannot bring the removed one back, so it still runs.
++  await pressButton("three.example.test");
++  expect(api.save).toHaveBeenCalledWith("https://three.example.test", {});
++  await act(async () => {
++    removal.resolve(true);
++    await flush();
++  });
++});
++
++it("lets a switch run after a removal that failed", async () => {
++  saved.list = [{ apiBase: "https://two.example.test", headers: {} }];
++  saved.remove.mockResolvedValueOnce(false);
++  await renderServer();
++  await pressButton("Remove two.example.test");
++  expect(container?.textContent).toContain("Could not remove the server");
++  await pressButton("two.example.test");
++  expect(api.save).toHaveBeenCalledWith("https://two.example.test", {});
++});
++
++it("tells an http server from an https one on the same host", async () => {
++  saved.list = [
++    { apiBase: "http://10.0.0.8", headers: {} },
++    { apiBase: "https://10.0.0.8", headers: {} },
++  ];
++  await renderServer();
++  const labels = Array.from(container!.querySelectorAll("button")).map((node) => node.textContent);
++  expect(labels).toContain("http://10.0.0.8");
++  expect(labels).toContain("10.0.0.8");
++});
 diff --git a/apps/mobile/lib/settings-sheet.ts b/apps/mobile/lib/settings-sheet.ts
 index 8b29c087c..63f25da3a 100644
 --- a/apps/mobile/lib/settings-sheet.ts
@@ -152768,10 +154345,37 @@ index 35333e611..939859cb7 100644
    }
  
 diff --git a/apps/mobile/lib/thread-card-width.test.tsx b/apps/mobile/lib/thread-card-width.test.tsx
-index 3a33e3805..47323c7fd 100644
+index 3a33e3805..0daf1fcf0 100644
 --- a/apps/mobile/lib/thread-card-width.test.tsx
 +++ b/apps/mobile/lib/thread-card-width.test.tsx
-@@ -103,6 +103,22 @@ vi.mock("../components/message-caption", () => ({
+@@ -25,6 +25,7 @@ vi.mock("react-native", async () => {
+       onPress,
+       onLongPress,
+       numberOfLines,
++      disabled,
+       accessibilityState,
+       accessibilityRole,
+       accessibilityLabel,
+@@ -35,7 +36,8 @@ vi.mock("react-native", async () => {
+       onPress?: () => void;
+       onLongPress?: () => void;
+       numberOfLines?: number;
+-      accessibilityState?: { expanded?: boolean };
++      disabled?: boolean;
++      accessibilityState?: { expanded?: boolean; selected?: boolean };
+       accessibilityRole?: string;
+       accessibilityLabel?: string;
+       ref?: Ref<unknown>;
+@@ -49,6 +51,8 @@ vi.mock("react-native", async () => {
+           "data-style": JSON.stringify(flatten(style)),
+           "data-number-of-lines": numberOfLines,
+           "aria-expanded": accessibilityState?.expanded,
++          "aria-pressed": accessibilityState?.selected || undefined,
++          disabled,
+           role: accessibilityRole,
+           "aria-label": accessibilityLabel,
+           onClick: onPress,
+@@ -103,6 +107,22 @@ vi.mock("../components/message-caption", () => ({
    MessageCaption: ({ text }: { text: string }) => <span>{text}</span>,
  }));
  vi.mock("../components/bot-avatar", () => ({ BotAvatar: () => <i /> }));
@@ -152794,7 +154398,7 @@ index 3a33e3805..47323c7fd 100644
  vi.mock("../components/native-symbol", () => ({
    NativeSymbol: ({ ios }: { ios: string }) => <i data-symbol={ios} />,
  }));
-@@ -241,7 +257,7 @@ describe("thread cards", () => {
+@@ -241,7 +261,7 @@ describe("thread cards", () => {
    }
  
    it.each(["user", "bot"] as const)(
@@ -152803,7 +154407,7 @@ index 3a33e3805..47323c7fd 100644
      (role) => {
        const onPreviewImage = vi.fn();
        renderBlocks(
-@@ -271,72 +287,145 @@ describe("thread cards", () => {
+@@ -271,72 +291,145 @@ describe("thread cards", () => {
            expect(style).not.toHaveProperty("paddingVertical");
          }
        }
@@ -152991,7 +154595,7 @@ index 3a33e3805..47323c7fd 100644
    });
  
    it.each([
-@@ -363,8 +452,9 @@ describe("thread cards", () => {
+@@ -363,8 +456,9 @@ describe("thread cards", () => {
        actionProps: { onLongPress },
      });
      const cards = [...container.firstElementChild!.children] as HTMLElement[];
@@ -153003,7 +154607,7 @@ index 3a33e3805..47323c7fd 100644
      expect(onOpenBot).toHaveBeenCalledWith("child-1", "Planner");
      act(() =>
        cards.forEach((card) => {
-@@ -372,15 +462,13 @@ describe("thread cards", () => {
+@@ -372,15 +466,13 @@ describe("thread cards", () => {
          target.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
        }),
      );
@@ -153022,7 +154626,7 @@ index 3a33e3805..47323c7fd 100644
      renderBlocks([text("First"), text("Second")]);
      expect(container.children).toHaveLength(1);
      expect(container.textContent).toBe("First\nSecond");
-@@ -398,53 +486,27 @@ describe("thread cards", () => {
+@@ -398,53 +490,27 @@ describe("thread cards", () => {
      expect(onLongPress).toHaveBeenCalledTimes(1);
    });
  
@@ -153087,7 +154691,7 @@ index 3a33e3805..47323c7fd 100644
    });
  
    function renderAsk(
-@@ -598,104 +660,31 @@ describe("thread cards", () => {
+@@ -598,104 +664,31 @@ describe("thread cards", () => {
      expect(styleOf(card).width).toBeUndefined();
    });
  
@@ -153395,6 +154999,123 @@ index 04e901e59..7b968a1b5 100644
  }
  
  /** Each bot keeps one identity color across web and mobile — same lookup as the avatar. */
+diff --git a/apps/mobile/lib/thread-snapshot.test.ts b/apps/mobile/lib/thread-snapshot.test.ts
+index d98492a0f..1b32467e6 100644
+--- a/apps/mobile/lib/thread-snapshot.test.ts
++++ b/apps/mobile/lib/thread-snapshot.test.ts
+@@ -108,11 +108,59 @@ describe("visible thread snapshot publication", () => {
+       ],
+     };
+     const reordered = { ...messages, messages: [...messages.messages].reverse() };
+-    expect(reconcileVisibleThreadSnapshot(messages, reordered)).toBe(reordered);
++    expect(reconcileVisibleThreadSnapshot(messages, reordered)).toEqual(reordered);
+     const edited = structuredClone(messages);
+     edited.messages[0]!.blocks = [{ kind: "text", text: "Edited" }];
+-    expect(reconcileVisibleThreadSnapshot(messages, edited)).toBe(edited);
++    expect(reconcileVisibleThreadSnapshot(messages, edited)).toEqual(edited);
+     expect(reconcileVisibleThreadSnapshot(null, previous)).toBe(previous);
+     expect(reconcileVisibleThreadSnapshot(previous, null)).toBeNull();
+   });
++
++  it("keeps unchanged messages when the snapshot around them changes", () => {
++    const shown: MobileSnapshot = {
++      ...snapshot(),
++      messages: [
++        { id: "message-1", role: "user", blocks: [{ kind: "text", text: "Hi" }] },
++        { id: "message-2", role: "bot", blocks: [{ kind: "text", text: "Working" }] },
++      ],
++    };
++    const refreshed = structuredClone(shown);
++    refreshed.run = null;
++    refreshed.messages[1]!.blocks = [{ kind: "text", text: "Done" }];
++
++    const next = reconcileVisibleThreadSnapshot(shown, refreshed);
++
++    expect(next).toEqual(refreshed);
++    expect(next?.messages[0]).toBe(shown.messages[0]);
++    expect(next?.messages[1]).toBe(refreshed.messages[1]);
++  });
++
++  it("keeps the message list itself when only the run changed", () => {
++    const shown: MobileSnapshot = {
++      ...snapshot(),
++      messages: [{ id: "message-1", role: "user", blocks: [{ kind: "text", text: "Hi" }] }],
++    };
++
++    const next = reconcileVisibleThreadSnapshot(shown, { ...structuredClone(shown), run: null });
++
++    expect(next?.run).toBeNull();
++    expect(next?.messages).toBe(shown.messages);
++  });
++
++  it("keeps a group's members when only a message changed, so other rows are not drawn again", () => {
++    const shown: MobileSnapshot = {
++      ...snapshot(),
++      members: [{ botId: "bot-1", name: "Ada" }] as MobileSnapshot["members"],
++      messages: [{ id: "message-1", role: "bot", blocks: [{ kind: "text", text: "Working" }] }],
++    };
++    const refreshed = structuredClone(shown);
++    refreshed.messages[0]!.blocks = [{ kind: "text", text: "Done" }];
++
++    const next = reconcileVisibleThreadSnapshot(shown, refreshed);
++
++    expect(next).toEqual(refreshed);
++    expect(next?.members).toBe(shown.members);
++    expect(next?.run).toBe(shown.run);
++    expect(next?.messages[0]).toBe(refreshed.messages[0]);
++  });
+ });
+diff --git a/apps/mobile/lib/thread-snapshot.ts b/apps/mobile/lib/thread-snapshot.ts
+index 064498cc9..393349fb7 100644
+--- a/apps/mobile/lib/thread-snapshot.ts
++++ b/apps/mobile/lib/thread-snapshot.ts
+@@ -24,7 +24,11 @@ function equalValue(previous: unknown, next: unknown): boolean {
+   );
+ }
+ 
+-/** Compare projected screen snapshots; the replay cursor stays current in snapRef. */
++/**
++ * Compare projected screen snapshots; the replay cursor stays current in snapRef. A changed
++ * snapshot keeps each unchanged message's object, and every other unchanged field (a group's
++ * members reach every row), so a row whose inputs did not change is not drawn again.
++ */
+ export function reconcileVisibleThreadSnapshot(
+   previous: MobileSnapshot | null,
+   next: MobileSnapshot | null,
+@@ -32,7 +36,32 @@ export function reconcileVisibleThreadSnapshot(
+   if (previous === next || !previous || !next) return next;
+   const { cursor: _previousCursor, ...previousVisible } = previous;
+   const { cursor: _nextCursor, ...nextVisible } = next;
+-  return equalValue(previousVisible, nextVisible) ? previous : next;
++  if (equalValue(previousVisible, nextVisible)) return previous;
++  const shown = new Map(previous.messages.map((message) => [message.id, message]));
++  let kept = 0;
++  const messages = next.messages.map((message) => {
++    const before = shown.get(message.id);
++    if (!before || !equalValue(before, message)) return message;
++    kept += 1;
++    return before;
++  });
++  const unchanged =
++    kept === previous.messages.length &&
++    messages.every((message, index) => message === previous.messages[index]);
++  const before = previous as Record<string, unknown>;
++  const fields = Object.entries(next).filter(
++    ([key, value]) =>
++      key !== "messages" &&
++      key !== "cursor" &&
++      value !== before[key] &&
++      equalValue(before[key], value),
++  );
++  if (kept === 0 && fields.length === 0) return next;
++  return {
++    ...next,
++    ...Object.fromEntries(fields.map(([key]) => [key, before[key]])),
++    messages: unchanged ? previous.messages : kept === 0 ? next.messages : messages,
++  };
+ }
+ 
+ /** A group chat's members in its order, once the chat or its group list has loaded them. */
 diff --git a/apps/mobile/lib/thread-sync.ts b/apps/mobile/lib/thread-sync.ts
 index d9f46950d..ca8cd68e0 100644
 --- a/apps/mobile/lib/thread-sync.ts
@@ -154357,6 +156078,54 @@ index acc1e1567..4cf483691 100644
      locale,
    ]);
  }
+diff --git a/apps/mobile/lib/use-inbox-chat-actions.ts b/apps/mobile/lib/use-inbox-chat-actions.ts
+index 44bdbd27a..529e69523 100644
+--- a/apps/mobile/lib/use-inbox-chat-actions.ts
++++ b/apps/mobile/lib/use-inbox-chat-actions.ts
+@@ -1,13 +1,14 @@
+ import { useLingui } from "@lingui/react/macro";
+-import type { RpcInput, RpcPath, SpaceBot, SpaceGroup } from "@rakazo/contracts";
++import type { SpaceBot, SpaceGroup } from "@rakazo/contracts";
+ import { createSnoozeQueue } from "@rakazo/core";
+ import type { Dispatch, SetStateAction } from "react";
+ import { useCallback, useState } from "react";
+ import { Alert } from "react-native";
+ import type { BotOrganizationUpdate } from "../components/bot-organize-modal";
+-import type { ApiRequestContext, RpcArgs } from "./api";
++import type { ApiRequestContext } from "./api";
+ import { captureApiRequestContext, currentApiBase, rpc, selectedSpaceId } from "./api";
+ import { notifyArchivedChatsChanged } from "./archived-chats";
++import { chatRequestContext, chatRpc } from "./chat-rpc";
+ import { confirmDeleteBot, confirmDeleteGroup } from "./bot-lifecycle";
+ import { confirmDeleteSection } from "./confirm-delete-section";
+ import type { InboxChatKind, InboxRowAction } from "./inbox-swipe";
+@@ -21,26 +22,6 @@ import { useConfirmationGuard } from "./use-confirmation-guard";
+ import { useLeaveDeletedChat } from "./use-leave-deleted-chat";
+ import { errorText } from "./user-error";
+ 
+-/** Sends a request about a chat to that chat's space without switching to it. */
+-async function chatRequestContext(
+-  spaceId: string | undefined,
+-): Promise<ApiRequestContext | undefined> {
+-  if (!spaceId || spaceId === selectedSpaceId()) return undefined;
+-  const context = await captureApiRequestContext();
+-  return { ...context, headers: { ...context.headers, "x-rakazo-space-id": spaceId } };
+-}
+-
+-export async function chatRpc<P extends RpcPath>(
+-  spaceId: string | undefined,
+-  proc: P,
+-  body: RpcInput<P>,
+-) {
+-  const requestContext = await chatRequestContext(spaceId);
+-  return requestContext
+-    ? rpc(proc, ...([body, { requestContext, skipSpaceAuthRecovery: true }] as RpcArgs<P>))
+-    : rpc(proc, ...([body] as RpcArgs<P>));
+-}
+-
+ type ListUpdate<T> = Dispatch<SetStateAction<T[]>>;
+ 
+ /** Row actions on inbox chats: read state, pin, archive, delete, organize and sections. */
 diff --git a/apps/mobile/lib/vault-settings.test.tsx b/apps/mobile/lib/vault-settings.test.tsx
 index db7d8d93c..30b16c103 100644
 --- a/apps/mobile/lib/vault-settings.test.tsx
@@ -172855,7 +174624,7 @@ index 73652a3c4..4bdf91d87 100644
 +msgid "Image support unknown"
 +msgstr "Görsel desteği bilinmiyor"
 diff --git a/packages/i18n/locales/zh-CN/messages.po b/packages/i18n/locales/zh-CN/messages.po
-index 422c5af1e..6b7814d87 100644
+index 422c5af1e..c7edddbe2 100644
 --- a/packages/i18n/locales/zh-CN/messages.po
 +++ b/packages/i18n/locales/zh-CN/messages.po
 @@ -281,7 +281,7 @@ msgstr "{count} 个需要处理"
@@ -172984,7 +174753,7 @@ index 422c5af1e..6b7814d87 100644
  #. js-lingui-explicit-id
  #: packages/i18n/src/run-error.ts
  msgid "The model hit its output limit before finishing its reply."
-@@ -11755,3 +11803,386 @@ msgstr "你的语音提供商拒绝了该密钥。"
+@@ -11755,3 +11803,394 @@ msgstr "你的语音提供商拒绝了该密钥。"
  #: apps/web/src/components/vault/VaultItemEditor.tsx
  msgid "ZIP or postal code"
  msgstr "邮政编码"
@@ -173371,6 +175140,14 @@ index 422c5af1e..6b7814d87 100644
 +#: apps/web/src/pages/model-settings/provider-page.tsx
 +msgid "Image support unknown"
 +msgstr "是否支持图片未知"
++
++#: apps/mobile/app/server.tsx
++msgid "Recent servers"
++msgstr "最近用过的服务器"
++
++#: apps/mobile/app/server.tsx
++msgid "Could not remove the server"
++msgstr "无法移除这个服务器"
 diff --git a/packages/i18n/locales/zh-TW/messages.po b/packages/i18n/locales/zh-TW/messages.po
 index 796df8775..29c488c8d 100644
 --- a/packages/i18n/locales/zh-TW/messages.po

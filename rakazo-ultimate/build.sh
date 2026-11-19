@@ -88,11 +88,18 @@ node -e 'const p=require("./apps/mobile/app.json");const f=(p.expo.plugins||[]).
 # This round's own speed: the inbox keeps a copy of its first chats so the first tap opens at once,
 # and a chat draws a screenful of messages before the rest. A patch that lost either would still
 # compile, and the app would feel slow again.
+# Preload waits until first paint is idle, runs one chat at a time, and caps the cold-start wave
+# at 5 so it cannot compete with startup; later idle waves fill up to 20, across Spaces.
 test -f apps/mobile/lib/preload-chats.ts
 test -f apps/mobile/lib/preload-chats.test.ts
-grep -q 'export const PRELOADED_CHATS = 5;' apps/mobile/lib/preload-chats.ts
+test -f apps/mobile/lib/chat-rpc.ts
+test -f apps/mobile/lib/saved-servers.ts
+grep -q 'export const PRELOADED_CHATS = 20;' apps/mobile/lib/preload-chats.ts
+grep -q 'export const COLD_START_PRELOAD_CHATS = 5;' apps/mobile/lib/preload-chats.ts
+grep -q 'allowPreloadAfterFirstPaint' apps/mobile/lib/preload-chats.ts
+grep -q 'allowPreloadAfterFirstPaint' apps/mobile/app/index.tsx
 grep -q 'export function currentSavedChatsScope' apps/mobile/lib/saved-chats.ts
-grep -q 'void preloadChats(inboxChats(listData, { bots, groups }))' apps/mobile/app/index.tsx
+grep -q 'void preloadChats(inboxChats(listData))' apps/mobile/app/index.tsx
 grep -q 'initialNumToRender={6}' apps/mobile/components/thread/thread-message-list.tsx
 grep -q 'maxToRenderPerBatch={4}' apps/mobile/components/thread/thread-message-list.tsx
 

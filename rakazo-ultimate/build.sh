@@ -111,7 +111,10 @@ grep -q 'refreshModels:' packages/contracts/src/rpc.ts
 # tray. The Photos/Vision native module has to be in the tree before prebuild.
 test -f apps/mobile/lib/avatar-badges.ts
 grep -q 'export const HERO_AVATAR_SIZE = 103;' apps/mobile/lib/avatar-badges.ts
-test -f packages/core/src/avatar-life.ts
+test -f packages/core/src/mochi-avatar.ts
+test -f packages/core/src/mochi-avatar.test.ts
+test -f apps/mobile/components/mochi-bot-avatar.tsx
+grep -q 'MochiBotAvatar' apps/mobile/components/bot-avatar.tsx
 test -f apps/mobile/components/image-card-stack.tsx
 test -f apps/mobile/components/composer-attach-tray.tsx
 test -f apps/mobile/modules/message-image-actions/ios/MessageImageActionsModule.swift

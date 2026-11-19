@@ -123111,7 +123111,7 @@ index 000000000..cd419477f
 +  );
 +}
 diff --git a/apps/mobile/components/bot-avatar.tsx b/apps/mobile/components/bot-avatar.tsx
-index a58981051..b4fc58801 100644
+index a58981051..f4608098c 100644
 --- a/apps/mobile/components/bot-avatar.tsx
 +++ b/apps/mobile/components/bot-avatar.tsx
 @@ -1,8 +1,8 @@
@@ -123125,7 +123125,7 @@ index a58981051..b4fc58801 100644
    AVATAR_MOTION_UNITS,
    AVATAR_TYPING_DOTS,
    avatarClip,
-@@ -15,34 +15,83 @@ import {
+@@ -15,34 +15,84 @@ import {
    avatarSchedulePose,
    avatarThinkingDot,
    avatarWorkingDot,
@@ -123177,6 +123177,7 @@ index a58981051..b4fc58801 100644
 -import { useMobileTokens } from "../lib/native";
 +import { useMobileTokens, useResolvedAppearance } from "../lib/native";
  import { LogoAvatar } from "./logo-avatar";
++import { MochiBotAvatar } from "./mochi-bot-avatar";
  import { NativeSymbol } from "./native-symbol";
  
 -const AnimatedRect = Animated.createAnimatedComponent(Rect);
@@ -123220,7 +123221,7 @@ index a58981051..b4fc58801 100644
  
  /** How far (0–1) the face has turned into the typing dots, for a morph of 0–1. */
  function morphGrow(morph: number): number {
-@@ -52,9 +101,17 @@ function morphGrow(morph: number): number {
+@@ -52,9 +102,17 @@ function morphGrow(morph: number): number {
  }
  /** The face shrinks until it is the size of the middle typing dot. */
  const MORPH_SHRINK = 1 - (2 * AVATAR_TYPING_DOTS.radius) / AVATAR_MOTION_UNITS;
@@ -123241,7 +123242,7 @@ index a58981051..b4fc58801 100644
  }
  
  /** The avatar's flat frame right now, a tap poke included; a worklet. */
-@@ -64,17 +121,6 @@ function liveFrame(life: AvatarLife) {
+@@ -64,17 +122,6 @@ function liveFrame(life: AvatarLife) {
    const segments = life.schedule.value;
    const pose = avatarSchedulePose(segments, now);
    const frame = avatarFrame(pose, life.awake.value);
@@ -123259,7 +123260,7 @@ index a58981051..b4fc58801 100644
    const poke = life.poke.value;
    if (poke) {
      const extra = avatarPokeFrame(poke, life.pokeProgress.value);
-@@ -90,28 +136,92 @@ function liveFrame(life: AvatarLife) {
+@@ -90,28 +137,92 @@ function liveFrame(life: AvatarLife) {
    return { frame, grow };
  }
  
@@ -123363,7 +123364,7 @@ index a58981051..b4fc58801 100644
  }
  
  export interface BotAvatarProps {
-@@ -125,13 +235,26 @@ export interface BotAvatarProps {
+@@ -125,14 +236,48 @@ export interface BotAvatarProps {
    motion?: AvatarMotionMode;
    composing?: boolean;
    pokeable?: boolean;
@@ -123388,12 +123389,35 @@ index a58981051..b4fc58801 100644
 -  if (usesLogoAvatar(props)) {
 -    return <RakazoBotAvatar {...props} />;
 -  }
-+  // The reference app's own bodies are the only ones this build draws: the Rakazo logo style is
-+  // never used, whatever the account's older setting says.
-   return <LegacyBotAvatar {...props} />;
+-  return <LegacyBotAvatar {...props} />;
++  const {
++    color,
++    size = 54,
++    status,
++    identity,
++    composing = false,
++    motion = "live",
++    muted = false,
++    surface = "default",
++    main = false,
++  } = props;
++  const working = isRunWorking(status) && !composing && motion !== "running";
++  return (
++    <View style={{ width: size, height: size, overflow: "visible" }}>
++      <MochiBotAvatar {...props} />
++      <AvatarStatusBadges
++        size={size}
++        surface={surface}
++        main={main}
++        working={working}
++        muted={muted}
++      />
++    </View>
++  );
  });
  
-@@ -143,8 +266,10 @@ function RakazoBotAvatar({
+ function RakazoBotAvatar({
+@@ -143,8 +288,10 @@ function RakazoBotAvatar({
    activity,
    composing = false,
    muted = false,
@@ -123405,7 +123429,7 @@ index a58981051..b4fc58801 100644
  }: BotAvatarProps) {
    const liveActivity = useSyncExternalStore(
      mobileLogoAvatarActivity.subscribe,
-@@ -160,7 +285,7 @@ function RakazoBotAvatar({
+@@ -160,7 +307,7 @@ function RakazoBotAvatar({
    );
    const working = isRunWorking(status) && resolved !== "writing" && motion !== "running";
    return (
@@ -123414,7 +123438,7 @@ index a58981051..b4fc58801 100644
        <LogoAvatar
          color={color}
          identity={identity}
-@@ -169,24 +294,91 @@ function RakazoBotAvatar({
+@@ -169,24 +316,91 @@ function RakazoBotAvatar({
          motion={motion}
          pokeable={pokeable}
        />
@@ -123431,7 +123455,7 @@ index a58981051..b4fc58801 100644
 +  );
 +}
 +
-+function AvatarStatusBadges({
++export function AvatarStatusBadges({
 +  size,
 +  surface = "default",
 +  main = false,
@@ -123512,7 +123536,7 @@ index a58981051..b4fc58801 100644
          width: dot.diameter + dot.ring * 2,
          height: dot.diameter + dot.ring * 2,
          borderRadius: size,
-@@ -198,19 +390,20 @@ function WorkingDot({ size, muted }: { size: number; muted: boolean }) {
+@@ -198,19 +412,20 @@ function WorkingDot({ size, muted }: { size: number; muted: boolean }) {
    );
  }
  
@@ -123538,7 +123562,7 @@ index a58981051..b4fc58801 100644
          borderRadius: size,
          borderWidth: 2,
          borderColor: tokens.background,
-@@ -247,15 +440,21 @@ function LegacyBotAvatar({
+@@ -247,15 +462,21 @@ function LegacyBotAvatar({
    status,
    identity,
    muted = false,
@@ -123561,7 +123585,7 @@ index a58981051..b4fc58801 100644
    /**
     * How the avatar may move: still (the default), lazy (inbox rows and pinned chats: still
     * at rest, moving while the bot is busy), live (the call card: also blinks at rest) or
-@@ -269,14 +468,22 @@ function LegacyBotAvatar({
+@@ -269,14 +490,22 @@ function LegacyBotAvatar({
    composing?: boolean;
    /** A tap plays a little reaction (the activity mark). */
    pokeable?: boolean;
@@ -123586,7 +123610,7 @@ index a58981051..b4fc58801 100644
    const eyeColor = botEyeInk(fillColor, tokens);
    const onScreen = useAvatarOnScreen();
    const reducedMotion = useReducedMotion();
-@@ -290,9 +497,97 @@ function LegacyBotAvatar({
+@@ -290,9 +519,97 @@ function LegacyBotAvatar({
      settling,
      reducedMotion,
    });
@@ -123687,7 +123711,7 @@ index a58981051..b4fc58801 100644
    const picture =
      parsed.kind === "image" && parsed.imageUrl ? (
        <View
-@@ -307,33 +602,40 @@ function LegacyBotAvatar({
+@@ -307,33 +624,40 @@ function LegacyBotAvatar({
        >
          <Image source={{ uri: parsed.imageUrl }} style={{ width: size, height: size }} />
        </View>
@@ -123742,7 +123766,7 @@ index a58981051..b4fc58801 100644
      </View>
    );
    // A tap is a little toy, not an action, so it stays out of the accessibility tree.
-@@ -386,86 +688,135 @@ function Dot({
+@@ -386,86 +710,135 @@ function Dot({
  
  type BodyStyle = ReturnType<typeof useAnimatedStyle>;
  
@@ -123996,29 +124020,29 @@ index ded60c8d9..81f662f15 100644
          />
        ))}
 diff --git a/apps/mobile/components/bot-look-picker.tsx b/apps/mobile/components/bot-look-picker.tsx
-index dc2c99b05..d1fba701e 100644
+index dc2c99b05..a9fc9f46c 100644
 --- a/apps/mobile/components/bot-look-picker.tsx
 +++ b/apps/mobile/components/bot-look-picker.tsx
-@@ -1,27 +1,79 @@
+@@ -1,27 +1,78 @@
  import { ph } from "@lingui/core/macro";
  import { useLingui } from "@lingui/react/macro";
  import type { BotAvatarSet } from "@rakazo/contracts";
 -import { BOT_COLORS } from "@rakazo/contracts";
-+import { BOT_COLOR_LIST } from "@rakazo/contracts";
  import {
-+  BABYGROK_BODIES,
-+  babygrokBodyPath,
    botLookState,
    botLookWithColor,
    botLookWithShape,
-+  motionBodySolid,
-+  motionShapeScale,
++  mochiAvatarFill,
++  mochiBodyPath,
++  mochiColorById,
++  mochiIsShapeKey,
++  MOCHI_COLOR_ROWS,
    SHIPPED_BOT_AVATAR_SHAPE_KEYS,
  } from "@rakazo/core";
  import type { ReactNode } from "react";
  import { Pressable, Text, View } from "react-native";
 -import { useMobileTokens } from "../lib/native";
-+import Svg, { G, Path } from "react-native-svg";
++import Svg, { Path } from "react-native-svg";
 +import { shippedBodyKey } from "../lib/bot-avatar";
 +import { hapticSelection } from "../lib/haptics";
 +import { useMobileTokens, useResolvedAppearance } from "../lib/native";
@@ -124038,11 +124062,10 @@ index dc2c99b05..d1fba701e 100644
 +  ["house", "star", "hex"],
 +];
 +
-+/** The color rows: six, then five, black first. White is left out — it vanishes on the page. */
-+const COLOR_ROWS: readonly (readonly string[])[] = [
-+  ["black", "brown", "red", "orange", "yellow", "green"],
-+  ["cyan", "blue", "violet", "magenta", "gray"],
-+].map((row) => row.map((id) => BOT_COLOR_LIST.find((color) => color.id === id)!.hex));
++/** The color rows: white plus the eleven dumpling pastels, in two rows of six. */
++const COLOR_ROWS: readonly (readonly string[])[] = MOCHI_COLOR_ROWS.map((row) =>
++  row.map((id) => mochiColorById(id).hex),
++);
 +
 +const SHAPE_INDEX = new Map<string, number>(
 +  SHIPPED_BOT_AVATAR_SHAPE_KEYS.map((key, index) => [key, index]),
@@ -124084,7 +124107,7 @@ index dc2c99b05..d1fba701e 100644
    avatarSet,
    disabled = false,
    onChange,
-@@ -29,6 +81,11 @@ export function BotLookPicker({
+@@ -29,6 +80,11 @@ export function BotLookPicker({
    value: string;
    identity?: string;
    organicIdentities?: readonly string[];
@@ -124096,7 +124119,7 @@ index dc2c99b05..d1fba701e 100644
    avatarSet: BotAvatarSet;
    /** While the look is being saved, so what is shown stays what is saved. */
    disabled?: boolean;
-@@ -36,119 +93,172 @@ export function BotLookPicker({
+@@ -36,119 +92,170 @@ export function BotLookPicker({
  }) {
    const { t } = useLingui();
    const tokens = useMobileTokens();
@@ -124245,10 +124268,8 @@ index dc2c99b05..d1fba701e 100644
 +          {COLOR_ROWS.map((row) => (
 +            <View key={row.join(",")} style={rowStyles.colors}>
 +              {row.map((option) => {
-+                const selected = !photo && color.toLowerCase() === option.toLowerCase();
-+                // The reference's black is black on the light page and pure white on the dark
-+                // one; painted black on a dark sheet, its own dot vanished.
-+                const swatch = photo ? option : motionBodySolid(option, dark);
++                const selected = !photo && mochiAvatarFill(color, dark).toLowerCase() === option.toLowerCase();
++                const swatch = option;
 +                return (
 +                  <Pressable
 +                    key={option}
@@ -124340,11 +124361,11 @@ index dc2c99b05..d1fba701e 100644
 -  const tokens = useMobileTokens();
 +  const dark = useResolvedAppearance() === "dark";
 +  const size = SHAPE_TILE + (RING + RING_GAP) * 2;
-+  const contoured = Boolean(bodyKey && BABYGROK_BODIES[bodyKey as keyof typeof BABYGROK_BODIES]);
++  const contoured = Boolean(bodyKey && mochiIsShapeKey(bodyKey));
    return (
      <Pressable
        accessibilityRole="radio"
-@@ -157,13 +267,69 @@ function Choice({
+@@ -157,13 +264,61 @@ function Choice({
        disabled={disabled}
        onPress={onPress}
        style={{
@@ -124380,41 +124401,33 @@ index dc2c99b05..d1fba701e 100644
 +function BodyOutline({ bodyKey }: { bodyKey: string }) {
 +  const tokens = useMobileTokens();
 +  const dark = useResolvedAppearance() === "dark";
-+  const body = BABYGROK_BODIES[bodyKey as keyof typeof BABYGROK_BODIES];
-+  if (!body) return null;
++  if (!mochiIsShapeKey(bodyKey)) return null;
 +  const size = SHAPE_TILE + (RING + RING_GAP) * 2;
-+  // The avatar inside the tile spans SHAPE_TILE points for the 200 view units of its own box, so
-+  // the outline's box has to hold the same scale to land exactly on the body's edges.
-+  const unitsPerPoint = 200 / SHAPE_TILE;
-+  const span = size * unitsPerPoint;
-+  // And the body is drawn at its own zoom (0.86 for the blob, for one), about the head's centre
-+  // at (0,0), so an outline drawn at 1 would sit a whole ring outside it: the same zoom is worn
-+  // here, about the same centre, and the ring lands exactly on the body's edge.
-+  const zoom = motionShapeScale(bodyKey);
++  const unitsPerPoint = 128 / SHAPE_TILE;
++  const pad = ((size - SHAPE_TILE) / 2) * unitsPerPoint;
++  const path = mochiBodyPath(bodyKey);
 +  return (
 +    <Svg
 +      width={size}
 +      height={size}
-+      viewBox={`${-span / 2} ${-span / 2} ${span} ${span}`}
++      viewBox={`${-pad} ${-pad} ${128 + pad * 2} ${128 + pad * 2}`}
 +      style={{ position: "absolute" }}
 +      pointerEvents="none"
 +    >
-+      <G transform={`scale(${zoom})`}>
-+        <Path
-+          d={babygrokBodyPath(body.ring, body.ring, 1)}
-+          fill={dark ? RING_DARK : RING_LIGHT}
-+          stroke={dark ? RING_DARK : RING_LIGHT}
-+          strokeWidth={2 * (OUTLINE_GAP + OUTLINE_HAIR) * unitsPerPoint}
-+          strokeLinejoin="round"
-+        />
-+        <Path
-+          d={babygrokBodyPath(body.ring, body.ring, 1)}
-+          fill={tokens.dialog}
-+          stroke={tokens.dialog}
-+          strokeWidth={2 * OUTLINE_GAP * unitsPerPoint}
-+          strokeLinejoin="round"
-+        />
-+      </G>
++      <Path
++        d={path}
++        fill={dark ? RING_DARK : RING_LIGHT}
++        stroke={dark ? RING_DARK : RING_LIGHT}
++        strokeWidth={2 * (OUTLINE_GAP + OUTLINE_HAIR) * unitsPerPoint}
++        strokeLinejoin="round"
++      />
++      <Path
++        d={path}
++        fill={tokens.dialog}
++        stroke={tokens.dialog}
++        strokeWidth={2 * OUTLINE_GAP * unitsPerPoint}
++        strokeLinejoin="round"
++      />
 +    </Svg>
 +  );
 +}
@@ -129600,6 +129613,456 @@ index 139a32726..56c9ec61e 100644
 -    subactions: entry.subactions?.map(toMenuAction),
 -  };
 -}
+diff --git a/apps/mobile/components/mochi-bot-avatar.tsx b/apps/mobile/components/mochi-bot-avatar.tsx
+new file mode 100644
+index 000000000..88f8f83a5
+--- /dev/null
++++ b/apps/mobile/components/mochi-bot-avatar.tsx
+@@ -0,0 +1,444 @@
++import type { LogoAvatarActivity } from "@rakazo/core";
++import {
++  avatarLifeState,
++  mochiActivityFromSignals,
++  mochiAvatarFill,
++  mochiBodyMetrics,
++  mochiBodyPath,
++  mochiFace,
++  mochiFaceOrigin,
++  mochiMorphRing,
++  mochiMotionPlan,
++  mochiRingPath,
++  mochiShades,
++  type MochiExpression,
++} from "@rakazo/core";
++import { memo, useEffect, useId, useRef, useState } from "react";
++import { Image, Pressable } from "react-native";
++import Animated, {
++  Easing,
++  cancelAnimation,
++  useAnimatedStyle,
++  useReducedMotion,
++  useSharedValue,
++  withRepeat,
++  withSequence,
++  withSpring,
++  withTiming,
++} from "react-native-reanimated";
++import Svg, { ClipPath, Defs, Ellipse, G, LinearGradient, Path, RadialGradient, Rect, Stop } from "react-native-svg";
++import type { AvatarMotionMode } from "@rakazo/core";
++import { useAvatarOnScreen, useSettling } from "../lib/avatar-life";
++import { mobileBotAvatarPresentation } from "../lib/bot-avatar";
++import { useResolvedAppearance } from "../lib/native";
++
++export type MochiBotAvatarProps = {
++  color: string;
++  size?: number;
++  status?: string;
++  identity?: string;
++  activity?: LogoAvatarActivity;
++  muted?: boolean;
++  motion?: AvatarMotionMode;
++  composing?: boolean;
++  pokeable?: boolean;
++};
++
++const SIT_Y = 106;
++const MORPH_MS = 560;
++const BLINK_MS = 140;
++
++function elasticOut(t: number): number {
++  if (t <= 0) return 0;
++  if (t >= 1) return 1;
++  return 1 - 2 ** (-10 * t) * Math.cos((t * 10 - 0.75) * (Math.PI / 3));
++}
++
++function rand(min: number, max: number): number {
++  return min + Math.random() * (max - min);
++}
++
++/**
++ * The squishy vector dumpling: one body, any colour, a brown face, and cheap Reanimated motion.
++ * Photos still render as images; badges stay on the wrapper so the home hero can keep its star.
++ */
++export const MochiBotAvatar = memo(function MochiBotAvatar({
++  color,
++  size = 54,
++  status,
++  identity,
++  activity: activityProp,
++  motion = "live",
++  composing = false,
++  pokeable = false,
++}: MochiBotAvatarProps) {
++  const parsed = mobileBotAvatarPresentation(color, identity ?? "");
++  const dark = useResolvedAppearance() === "dark";
++  const onScreen = useAvatarOnScreen();
++  const reducedMotionPref = useReducedMotion();
++  const lifeState = avatarLifeState(status, composing);
++  const settling = useSettling(lifeState);
++  const activity = mochiActivityFromSignals({
++    status,
++    activity: composing && activityProp !== "error" ? "writing" : activityProp,
++    settling,
++  });
++  const still =
++    Boolean(reducedMotionPref) ||
++    !onScreen ||
++    motion === "still" ||
++    (motion === "lazy" && activity === "idle") ||
++    size < 22;
++  const plan = mochiMotionPlan(activity, still);
++  const fill =
++    parsed.kind === "shape" || parsed.kind === "color"
++      ? mochiAvatarFill(parsed.color, dark)
++      : mochiAvatarFill(color, dark);
++  const shape = "bodyKey" in parsed && parsed.bodyKey ? parsed.bodyKey : "blob";
++  if (parsed.kind === "image" && parsed.imageUrl) {
++    return <Image source={{ uri: parsed.imageUrl }} style={{ width: size, height: size }} />;
++  }
++
++  return (
++    <MochiBody
++      shape={shape}
++      fill={fill}
++      size={size}
++      planActivity={activity}
++      expression={plan.expression}
++      still={still}
++      plan={plan}
++      pokeable={pokeable}
++    />
++  );
++});
++
++function MochiBody({
++  shape,
++  fill,
++  size,
++  planActivity,
++  expression,
++  still,
++  plan,
++  pokeable,
++}: {
++  shape: string;
++  fill: string;
++  size: number;
++  planActivity: ReturnType<typeof mochiActivityFromSignals>;
++  expression: MochiExpression;
++  still: boolean;
++  plan: ReturnType<typeof mochiMotionPlan>;
++  pokeable: boolean;
++}) {
++  const uid = useId().replace(/:/g, "");
++  const shades = mochiShades(fill);
++  const [path, setPath] = useState(() => mochiBodyPath(shape));
++  const [metrics, setMetrics] = useState(() => mochiBodyMetrics(shape));
++  const fromKey = useRef(shape);
++  const morphRaf = useRef<number | null>(null);
++
++  useEffect(() => {
++    if (fromKey.current === shape) {
++      setPath(mochiBodyPath(shape));
++      setMetrics(mochiBodyMetrics(shape));
++      return;
++    }
++    const from = fromKey.current;
++    fromKey.current = shape;
++    if (still) {
++      setPath(mochiBodyPath(shape));
++      setMetrics(mochiBodyMetrics(shape));
++      return;
++    }
++    const start = Date.now();
++    const tick = () => {
++      const t = Math.min(1, (Date.now() - start) / MORPH_MS);
++      const ring = mochiMorphRing(from, shape, elasticOut(t));
++      setPath(mochiRingPath(ring));
++      setMetrics({
++        ...mochiBodyMetrics(shape),
++        ...{
++          // Use the in-between ring's box so the highlight stays on the body as it morphs.
++          minX: Math.min(...ring.map((p) => p[0])),
++          maxX: Math.max(...ring.map((p) => p[0])),
++          minY: Math.min(...ring.map((p) => p[1])),
++          maxY: Math.max(...ring.map((p) => p[1])),
++        },
++      });
++      if (t < 1) morphRaf.current = requestAnimationFrame(tick);
++      else {
++        setPath(mochiBodyPath(shape));
++        setMetrics(mochiBodyMetrics(shape));
++      }
++    };
++    morphRaf.current = requestAnimationFrame(tick);
++    return () => {
++      if (morphRaf.current != null) cancelAnimationFrame(morphRaf.current);
++    };
++  }, [shape, still]);
++
++  const [blink, setBlink] = useState(0);
++  const [glance, setGlance] = useState(0);
++  useEffect(() => {
++    if (still || !plan.blink) {
++      setBlink(0);
++      return;
++    }
++    let timeout: ReturnType<typeof setTimeout>;
++    let frame: number | null = null;
++    const loop = () => {
++      timeout = setTimeout(() => {
++        const start = Date.now();
++        const step = () => {
++          const t = (Date.now() - start) / BLINK_MS;
++          if (t >= 1) {
++            setBlink(0);
++            loop();
++            return;
++          }
++          setBlink(t < 0.5 ? t * 2 : 2 - t * 2);
++          frame = requestAnimationFrame(step);
++        };
++        frame = requestAnimationFrame(step);
++      }, rand(3000, 6000));
++    };
++    loop();
++    return () => {
++      clearTimeout(timeout);
++      if (frame != null) cancelAnimationFrame(frame);
++    };
++  }, [still, plan.blink]);
++
++  useEffect(() => {
++    if (still || !plan.glance) {
++      setGlance(0);
++      return;
++    }
++    let timeout: ReturnType<typeof setTimeout>;
++    const loop = () => {
++      timeout = setTimeout(() => {
++        setGlance(1);
++        timeout = setTimeout(() => {
++          setGlance(0);
++          loop();
++        }, 700);
++      }, rand(8000, 14000));
++    };
++    loop();
++    return () => clearTimeout(timeout);
++  }, [still, plan.glance]);
++
++  const breath = useSharedValue(0);
++  const hop = useSharedValue(0);
++  const squash = useSharedValue(0);
++  const sway = useSharedValue(0);
++  const bob = useSharedValue(0);
++  const shiver = useSharedValue(0);
++  const shrink = useSharedValue(1);
++  const wobble = useSharedValue(0);
++
++  useEffect(() => {
++    cancelAnimation(breath);
++    if (still || plan.breathe <= 0) {
++      breath.value = withTiming(0, { duration: 200 });
++      return;
++    }
++    breath.value = withRepeat(
++      withSequence(
++        withTiming(1, { duration: (plan.breathePeriod * 1000) / 2, easing: Easing.inOut(Easing.sin) }),
++        withTiming(0, { duration: (plan.breathePeriod * 1000) / 2, easing: Easing.inOut(Easing.sin) }),
++      ),
++      -1,
++      false,
++    );
++  }, [still, plan.breathe, plan.breathePeriod, breath]);
++
++  useEffect(() => {
++    cancelAnimation(sway);
++    if (still || plan.sway <= 0) {
++      sway.value = withTiming(0, { duration: 200 });
++      return;
++    }
++    sway.value = withRepeat(
++      withSequence(
++        withTiming(plan.sway, { duration: 900, easing: Easing.inOut(Easing.sin) }),
++        withTiming(-plan.sway, { duration: 1800, easing: Easing.inOut(Easing.sin) }),
++        withTiming(0, { duration: 900, easing: Easing.inOut(Easing.sin) }),
++      ),
++      -1,
++      false,
++    );
++  }, [still, plan.sway, sway]);
++
++  useEffect(() => {
++    cancelAnimation(bob);
++    if (still || plan.bob <= 0) {
++      bob.value = withTiming(0, { duration: 200 });
++      return;
++    }
++    bob.value = withRepeat(
++      withSequence(
++        withTiming(-plan.bob, { duration: 280, easing: Easing.inOut(Easing.sin) }),
++        withTiming(plan.bob, { duration: 280, easing: Easing.inOut(Easing.sin) }),
++      ),
++      -1,
++      false,
++    );
++  }, [still, plan.bob, bob]);
++
++  const prevActivity = useRef(planActivity);
++  useEffect(() => {
++    const prev = prevActivity.current;
++    prevActivity.current = planActivity;
++    if (still) {
++      hop.value = 0;
++      squash.value = 0;
++      shiver.value = 0;
++      shrink.value = withTiming(1, { duration: 160 });
++      return;
++    }
++    if (plan.hop && prev !== "done") {
++      hop.value = 0;
++      squash.value = 0;
++      hop.value = withSequence(
++        withTiming(0.2, { duration: 180, easing: Easing.out(Easing.quad) }),
++        withTiming(0, { duration: 220, easing: Easing.in(Easing.quad) }),
++      );
++      squash.value = withSequence(
++        withTiming(-0.35, { duration: 180 }),
++        withTiming(1, { duration: 120 }),
++        withSpring(0, { damping: 8, stiffness: 180 }),
++      );
++    }
++    if (plan.shiver && prev !== "error") {
++      shrink.value = withTiming(0.94, { duration: 120 });
++      shiver.value = withSequence(
++        withRepeat(
++          withSequence(
++            withTiming(1, { duration: 40 }),
++            withTiming(-1, { duration: 40 }),
++          ),
++          7,
++          true,
++        ),
++        withTiming(0, { duration: 80 }),
++      );
++    } else if (!plan.shiver) {
++      shrink.value = withTiming(1, { duration: 180 });
++      shiver.value = withTiming(0, { duration: 80 });
++    }
++  }, [planActivity, plan.hop, plan.shiver, still, hop, squash, shiver, shrink]);
++
++  const poke = () => {
++    if (!pokeable || still || !plan.wobble) return;
++    wobble.value = 0;
++    wobble.value = withSequence(
++      withTiming(1, { duration: 70 }),
++      withTiming(-0.75, { duration: 90 }),
++      withTiming(0.45, { duration: 110 }),
++      withSpring(0, { damping: 8, stiffness: 200 }),
++    );
++  };
++
++  const motionStyle = useAnimatedStyle(() => {
++    const b = breath.value * plan.breathe + squash.value * 0.08;
++    const sx = shrink.value * (1 + b * 0.55 + wobble.value * 0.12);
++    const sy = shrink.value * (1 - b * 0.7 - wobble.value * 0.1);
++    return {
++      transform: [
++        { translateY: -hop.value * size * 0.22 + bob.value * size },
++        { translateX: shiver.value * size * 0.035 },
++        { rotate: `${sway.value}deg` },
++        { scaleX: sx },
++        { scaleY: sy },
++      ],
++    };
++  });
++
++  const face = mochiFace(expression, {
++    blink,
++    glance,
++    gazeY: expression === "thinking" ? -2.2 : 0,
++    origin: mochiFaceOrigin(shape),
++  });
++  const hx = metrics.minX + (metrics.maxX - metrics.minX) * 0.32;
++  const hy = metrics.minY + (metrics.maxY - metrics.minY) * 0.3;
++  const hrx = (metrics.maxX - metrics.minX) * 0.24;
++  const hry = (metrics.maxY - metrics.minY) * 0.17;
++  const shadowCx = (metrics.minX + metrics.maxX) / 2;
++  const shadowCy = Math.min(118, metrics.maxY + 8);
++  const shadowRx = Math.max(16, (metrics.maxX - metrics.minX) * 0.42);
++
++  const body = (
++    <Animated.View
++      style={[
++        { width: size, height: size, transformOrigin: "50% 84%" as const },
++        motionStyle,
++      ]}
++    >
++      <Svg width={size} height={size} viewBox="0 0 128 128">
++        <Defs>
++          <RadialGradient id={`${uid}-body`} cx="32%" cy="28%" r="78%">
++            <Stop offset="0%" stopColor={shades.shine} />
++            <Stop offset="28%" stopColor={shades.shine} stopOpacity="0.55" />
++            <Stop offset="62%" stopColor={fill} />
++            <Stop offset="100%" stopColor={shades.shade} />
++          </RadialGradient>
++          <RadialGradient id={`${uid}-spec`} cx="50%" cy="50%" r="50%">
++            <Stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.92" />
++            <Stop offset="45%" stopColor="#FFFFFF" stopOpacity="0.35" />
++            <Stop offset="100%" stopColor="#FFFFFF" stopOpacity="0" />
++          </RadialGradient>
++          <LinearGradient id={`${uid}-bot`} x1="0" y1="0" x2="0" y2="1">
++            <Stop offset="40%" stopColor={shades.deep} stopOpacity="0" />
++            <Stop offset="100%" stopColor={shades.deep} stopOpacity="0.38" />
++          </LinearGradient>
++          <ClipPath id={`${uid}-clip`}>
++            <Path d={path} />
++          </ClipPath>
++        </Defs>
++        <Ellipse cx={shadowCx} cy={shadowCy} rx={shadowRx} ry="5.5" fill={shades.shadow} opacity="0.22" />
++        <Ellipse cx={shadowCx} cy={shadowCy} rx={shadowRx * 1.25} ry="7.5" fill={shades.shadow} opacity="0.14" />
++        <Ellipse cx={shadowCx} cy={shadowCy} rx={shadowRx * 1.55} ry="10" fill={shades.shadow} opacity="0.08" />
++        <Path d={path} fill={`url(#${uid}-body)`} />
++        <G clipPath={`url(#${uid}-clip)`}>
++          <Rect x="0" y="0" width="128" height="128" fill={`url(#${uid}-bot)`} />
++          <Ellipse cx={hx} cy={hy} rx={hrx} ry={hry} fill={`url(#${uid}-spec)`} />
++          <Ellipse
++            cx={hx - hrx * 0.28}
++            cy={hy - hry * 0.28}
++            rx={hrx * 0.42}
++            ry={hry * 0.36}
++            fill="#FFFFFF"
++            opacity="0.32"
++          />
++        </G>
++        {face.fills.map((f, i) => (
++          <Path key={`f${i}`} d={f.d} fill={f.fill} />
++        ))}
++        {face.strokes.map((s, i) => (
++          <Path
++            key={`s${i}`}
++            d={s.d}
++            fill="none"
++            stroke={face.ink}
++            strokeWidth={s.width}
++            strokeLinecap="round"
++            strokeLinejoin="round"
++          />
++        ))}
++      </Svg>
++    </Animated.View>
++  );
++
++  if (!pokeable) return body;
++  return (
++    <Pressable onPress={poke} accessibilityRole="button">
++      {body}
++    </Pressable>
++  );
++}
++
++void SIT_Y;
 diff --git a/apps/mobile/components/model-picker-list.tsx b/apps/mobile/components/model-picker-list.tsx
 index 2038fde4a..ac3f660b9 100644
 --- a/apps/mobile/components/model-picker-list.tsx
@@ -169245,10 +169708,10 @@ index 000000000..9f4991ac9
 +  return avatarClipPose(avatarClip(name), seconds);
 +}
 diff --git a/packages/core/src/index.ts b/packages/core/src/index.ts
-index 0e9e48b49..ba8a5f846 100644
+index 0e9e48b49..54a1998ac 100644
 --- a/packages/core/src/index.ts
 +++ b/packages/core/src/index.ts
-@@ -13,13 +13,16 @@ export * from "./avatar-clips.js";
+@@ -13,13 +13,17 @@ export * from "./avatar-clips.js";
  export * from "./avatar-life.js";
  export * from "./avatar-motion.js";
  export * from "./avatar-shape.js";
@@ -169259,6 +169722,7 @@ index 0e9e48b49..ba8a5f846 100644
 +export * from "./bot-avatar-palette.js";
  export * from "./bot-avatar-shapes.js";
 +export * from "./bot-motion-clips.js";
++export * from "./mochi-avatar.js";
  export * from "./bot-look.js";
  export * from "./bot-mentions.js";
  export * from "./bot-messages.js";
@@ -169266,7 +169730,7 @@ index 0e9e48b49..ba8a5f846 100644
  export * from "./bot-sections.js";
  export * from "./bot-sender-name.js";
  export * from "./bot-templates.js";
-@@ -68,8 +71,8 @@ export * from "./message-reactions.js";
+@@ -68,8 +72,8 @@ export * from "./message-reactions.js";
  export * from "./message-replies.js";
  export * from "./message-text.js";
  export * from "./message-visibility.js";
@@ -169382,6 +169846,1373 @@ diff --git a/packages/core/src/messaging.prompt.ts b/packages/core/src/messaging
 similarity index 100%
 rename from packages/core/src/messaging.prompt.ts
 rename to packages/core/src/messaging-prompts.ts
+diff --git a/packages/core/src/mochi-avatar.test.ts b/packages/core/src/mochi-avatar.test.ts
+new file mode 100644
+index 000000000..d426b76c1
+--- /dev/null
++++ b/packages/core/src/mochi-avatar.test.ts
+@@ -0,0 +1,117 @@
++import { describe, expect, it } from "vitest";
++import {
++  MOCHI_COLOR_ROWS,
++  MOCHI_COLORS,
++  MOCHI_SHAPE_KEYS,
++  mochiActivityFromSignals,
++  mochiAvatarFill,
++  mochiAvatarSvg,
++  mochiBodyPath,
++  mochiFace,
++  mochiMorphRing,
++  mochiMotionPlan,
++  mochiShapeRing,
++} from "./mochi-avatar.js";
++
++describe("mochiActivityFromSignals", () => {
++  it("maps explicit activity and status onto the five mochi states", () => {
++    expect(mochiActivityFromSignals({ status: "failed" })).toBe("error");
++    expect(mochiActivityFromSignals({ activity: "error" })).toBe("error");
++    expect(mochiActivityFromSignals({ activity: "thinking" })).toBe("thinking");
++    expect(mochiActivityFromSignals({ status: "thinking" })).toBe("thinking");
++    expect(mochiActivityFromSignals({ activity: "working" })).toBe("working");
++    expect(mochiActivityFromSignals({ activity: "reading" })).toBe("working");
++    expect(mochiActivityFromSignals({ activity: "writing" })).toBe("working");
++    expect(mochiActivityFromSignals({ activity: "computer" })).toBe("working");
++    expect(mochiActivityFromSignals({ status: "running" })).toBe("working");
++    expect(mochiActivityFromSignals({ status: "queued" })).toBe("working");
++    expect(mochiActivityFromSignals({ settling: true })).toBe("done");
++    expect(mochiActivityFromSignals({ activity: "done" })).toBe("done");
++    expect(mochiActivityFromSignals({ status: "idle" })).toBe("idle");
++    expect(mochiActivityFromSignals({})).toBe("idle");
++  });
++
++  it("prefers error over a settling hop so a failed run does not look happy", () => {
++    expect(mochiActivityFromSignals({ status: "failed", settling: true })).toBe("error");
++  });
++});
++
++describe("mochiMotionPlan", () => {
++  it("pairs each activity with its face and motion", () => {
++    expect(mochiMotionPlan("idle").expression).toBe("neutral");
++    expect(mochiMotionPlan("thinking").expression).toBe("thinking");
++    expect(mochiMotionPlan("thinking").sway).toBeGreaterThan(0);
++    expect(mochiMotionPlan("working").expression).toBe("determined");
++    expect(mochiMotionPlan("working").breathePeriod).toBeLessThan(mochiMotionPlan("idle").breathePeriod);
++    expect(mochiMotionPlan("working").bob).toBeGreaterThan(0);
++    expect(mochiMotionPlan("done").expression).toBe("happy");
++    expect(mochiMotionPlan("done").hop).toBe(true);
++    expect(mochiMotionPlan("error").expression).toBe("worried");
++    expect(mochiMotionPlan("error").shiver).toBe(true);
++  });
++
++  it("freezes motion and keeps the activity face when Reduce Motion is on", () => {
++    for (const activity of ["idle", "thinking", "working", "done", "error"] as const) {
++      const plan = mochiMotionPlan(activity, true);
++      expect(plan.expression).toBe(mochiMotionPlan(activity).expression);
++      expect(plan.breathe).toBe(0);
++      expect(plan.blink).toBe(false);
++      expect(plan.glance).toBe(false);
++      expect(plan.sway).toBe(0);
++      expect(plan.bob).toBe(0);
++      expect(plan.hop).toBe(false);
++      expect(plan.shiver).toBe(false);
++      expect(plan.wobble).toBe(false);
++    }
++  });
++});
++
++describe("mochi palette and shapes", () => {
++  it("lets every shape use every editor colour", () => {
++    const hexes = MOCHI_COLOR_ROWS.flat().map(
++      (id) => MOCHI_COLORS.find((c) => c.id === id)!.hex,
++    );
++    expect(hexes).toHaveLength(12);
++    for (const key of MOCHI_SHAPE_KEYS) {
++      const path = mochiBodyPath(key);
++      expect(path.startsWith("M")).toBe(true);
++      expect(path.endsWith("Z")).toBe(true);
++      expect(mochiShapeRing(key)).toHaveLength(64);
++      for (const hex of hexes) {
++        const svg = mochiAvatarSvg({ shape: key, color: hex, expression: "neutral" });
++        expect(svg).toContain(path.slice(0, 20));
++        expect(svg.toLowerCase()).toContain(hex.toLowerCase());
++      }
++    }
++  });
++
++  it("maps older persona colours onto the mochi palette", () => {
++    expect(mochiAvatarFill("#000000", true)).toBe(mochiAvatarFill("#F3EEE6"));
++    expect(mochiAvatarFill("#A369D9")).toBe("#D0A6EE");
++    expect(mochiAvatarFill("#EC4E2F")).toBe("#FF8F9B");
++  });
++
++  it("morphs every pair of rings with a shared vertex count", () => {
++    const mid = mochiMorphRing("blob", "hex", 0.5);
++    expect(mid).toHaveLength(64);
++    expect(mochiMorphRing("blob", "blob", 1)[0]).toEqual(mochiShapeRing("blob")[0]);
++  });
++
++  it("draws every expression with brown ink", () => {
++    for (const expression of [
++      "neutral",
++      "happy",
++      "wink",
++      "surprised",
++      "sleepy",
++      "determined",
++      "glance",
++      "worried",
++      "thinking",
++    ] as const) {
++      const face = mochiFace(expression);
++      expect(face.ink).toBe("#5C3A2E");
++      expect(face.fills.length + face.strokes.length).toBeGreaterThan(0);
++    }
++  });
++});
+diff --git a/packages/core/src/mochi-avatar.ts b/packages/core/src/mochi-avatar.ts
+new file mode 100644
+index 000000000..b71f04277
+--- /dev/null
++++ b/packages/core/src/mochi-avatar.ts
+@@ -0,0 +1,1238 @@
++/**
++ * Mochi (糯米团子) avatars: squishy vector bodies, a pastel palette, and small brown faces.
++ *
++ * Colour is independent of shape. Paths are original, drawn to match our own design sheet
++ * (a plump dumpling with a soft highlight), not traced from another app.
++ */
++export const MOCHI_VIEWBOX = "0 0 128 128";
++export const MOCHI_CENTER = { x: 64, y: 62 } as const;
++/** Dark chocolate ink for every expression, on every colour. */
++export const MOCHI_FACE_INK = "#5C3A2E";
++
++/** The thirteen bodies the editor offers, in its 5+5+3 rows. Keys stay stable for stored bots. */
++export const MOCHI_SHAPE_KEYS = [
++  "blob",
++  "cloud",
++  "square",
++  "sparkle",
++  "clover",
++  "heart",
++  "flower",
++  "teardrop",
++  "tablet",
++  "wedge",
++  "house",
++  "star",
++  "hex",
++] as const;
++export type MochiShapeKey = (typeof MOCHI_SHAPE_KEYS)[number];
++
++export const MOCHI_SHAPE_ROWS: readonly (readonly MochiShapeKey[])[] = [
++  ["blob", "cloud", "square", "sparkle", "clover"],
++  ["heart", "flower", "teardrop", "tablet", "wedge"],
++  ["house", "star", "hex"],
++];
++
++export type MochiExpression =
++  | "neutral"
++  | "happy"
++  | "wink"
++  | "surprised"
++  | "sleepy"
++  | "determined"
++  | "glance"
++  | "worried"
++  | "thinking";
++
++/** How a bot is moving and what its face should do, from the client's existing status. */
++export type MochiActivity = "idle" | "thinking" | "working" | "done" | "error";
++
++export type MochiColorDef = {
++  id: string;
++  name: string;
++  hex: string;
++};
++
++/**
++ * Pastel-but-vivid dumpling colours, sampled from our design sheet and slightly lifted so the
++ * mid-tone (not the shaded underside) is what a fill uses.
++ */
++export const MOCHI_COLORS: readonly MochiColorDef[] = [
++  { id: "white", name: "Rice", hex: "#F3EEE6" },
++  { id: "lavender", name: "Lavender", hex: "#D0A6EE" },
++  { id: "pink", name: "Pink", hex: "#FFBFD0" },
++  { id: "apricot", name: "Apricot", hex: "#FDD06F" },
++  { id: "mint", name: "Mint", hex: "#86EDD7" },
++  { id: "lime", name: "Lime", hex: "#B0E266" },
++  { id: "coral", name: "Coral", hex: "#FF8F9B" },
++  { id: "periwinkle", name: "Periwinkle", hex: "#9AA6F5" },
++  { id: "peach", name: "Peach", hex: "#FFB887" },
++  { id: "butter", name: "Butter", hex: "#FDDB68" },
++  { id: "seafoam", name: "Seafoam", hex: "#8FE8CC" },
++  { id: "hotpink", name: "Hot Pink", hex: "#FF73AE" },
++  { id: "grey", name: "Grey", hex: "#C5CDD6" },
++];
++
++/** Swatches the editor colour row shows: white plus the eleven chromatics (no grey). */
++export const MOCHI_COLOR_ROWS: readonly (readonly string[])[] = [
++  ["white", "lavender", "pink", "apricot", "mint", "lime"],
++  ["coral", "periwinkle", "peach", "butter", "seafoam", "hotpink"],
++];
++
++const COLOR_BY_ID = new Map(MOCHI_COLORS.map((c) => [c.id, c]));
++const COLOR_BY_HEX = new Map(MOCHI_COLORS.map((c) => [c.hex.toUpperCase(), c]));
++
++/** Older persona hexes, including legacy values, mapped onto the mochi palette. */
++const LEGACY_COLOR_MAP: Readonly<Record<string, string>> = {
++  "#171922": "white",
++  "#000000": "white",
++  "#F9F6F1": "white",
++  "#FFFFFF": "white",
++  "#A369D9": "lavender",
++  "#6EC04E": "lime",
++  "#F6A14F": "peach",
++  "#2BB8CA": "seafoam",
++  "#5C7EE9": "periwinkle",
++  "#EEC945": "butter",
++  "#8C5B4A": "peach",
++  "#EC4E2F": "coral",
++  "#DE70C6": "hotpink",
++  "#8594A4": "grey",
++};
++
++export function mochiColorById(id: string): MochiColorDef {
++  return COLOR_BY_ID.get(id) ?? MOCHI_COLORS[0]!;
++}
++
++/**
++ * The fill a stored colour is drawn with. Known mochi and legacy persona hexes resolve to the
++ * new palette; anything else is used as stored. Near-black on a dark page becomes rice-white
++ * so the dumpling does not vanish.
++ */
++export function mochiAvatarFill(color: string, dark = true): string {
++  const hex = normalizeHex(color);
++  const known = COLOR_BY_HEX.get(hex) ?? COLOR_BY_ID.get(LEGACY_COLOR_MAP[hex] ?? "");
++  if (known) return known.hex;
++  if (dark && luminance(hex) < 0.08) return mochiColorById("white").hex;
++  if (!dark && luminance(hex) > 0.92) return "#E8E2DA";
++  return hex;
++}
++
++export function mochiColorHexes(): string[] {
++  return MOCHI_COLOR_ROWS.flat().map((id) => mochiColorById(id).hex);
++}
++
++// ─── colour utilities ─────────────────────────────────────────────────────────
++
++function normalizeHex(color: string): string {
++  let hex = color.trim();
++  if (hex.startsWith("rgb")) return hex;
++  if (hex[0] !== "#") hex = `#${hex}`;
++  if (hex.length === 4)
++    hex = `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}`;
++  return hex.toUpperCase();
++}
++
++function parseHex(color: string): [number, number, number] {
++  const hex = normalizeHex(color);
++  if (!/^#[0-9A-F]{6}$/.test(hex)) return [200, 180, 200];
++  return [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
++}
++
++function fmtHex(r: number, g: number, b: number): string {
++  const c = (n: number) =>
++    Math.max(0, Math.min(255, Math.round(n)))
++      .toString(16)
++      .padStart(2, "0");
++  return `#${c(r)}${c(g)}${c(b)}`;
++}
++
++function mix(a: string, b: string, t: number): string {
++  const [ar, ag, ab] = parseHex(a);
++  const [br, bg, bb] = parseHex(b);
++  return fmtHex(ar + (br - ar) * t, ag + (bg - ag) * t, ab + (bb - ab) * t);
++}
++
++function luminance(color: string): number {
++  const lin = (c: number) => {
++    const s = c / 255;
++    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
++  };
++  const [r, g, b] = parseHex(color);
++  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
++}
++
++export type MochiShades = {
++  fill: string;
++  shade: string;
++  deep: string;
++  shine: string;
++  shadow: string;
++};
++
++/** Soft lighting colours derived from a body fill: a cooler shade, a white shine, a tinted shadow. */
++export function mochiShades(fill: string): MochiShades {
++  const [r, g, b] = parseHex(fill);
++  return {
++    fill,
++    shade: mix(fmtHex(r * 0.72, g * 0.68, b * 0.78), "#6A5A80", 0.12),
++    deep: mix(fmtHex(r * 0.55, g * 0.5, b * 0.6), "#4A3A58", 0.16),
++    shine: mix(fill, "#FFFFFF", 0.82),
++    shadow: mix(fmtHex(r * 0.4, g * 0.32, b * 0.42), "#1A1018", 0.35),
++  };
++}
++
++// ─── rings & paths ────────────────────────────────────────────────────────────
++
++export type MochiPoint = readonly [number, number];
++const RING = 64;
++
++function lerp(a: number, b: number, t: number): number {
++  return a + (b - a) * t;
++}
++
++function sampleClosed(points: MochiPoint[], n = RING): MochiPoint[] {
++  if (points.length === 0) return [];
++  const pts = points[0] === points[points.length - 1] ? points.slice(0, -1) : points.slice();
++  const count = pts.length;
++  const lengths: number[] = [];
++  let total = 0;
++  for (let i = 0; i < count; i++) {
++    const a = pts[i]!;
++    const b = pts[(i + 1) % count]!;
++    const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
++    lengths.push(len);
++    total += len;
++  }
++  const out: MochiPoint[] = [];
++  for (let i = 0; i < n; i++) {
++    let at = (i / n) * total;
++    for (let e = 0; e < count; e++) {
++      const len = lengths[e]!;
++      if (at <= len || e === count - 1) {
++        const t = len < 1e-6 ? 0 : at / len;
++        const a = pts[e]!;
++        const b = pts[(e + 1) % count]!;
++        out.push([lerp(a[0], b[0], t), lerp(a[1], b[1], t)]);
++        break;
++      }
++      at -= len;
++    }
++  }
++  return out;
++}
++
++/** Catmull-Rom through a closed ring, as a cubic path the renderers can fill. */
++export function mochiRingPath(ring: readonly MochiPoint[]): string {
++  const n = ring.length;
++  if (n < 3) return "";
++  const p = (i: number) => ring[((i % n) + n) % n]!;
++  let d = `M${fmt(p(0)[0])} ${fmt(p(0)[1])}`;
++  for (let i = 0; i < n; i++) {
++    const p0 = p(i - 1);
++    const p1 = p(i);
++    const p2 = p(i + 1);
++    const p3 = p(i + 2);
++    const c1x = p1[0] + (p2[0] - p0[0]) / 6;
++    const c1y = p1[1] + (p2[1] - p0[1]) / 6;
++    const c2x = p2[0] - (p3[0] - p1[0]) / 6;
++    const c2y = p2[1] - (p3[1] - p1[1]) / 6;
++    d += `C${fmt(c1x)} ${fmt(c1y)} ${fmt(c2x)} ${fmt(c2y)} ${fmt(p2[0])} ${fmt(p2[1])}`;
++  }
++  return `${d}Z`;
++}
++
++function fmt(n: number): string {
++  return (Math.round(n * 100) / 100).toString();
++}
++
++/** Sit the silhouette on a slightly flattened base so every body feels like a dumpling. */
++function sit(points: MochiPoint[], amount = 0.1): MochiPoint[] {
++  let minY = Infinity;
++  let maxY = -Infinity;
++  let cx = 0;
++  for (const [x, y] of points) {
++    minY = Math.min(minY, y);
++    maxY = Math.max(maxY, y);
++    cx += x;
++  }
++  cx /= points.length;
++  const h = Math.max(maxY - minY, 1);
++  return points.map(([x, y]) => {
++    const t = (y - minY) / h;
++    const squash = t * t * amount;
++    const y2 = y - (y - (maxY - h * 0.02)) * squash * 0.35;
++    const x2 = cx + (x - cx) * (1 + squash * 0.55);
++    return [x2, y2] as const;
++  });
++}
++
++function polar(
++  cx: number,
++  cy: number,
++  radius: (angle: number) => number,
++  n = 96,
++  turn = -Math.PI / 2,
++): MochiPoint[] {
++  const pts: MochiPoint[] = [];
++  for (let i = 0; i < n; i++) {
++    const a = turn + (i / n) * Math.PI * 2;
++    const r = radius(a);
++    pts.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]);
++  }
++  return pts;
++}
++
++function roundedPolygon(
++  cx: number,
++  cy: number,
++  sides: number,
++  r: number,
++  corner: number,
++  rotation = -Math.PI / 2,
++  n = 96,
++): MochiPoint[] {
++  const verts: MochiPoint[] = [];
++  for (let i = 0; i < sides; i++) {
++    const a = rotation + (i / sides) * Math.PI * 2;
++    verts.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]);
++  }
++  const pts: MochiPoint[] = [];
++  for (let i = 0; i < sides; i++) {
++    const prev = verts[(i - 1 + sides) % sides]!;
++    const cur = verts[i]!;
++    const next = verts[(i + 1) % sides]!;
++    const inDx = cur[0] - prev[0];
++    const inDy = cur[1] - prev[1];
++    const outDx = next[0] - cur[0];
++    const outDy = next[1] - cur[1];
++    const inLen = Math.hypot(inDx, inDy) || 1;
++    const outLen = Math.hypot(outDx, outDy) || 1;
++    const cut = Math.min(corner, inLen * 0.48, outLen * 0.48);
++    const start: MochiPoint = [cur[0] - (inDx / inLen) * cut, cur[1] - (inDy / inLen) * cut];
++    const end: MochiPoint = [cur[0] + (outDx / outLen) * cut, cur[1] + (outDy / outLen) * cut];
++    const steps = Math.max(6, Math.round(n / sides));
++    for (let s = 0; s <= steps; s++) {
++      const t = s / steps;
++      // Quadratic from start through the vertex to end, then nudged onto a circular-ish fillet.
++      const qx = (1 - t) * (1 - t) * start[0] + 2 * (1 - t) * t * cur[0] + t * t * end[0];
++      const qy = (1 - t) * (1 - t) * start[1] + 2 * (1 - t) * t * cur[1] + t * t * end[1];
++      pts.push([qx, qy]);
++    }
++  }
++  return pts;
++}
++
++function roundedStar(
++  cx: number,
++  cy: number,
++  points: number,
++  outer: number,
++  inner: number,
++  corner: number,
++  rotation = -Math.PI / 2,
++): MochiPoint[] {
++  const verts: MochiPoint[] = [];
++  const total = points * 2;
++  for (let i = 0; i < total; i++) {
++    const a = rotation + (i / total) * Math.PI * 2;
++    const r = i % 2 === 0 ? outer : inner;
++    verts.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]);
++  }
++  return roundedPolygonFromVerts(verts, corner);
++}
++
++function roundedPolygonFromVerts(verts: MochiPoint[], corner: number): MochiPoint[] {
++  const sides = verts.length;
++  const pts: MochiPoint[] = [];
++  for (let i = 0; i < sides; i++) {
++    const prev = verts[(i - 1 + sides) % sides]!;
++    const cur = verts[i]!;
++    const next = verts[(i + 1) % sides]!;
++    const inDx = cur[0] - prev[0];
++    const inDy = cur[1] - prev[1];
++    const outDx = next[0] - cur[0];
++    const outDy = next[1] - cur[1];
++    const inLen = Math.hypot(inDx, inDy) || 1;
++    const outLen = Math.hypot(outDx, outDy) || 1;
++    const cut = Math.min(corner, inLen * 0.48, outLen * 0.48);
++    const start: MochiPoint = [cur[0] - (inDx / inLen) * cut, cur[1] - (inDy / inLen) * cut];
++    const end: MochiPoint = [cur[0] + (outDx / outLen) * cut, cur[1] + (outDy / outLen) * cut];
++    const steps = 8;
++    for (let s = 0; s <= steps; s++) {
++      const t = s / steps;
++      const qx = (1 - t) * (1 - t) * start[0] + 2 * (1 - t) * t * cur[0] + t * t * end[0];
++      const qy = (1 - t) * (1 - t) * start[1] + 2 * (1 - t) * t * cur[1] + t * t * end[1];
++      pts.push([qx, qy]);
++    }
++  }
++  return pts;
++}
++
++function unionCircles(
++  circles: readonly { x: number; y: number; r: number }[],
++  ox: number,
++  oy: number,
++  n = 128,
++): MochiPoint[] {
++  const pts: MochiPoint[] = [];
++  for (let i = 0; i < n; i++) {
++    const a = -Math.PI / 2 + (i / n) * Math.PI * 2;
++    const dx = Math.cos(a);
++    const dy = Math.sin(a);
++    let best = 0;
++    for (const c of circles) {
++      const fx = ox - c.x;
++      const fy = oy - c.y;
++      const b = 2 * (fx * dx + fy * dy);
++      const cc = fx * fx + fy * fy - c.r * c.r;
++      const disc = b * b - 4 * cc;
++      if (disc < 0) continue;
++      const s = Math.sqrt(disc);
++      const t1 = (-b + s) / 2;
++      const t2 = (-b - s) / 2;
++      best = Math.max(best, t1, t2);
++    }
++    pts.push([ox + dx * best, oy + dy * best]);
++  }
++  return pts;
++}
++
++function blobRing(): MochiPoint[] {
++  const cx = 64;
++  const cy = 64;
++  return polar(cx, cy, (a) => {
++    const x = Math.cos(a);
++    const y = Math.sin(a);
++    // Soft superellipse dumpling: a little wider than tall, faintly irregular.
++    const n = 2.2;
++    const rx = 39.5;
++    const ry = 36.2;
++    const px = rx * Math.sign(x) * Math.abs(x) ** (2 / n);
++    const py = ry * Math.sign(y) * Math.abs(y) ** (2 / n);
++    const wobble = 1 + 0.02 * Math.sin(2 * a + 0.4) + 0.012 * Math.cos(3 * a);
++    return (Math.hypot(px, py) || ry) * wobble;
++  });
++}
++
++function cloudRing(): MochiPoint[] {
++  // Wide, low, three merged puffs on top of a soft base.
++  return unionCircles(
++    [
++      { x: 64, y: 78, r: 27 },
++      { x: 36, y: 74, r: 23 },
++      { x: 92, y: 74, r: 23 },
++      { x: 64, y: 50, r: 25 },
++      { x: 43, y: 56, r: 19 },
++      { x: 85, y: 56, r: 19 },
++    ],
++    64,
++    66,
++  );
++}
++
++function squareRing(): MochiPoint[] {
++  return roundedRect(64, 64, 74, 71, 26);
++}
++
++function roundedRect(cx: number, cy: number, w: number, h: number, r: number, steps = 10): MochiPoint[] {
++  const left = cx - w / 2;
++  const right = cx + w / 2;
++  const top = cy - h / 2;
++  const bot = cy + h / 2;
++  const rad = Math.min(r, w / 2, h / 2);
++  const pts: MochiPoint[] = [];
++  const arc = (acx: number, acy: number, start: number, end: number) => {
++    for (let s = 0; s <= steps; s++) {
++      const t = start + ((end - start) * s) / steps;
++      pts.push([acx + Math.cos(t) * rad, acy + Math.sin(t) * rad]);
++    }
++  };
++  // Clockwise from the top edge, so index 0 is near the top-left of the top side.
++  for (let s = 0; s <= steps; s++) {
++    const t = s / steps;
++    pts.push([left + rad + (right - left - 2 * rad) * t, top]);
++  }
++  arc(right - rad, top + rad, -Math.PI / 2, 0);
++  for (let s = 1; s <= steps; s++) {
++    const t = s / steps;
++    pts.push([right, top + rad + (bot - top - 2 * rad) * t]);
++  }
++  arc(right - rad, bot - rad, 0, Math.PI / 2);
++  for (let s = 1; s <= steps; s++) {
++    const t = s / steps;
++    pts.push([right - rad - (right - left - 2 * rad) * t, bot]);
++  }
++  arc(left + rad, bot - rad, Math.PI / 2, Math.PI);
++  for (let s = 1; s <= steps; s++) {
++    const t = s / steps;
++    pts.push([left, bot - rad - (bot - top - 2 * rad) * t]);
++  }
++  arc(left + rad, top + rad, Math.PI, (3 * Math.PI) / 2);
++  return pts;
++}
++
++function sparkleRing(): MochiPoint[] {
++  // Plump 5-point star, as on the mint tile of the design sheet (short, puffy points).
++  return roundedStar(64, 64, 5, 48, 26.5, 12, -Math.PI / 2);
++}
++
++function cloverRing(): MochiPoint[] {
++  // Four distinct lobes with a tight waist, like a lucky clover.
++  const d = 22.5;
++  const r = 21.2;
++  const lobes = [0, 1, 2, 3].map((i) => {
++    const a = -Math.PI / 2 + (i * Math.PI) / 2;
++    return { x: 64 + Math.cos(a) * d, y: 64 + Math.sin(a) * d, r };
++  });
++  return unionCircles(lobes, 64, 64);
++}
++
++function heartRing(): MochiPoint[] {
++  const pts: MochiPoint[] = [];
++  const n = 160;
++  for (let i = 0; i < n; i++) {
++    const t = Math.PI - (i / n) * Math.PI * 2;
++    const x = 16 * Math.sin(t) ** 3;
++    let y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
++    // Classic heart is skinny and sharp; plump it and round the bottom tip.
++    if (y > 0 && Math.abs(x) < 7) {
++      y += ((7 - Math.abs(x)) / 7) * 5.5;
++    }
++    let px = x * 2.25;
++    let py = -y * 2.35;
++    if (py > 16) {
++      const k = (py - 16) / 26;
++      py = 16 + (py - 16) * (1 - 0.45 * k);
++      px *= 1 + 0.14 * k;
++    }
++    pts.push([64 + px, 66 + py]);
++  }
++  return pts;
++}
++
++function flowerRing(): MochiPoint[] {
++  const petals = [0, 1, 2, 3, 4].map((i) => {
++    const a = -Math.PI / 2 + (i * 2 * Math.PI) / 5;
++    return { x: 64 + Math.cos(a) * 22.5, y: 64 + Math.sin(a) * 22.5, r: 19.8 };
++  });
++  return unionCircles([{ x: 64, y: 64, r: 17.5 }, ...petals], 64, 64);
++}
++
++function teardropRing(): MochiPoint[] {
++  // Fat rounded bulb tapering to a soft tip, built from a chain of circles.
++  return unionCircles(
++    [
++      { x: 64, y: 86, r: 34 },
++      { x: 64, y: 76, r: 32 },
++      { x: 64, y: 64, r: 25.5 },
++      { x: 64, y: 54, r: 18 },
++      { x: 64, y: 46, r: 12 },
++      { x: 64, y: 40, r: 8 },
++    ],
++    64,
++    70,
++  );
++}
++
++function beanRing(): MochiPoint[] {
++  // Upright lima / melted egg: taller than wide, a soft dent on the right, a slight lean.
++  return polar(64, 64, (a) => {
++    const c = Math.cos(a);
++    const s = Math.sin(a);
++    const rx = 31.5;
++    const ry = 35.5;
++    const ell = 1 / Math.sqrt((c / rx) ** 2 + (s / ry) ** 2);
++    const dent = 1 - 0.2 * Math.max(0, c) * (1 - Math.abs(s) ** 1.15);
++    const top = 1 - 0.05 * Math.max(0, -s);
++    return ell * dent * top;
++  }).map(([x, y]) => [x + (y - 64) * 0.1, y] as const);
++}
++
++function wedgeRing(): MochiPoint[] {
++  // Very rounded, plump triangle — a mochi mountain, not a polygon.
++  return roundedPolygon(64, 70, 3, 54, 32, -Math.PI / 2);
++}
++
++function houseRing(): MochiPoint[] {
++  return roundedPolygon(64, 66, 5, 50, 16, -Math.PI / 2);
++}
++
++function starRing(): MochiPoint[] {
++  // The pink plump 5-point star: slightly longer points than the mint sparkle.
++  return roundedStar(64, 64, 5, 49, 23.5, 11.5, -Math.PI / 2);
++}
++
++function hexRing(): MochiPoint[] {
++  // Flat-top hexagon, as on the design sheet.
++  return roundedPolygon(64, 64, 6, 44, 13, 0);
++}
++
++const RING_BUILDERS: Record<MochiShapeKey, () => MochiPoint[]> = {
++  blob: blobRing,
++  cloud: cloudRing,
++  square: squareRing,
++  sparkle: sparkleRing,
++  clover: cloverRing,
++  heart: heartRing,
++  flower: flowerRing,
++  teardrop: teardropRing,
++  tablet: beanRing,
++  wedge: wedgeRing,
++  house: houseRing,
++  star: starRing,
++  hex: hexRing,
++};
++
++/** Target width in the 128 viewbox, so every body has a similar visual weight. */
++const RING_WIDTH: Record<MochiShapeKey, number> = {
++  blob: 80,
++  cloud: 90,
++  square: 78,
++  sparkle: 88,
++  clover: 86,
++  heart: 84,
++  flower: 88,
++  teardrop: 72,
++  tablet: 72,
++  wedge: 86,
++  house: 84,
++  star: 88,
++  hex: 86,
++};
++
++/** Optional height cap so tall bodies (the drop) do not tower over their neighbours. */
++const RING_MAX_H: Partial<Record<MochiShapeKey, number>> = {
++  teardrop: 90,
++};
++
++const RING_SQUASH: Record<MochiShapeKey, number> = {
++  blob: 0.14,
++  cloud: 0.1,
++  square: 0.1,
++  sparkle: 0.08,
++  clover: 0.08,
++  heart: 0.08,
++  flower: 0.08,
++  teardrop: 0.1,
++  tablet: 0.1,
++  wedge: 0.12,
++  house: 0.1,
++  star: 0.08,
++  hex: 0.1,
++};
++
++/** Bottom of every body, leaving room underneath for a contact shadow. */
++const SIT_Y = 106;
++
++export type MochiMetrics = {
++  minX: number;
++  minY: number;
++  maxX: number;
++  maxY: number;
++  width: number;
++  height: number;
++  cx: number;
++  cy: number;
++};
++
++export function mochiMetricsOf(points: readonly MochiPoint[]): MochiMetrics {
++  let minX = Infinity;
++  let minY = Infinity;
++  let maxX = -Infinity;
++  let maxY = -Infinity;
++  let sx = 0;
++  let sy = 0;
++  for (const [x, y] of points) {
++    minX = Math.min(minX, x);
++    minY = Math.min(minY, y);
++    maxX = Math.max(maxX, x);
++    maxY = Math.max(maxY, y);
++    sx += x;
++    sy += y;
++  }
++  const n = Math.max(points.length, 1);
++  return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY, cx: sx / n, cy: sy / n };
++}
++
++function alignFromTop(points: MochiPoint[]): MochiPoint[] {
++  const { cx, cy } = mochiMetricsOf(points);
++  let best = 0;
++  let bestScore = Infinity;
++  for (let i = 0; i < points.length; i++) {
++    const p = points[i]!;
++    const ang = Math.atan2(p[1] - cy, p[0] - cx);
++    const d = Math.abs(((ang + Math.PI / 2 + Math.PI) % (Math.PI * 2)) - Math.PI);
++    if (d < bestScore) {
++      bestScore = d;
++      best = i;
++    }
++  }
++  return points.slice(best).concat(points.slice(0, best));
++}
++
++function fitRing(points: MochiPoint[], targetWidth: number, squash: number, maxHeight?: number): MochiPoint[] {
++  const squashed = sit(points, squash);
++  const m = mochiMetricsOf(squashed);
++  let scale = targetWidth / Math.max(m.width, 1);
++  if (maxHeight && m.height * scale > maxHeight) scale = maxHeight / m.height;
++  const midX = (m.minX + m.maxX) / 2;
++  const fitted = squashed.map(
++    ([x, y]) => [64 + (x - midX) * scale, SIT_Y - (m.maxY - y) * scale] as const,
++  );
++  return sampleClosed(alignFromTop(fitted), RING);
++}
++
++const RING_CACHE = new Map<string, MochiPoint[]>();
++
++export function mochiShapeRing(key: string): MochiPoint[] {
++  const shape = (MOCHI_SHAPE_KEYS as readonly string[]).includes(key) ? (key as MochiShapeKey) : "blob";
++  let ring = RING_CACHE.get(shape);
++  if (!ring) {
++    ring = fitRing(RING_BUILDERS[shape](), RING_WIDTH[shape], RING_SQUASH[shape], RING_MAX_H[shape]);
++    RING_CACHE.set(shape, ring);
++  }
++  return ring;
++}
++
++export function mochiBodyPath(key: string): string {
++  return mochiRingPath(mochiShapeRing(key));
++}
++
++export function mochiBodyMetrics(key: string): MochiMetrics {
++  return mochiMetricsOf(mochiShapeRing(key));
++}
++
++export function mochiMorphRing(fromKey: string, toKey: string, t: number): MochiPoint[] {
++  const a = mochiShapeRing(fromKey);
++  const b = mochiShapeRing(toKey);
++  const ease = t * t * (3 - 2 * t);
++  return a.map((p, i) => {
++    const q = b[i] ?? p;
++    return [lerp(p[0], q[0], ease), lerp(p[1], q[1], ease)] as const;
++  });
++}
++
++export function mochiIsShapeKey(key: string): key is MochiShapeKey {
++  return (MOCHI_SHAPE_KEYS as readonly string[]).includes(key);
++}
++
++/** Where the face sits on a body, as a share of the body's height from the top. */
++const FACE_Y: Record<MochiShapeKey, number> = {
++  blob: 0.54,
++  cloud: 0.56,
++  square: 0.52,
++  sparkle: 0.52,
++  clover: 0.52,
++  heart: 0.58,
++  flower: 0.54,
++  teardrop: 0.64,
++  tablet: 0.5,
++  wedge: 0.6,
++  house: 0.54,
++  star: 0.52,
++  hex: 0.52,
++};
++
++const FACE_SCALE: Record<MochiShapeKey, number> = {
++  blob: 1.08,
++  cloud: 1.0,
++  square: 1.08,
++  sparkle: 1.0,
++  clover: 0.98,
++  heart: 1.02,
++  flower: 0.98,
++  teardrop: 1.02,
++  tablet: 1.02,
++  wedge: 1.06,
++  house: 1.04,
++  star: 0.98,
++  hex: 1.04,
++};
++
++export type MochiFaceOrigin = { x: number; y: number; scale: number };
++
++export function mochiFaceOrigin(key: string): MochiFaceOrigin {
++  const shape = (MOCHI_SHAPE_KEYS as readonly string[]).includes(key) ? (key as MochiShapeKey) : "blob";
++  const m = mochiBodyMetrics(shape);
++  return {
++    x: 64,
++    y: m.minY + m.height * FACE_Y[shape],
++    scale: FACE_SCALE[shape],
++  };
++}
++
++// ─── faces ────────────────────────────────────────────────────────────────────
++
++export type MochiFaceParts = {
++  ink: string;
++  /** Filled paths (eyes, pupils, mouth bubbles). */
++  fills: { d: string; fill: string }[];
++  /** Round-capped strokes: [d, width]. */
++  strokes: { d: string; width: number }[];
++};
++
++function arc(
++  cx: number,
++  cy: number,
++  rx: number,
++  ry: number,
++  start: number,
++  end: number,
++): string {
++  const sx = cx + Math.cos(start) * rx;
++  const sy = cy + Math.sin(start) * ry;
++  const ex = cx + Math.cos(end) * rx;
++  const ey = cy + Math.sin(end) * ry;
++  const large = Math.abs(end - start) > Math.PI ? 1 : 0;
++  const sweep = end > start ? 1 : 0;
++  return `M${fmt(sx)} ${fmt(sy)}A${fmt(rx)} ${fmt(ry)} 0 ${large} ${sweep} ${fmt(ex)} ${fmt(ey)}`;
++}
++
++/**
++ * The small brown face for an expression. `blink` 0–1 closes both eyes into happy arcs.
++ * `glance` 0–1 looks to the right; `gazeY` < 0 looks up (thinking).
++ */
++export function mochiFace(
++  expression: MochiExpression,
++  opts: {
++    blink?: number;
++    glance?: number;
++    gazeX?: number;
++    gazeY?: number;
++    origin?: MochiFaceOrigin;
++  } = {},
++): MochiFaceParts {
++  const blink = opts.blink ?? 0;
++  const glance = opts.glance ?? 0;
++  const origin = opts.origin ?? { x: 64, y: 70, scale: 1 };
++  const s = origin.scale;
++  const gazeX = (opts.gazeX ?? 0) + glance * 3.2;
++  const gazeY = opts.gazeY ?? 0;
++  const ink = MOCHI_FACE_INK;
++  const fills: { d: string; fill: string }[] = [];
++  const strokes: { d: string; width: number }[] = [];
++
++  const midX = origin.x + gazeX * s;
++  const midY = origin.y + gazeY * s;
++  const gap = 10 * s;
++  const lx = midX - gap;
++  const rx = midX + gap;
++
++  const dot = (cx: number, cy: number, r: number, fill = ink) => {
++    fills.push({
++      d: `M${fmt(cx - r)} ${fmt(cy)}A${fmt(r)} ${fmt(r)} 0 1 0 ${fmt(cx + r)} ${fmt(cy)}A${fmt(r)} ${fmt(r)} 0 1 0 ${fmt(cx - r)} ${fmt(cy)}Z`,
++      fill,
++    });
++  };
++  const oval = (cx: number, cy: number, ra: number, rb: number, fill = ink) => {
++    fills.push({
++      d: `M${fmt(cx - ra)} ${fmt(cy)}A${fmt(ra)} ${fmt(rb)} 0 1 0 ${fmt(cx + ra)} ${fmt(cy)}A${fmt(ra)} ${fmt(rb)} 0 1 0 ${fmt(cx - ra)} ${fmt(cy)}Z`,
++      fill,
++    });
++  };
++  const smile = (cx: number, cy: number, w = 5.6, h = 3.3, width = 1.85) => {
++    strokes.push({ d: arc(cx, cy, w * s, h * s, Math.PI * 0.15, Math.PI * 0.85), width: width * s });
++  };
++  const frown = (cx: number, cy: number, w = 4.8, h = 2.9, width = 1.8) => {
++    strokes.push({ d: arc(cx, cy, w * s, h * s, -Math.PI * 0.85, -Math.PI * 0.15), width: width * s });
++  };
++  const happyEye = (cx: number, cy: number) => {
++    strokes.push({
++      d: arc(cx, cy + 1.6 * s, 5.1 * s, 4.0 * s, Math.PI * 1.1, Math.PI * 1.9),
++      width: 2.15 * s,
++    });
++  };
++  const sleepyEye = (cx: number, cy: number) => {
++    strokes.push({
++      d: arc(cx, cy, 5.0 * s, 2.0 * s, Math.PI * 0.12, Math.PI * 0.88),
++      width: 2.0 * s,
++    });
++  };
++  const winkEye = (cx: number, cy: number) => {
++    strokes.push({
++      d: `M${fmt(cx - 4.0 * s)} ${fmt(cy - 3.8 * s)}Q${fmt(cx + 3.6 * s)} ${fmt(cy)} ${fmt(cx - 4.0 * s)} ${fmt(cy + 3.8 * s)}`,
++      width: 2.1 * s,
++    });
++  };
++  const dash = (cx: number, cy: number, w = 4.0, width = 1.85) => {
++    strokes.push({ d: `M${fmt(cx - w * s)} ${fmt(cy)}L${fmt(cx + w * s)} ${fmt(cy)}`, width: width * s });
++  };
++  const brow = (cx: number, cy: number, dx: number, dy: number, w = 5.4) => {
++    const ang = Math.atan2(dy, dx);
++    const c = Math.cos(ang);
++    const si = Math.sin(ang);
++    const ww = w * s;
++    strokes.push({
++      d: `M${fmt(cx - c * ww)} ${fmt(cy - si * ww)}L${fmt(cx + c * ww)} ${fmt(cy + si * ww)}`,
++      width: 1.85 * s,
++    });
++  };
++
++  let kind: MochiExpression = expression;
++  if (blink > 0.55 && kind !== "wink" && kind !== "sleepy" && kind !== "happy") kind = "happy";
++
++  const closeDots = blink > 0 && blink <= 0.55 && (kind === "neutral" || kind === "surprised" || kind === "thinking" || kind === "determined" || kind === "worried");
++
++  switch (kind) {
++    case "neutral":
++      if (closeDots) {
++        oval(lx, midY - 2.2 * s, 3.3 * s, 3.3 * s * (1 - blink * 1.6), ink);
++        oval(rx, midY - 2.2 * s, 3.3 * s, 3.3 * s * (1 - blink * 1.6), ink);
++      } else {
++        dot(lx, midY - 2.2 * s, 3.35 * s);
++        dot(rx, midY - 2.2 * s, 3.35 * s);
++      }
++      smile(midX, midY + 8.0 * s, 5.0, 3.0, 1.8);
++      break;
++    case "happy":
++      happyEye(lx, midY - 1.4 * s);
++      happyEye(rx, midY - 1.4 * s);
++      smile(midX, midY + 7.8 * s, 5.8, 3.5, 2.0);
++      break;
++    case "wink":
++      winkEye(lx, midY - 1.0 * s);
++      if (blink > 0.55) happyEye(rx, midY - 1.4 * s);
++      else dot(rx, midY - 2.0 * s, 3.35 * s);
++      smile(midX, midY + 7.8 * s, 5.4, 3.2, 1.9);
++      break;
++    case "surprised":
++      dot(lx, midY - 2.8 * s, 3.55 * s);
++      dot(rx, midY - 2.8 * s, 3.55 * s);
++      dot(midX, midY + 8.2 * s, 3.25 * s);
++      break;
++    case "sleepy":
++      sleepyEye(lx, midY - 0.8 * s);
++      sleepyEye(rx, midY - 0.8 * s);
++      dash(midX, midY + 8.0 * s, 3.6, 1.85);
++      break;
++    case "determined":
++      brow(lx, midY - 8.2 * s, 1.0, 0.48, 4.8);
++      brow(rx, midY - 8.2 * s, -1.0, 0.48, 4.8);
++      if (closeDots) {
++        oval(lx, midY - 1.4 * s, 2.9 * s, 2.9 * s * (1 - blink * 1.6), ink);
++        oval(rx, midY - 1.4 * s, 2.9 * s, 2.9 * s * (1 - blink * 1.6), ink);
++      } else {
++        dot(lx, midY - 1.4 * s, 2.9 * s);
++        dot(rx, midY - 1.4 * s, 2.9 * s);
++      }
++      frown(midX, midY + 8.8 * s, 4.6, 2.8, 1.85);
++      break;
++    case "glance": {
++      sleepyEye(lx - 0.4 * s, midY - 0.4 * s);
++      oval(rx + 0.6 * s, midY - 1.4 * s, 5.2 * s, 3.7 * s, "#F7F1E8");
++      strokes.push({
++        d: ovalStroke(rx + 0.6 * s, midY - 1.4 * s, 5.2 * s, 3.7 * s),
++        width: 1.35 * s,
++      });
++      oval(rx + 2.6 * s, midY - 1.4 * s, 2.35 * s, 2.6 * s, ink);
++      smile(midX + 0.6 * s, midY + 8.0 * s, 4.2, 2.4, 1.7);
++      break;
++    }
++    case "worried":
++      brow(lx, midY - 8.4 * s, 1.0, -0.55, 4.6);
++      brow(rx, midY - 8.4 * s, -1.0, -0.55, 4.6);
++      if (closeDots) {
++        oval(lx, midY - 1.6 * s, 3.05 * s, 3.05 * s * (1 - blink * 1.6), ink);
++        oval(rx, midY - 1.6 * s, 3.05 * s, 3.05 * s * (1 - blink * 1.6), ink);
++      } else {
++        dot(lx, midY - 1.6 * s, 3.05 * s);
++        dot(rx, midY - 1.6 * s, 3.05 * s);
++      }
++      frown(midX, midY + 8.6 * s, 4.2, 2.6, 1.8);
++      break;
++    case "thinking":
++      dot(lx, midY - 3.6 * s, 3.1 * s);
++      dot(rx, midY - 3.6 * s, 3.1 * s);
++      smile(midX, midY + 7.4 * s, 4.0, 2.3, 1.7);
++      break;
++  }
++
++  return { ink, fills, strokes };
++}
++
++function ovalStroke(cx: number, cy: number, ra: number, rb: number): string {
++  return `M${fmt(cx - ra)} ${fmt(cy)}A${fmt(ra)} ${fmt(rb)} 0 1 0 ${fmt(cx + ra)} ${fmt(cy)}A${fmt(ra)} ${fmt(rb)} 0 1 0 ${fmt(cx - ra)} ${fmt(cy)}`;
++}
++
++// ─── activity & reduced motion ────────────────────────────────────────────────
++
++export type MochiMotionPlan = {
++  activity: MochiActivity;
++  expression: MochiExpression;
++  /** Breath squash amplitude, 0 when still. */
++  breathe: number;
++  /** Breath period in seconds. */
++  breathePeriod: number;
++  blink: boolean;
++  glance: boolean;
++  /** Side-to-side sway in degrees (thinking). */
++  sway: number;
++  /** Vertical bob amplitude as a share of size (working). */
++  bob: number;
++  hop: boolean;
++  shiver: boolean;
++  wobble: boolean;
++};
++
++const DONE_ACTIVITIES: readonly string[] = ["done", "settled", "complete", "succeeded"];
++
++/**
++ * Map the client's existing run/activity signals onto the five mochi states.
++ * `settling` is the short window after work ends, used for the happy hop.
++ */
++export function mochiActivityFromSignals(input: {
++  status?: string | null;
++  activity?: string | null;
++  settling?: boolean;
++}): MochiActivity {
++  const activity = (input.activity ?? "").toLowerCase();
++  const status = (input.status ?? "").toLowerCase();
++  if (activity === "error" || status === "failed" || status === "error") return "error";
++  if (activity === "thinking" || status === "thinking") return "thinking";
++  if (
++    activity === "working" ||
++    activity === "reading" ||
++    activity === "writing" ||
++    activity === "computer" ||
++    status === "running" ||
++    status === "queued" ||
++    status === "working"
++  )
++    return "working";
++  if (activity === "done" || input.settling || DONE_ACTIVITIES.includes(status)) return "done";
++  return "idle";
++}
++
++const EXPRESSIONS: Record<MochiActivity, MochiExpression> = {
++  idle: "neutral",
++  thinking: "thinking",
++  working: "determined",
++  done: "happy",
++  error: "worried",
++};
++
++/**
++ * What the avatar is allowed to play. Reduce Motion keeps a still body and the activity's face,
++ * with no blink, glance, hop, shiver or wobble.
++ */
++export function mochiMotionPlan(activity: MochiActivity, reducedMotion = false): MochiMotionPlan {
++  const expression = EXPRESSIONS[activity];
++  if (reducedMotion) {
++    return {
++      activity,
++      expression,
++      breathe: 0,
++      breathePeriod: 3,
++      blink: false,
++      glance: false,
++      sway: 0,
++      bob: 0,
++      hop: false,
++      shiver: false,
++      wobble: false,
++    };
++  }
++  switch (activity) {
++    case "thinking":
++      return {
++        activity,
++        expression,
++        breathe: 0.03,
++        breathePeriod: 2.6,
++        blink: true,
++        glance: false,
++        sway: 5,
++        bob: 0,
++        hop: false,
++        shiver: false,
++        wobble: false,
++      };
++    case "working":
++      return {
++        activity,
++        expression,
++        breathe: 0.055,
++        breathePeriod: 1.15,
++        blink: true,
++        glance: false,
++        sway: 0,
++        bob: 0.03,
++        hop: false,
++        shiver: false,
++        wobble: false,
++      };
++    case "done":
++      return {
++        activity,
++        expression,
++        breathe: 0.03,
++        breathePeriod: 2.4,
++        blink: false,
++        glance: false,
++        sway: 0,
++        bob: 0,
++        hop: true,
++        shiver: false,
++        wobble: false,
++      };
++    case "error":
++      return {
++        activity,
++        expression,
++        breathe: 0,
++        breathePeriod: 3,
++        blink: false,
++        glance: false,
++        sway: 0,
++        bob: 0,
++        hop: false,
++        shiver: true,
++        wobble: false,
++      };
++    default:
++      return {
++        activity,
++        expression,
++        breathe: 0.035,
++        breathePeriod: 3.2,
++        blink: true,
++        glance: true,
++        sway: 0,
++        bob: 0,
++        hop: false,
++        shiver: false,
++        wobble: true,
++      };
++  }
++}
++
++// ─── static SVG (previews, notifications, web) ────────────────────────────────
++
++export type MochiSvgOptions = {
++  shape: string;
++  color: string;
++  expression?: MochiExpression;
++  /** CSS pixels on each side. */
++  size?: number;
++  blink?: number;
++  glance?: number;
++  gazeX?: number;
++  gazeY?: number;
++  /** 0–1 breath amount; positive squashes down (lands, inhales). */
++  breath?: number;
++  dark?: boolean;
++  /** Include the soft drop shadow under the body. */
++  shadow?: boolean;
++  /** Optional in-between body, for editor morph previews. */
++  morphFrom?: string;
++  morphT?: number;
++  /** Hop lift in viewbox units (up is positive). */
++  hop?: number;
++  /** Horizontal shiver in viewbox units. */
++  shiverX?: number;
++};
++
++function faceMarkup(face: MochiFaceParts): string {
++  const bits: string[] = [];
++  for (const f of face.fills) bits.push(`<path d="${f.d}" fill="${f.fill}"/>`);
++  for (const s of face.strokes) {
++    bits.push(
++      `<path d="${s.d}" fill="none" stroke="${face.ink}" stroke-width="${s.width}" stroke-linecap="round" stroke-linejoin="round"/>`,
++    );
++  }
++  return bits.join("");
++}
++
++function contactShadow(m: MochiMetrics, color: string): string {
++  const cy = Math.min(118, m.maxY + 8);
++  const rx = Math.max(16, m.width * 0.42);
++  const layers = [
++    { k: 1.0, o: 0.22, ry: 5.5 },
++    { k: 1.25, o: 0.14, ry: 7.5 },
++    { k: 1.55, o: 0.08, ry: 10 },
++    { k: 1.9, o: 0.04, ry: 13 },
++  ];
++  return layers
++    .map(
++      (l) =>
++        `<ellipse cx="${fmt((m.minX + m.maxX) / 2)}" cy="${fmt(cy)}" rx="${fmt(rx * l.k)}" ry="${fmt(l.ry)}" fill="${color}" opacity="${l.o}"/>`,
++    )
++    .join("");
++}
++
++/**
++ * A self-contained SVG of one dumpling. Used by notification portraits and the QA previews so
++ * they share the same geometry the app draws.
++ */
++export function mochiAvatarSvg(opts: MochiSvgOptions): string {
++  const size = opts.size ?? 128;
++  const fill = mochiAvatarFill(opts.color, opts.dark ?? true);
++  const shades = mochiShades(fill);
++  const ring =
++    opts.morphFrom != null && (opts.morphT ?? 0) > 0
++      ? mochiMorphRing(opts.morphFrom, opts.shape, opts.morphT ?? 0)
++      : mochiShapeRing(opts.shape);
++  const path = mochiRingPath(ring);
++  const metrics = mochiMetricsOf(ring);
++  const face = mochiFace(opts.expression ?? "neutral", {
++    blink: opts.blink,
++    glance: opts.glance,
++    gazeX: opts.gazeX,
++    gazeY: opts.gazeY,
++    origin: mochiFaceOrigin(opts.shape),
++  });
++  const breath = opts.breath ?? 0;
++  const sx = 1 + breath * 0.05;
++  const sy = 1 - breath * 0.07;
++  const ox = 64;
++  const oy = SIT_Y;
++  const hop = opts.hop ?? 0;
++  const shiverX = opts.shiverX ?? 0;
++  const uid = `m${Math.abs(hashSeed(`${opts.shape}${fill}${path.slice(0, 24)}`)).toString(36)}`;
++  const hx = metrics.minX + metrics.width * 0.32;
++  const hy = metrics.minY + metrics.height * 0.3;
++  const hrx = metrics.width * 0.24;
++  const hry = metrics.height * 0.17;
++  const shadow = opts.shadow === false ? "" : contactShadow(metrics, shades.shadow);
++  return `<?xml version="1.0" encoding="UTF-8"?>
++<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="${MOCHI_VIEWBOX}" fill="none">
++  <defs>
++    <radialGradient id="${uid}-body" cx="32%" cy="28%" r="78%">
++      <stop offset="0%" stop-color="${shades.shine}"/>
++      <stop offset="28%" stop-color="${mix(fill, shades.shine, 0.28)}"/>
++      <stop offset="62%" stop-color="${fill}"/>
++      <stop offset="100%" stop-color="${shades.shade}"/>
++    </radialGradient>
++    <radialGradient id="${uid}-spec" cx="50%" cy="50%" r="50%">
++      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.92"/>
++      <stop offset="45%" stop-color="#FFFFFF" stop-opacity="0.35"/>
++      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
++    </radialGradient>
++    <linearGradient id="${uid}-bot" x1="0" y1="0" x2="0" y2="1">
++      <stop offset="40%" stop-color="${shades.deep}" stop-opacity="0"/>
++      <stop offset="100%" stop-color="${shades.deep}" stop-opacity="0.38"/>
++    </linearGradient>
++    <clipPath id="${uid}-clip"><path d="${path}"/></clipPath>
++  </defs>
++  ${shadow}
++  <g transform="translate(${fmt(shiverX)} ${fmt(-hop)}) translate(${ox} ${oy}) scale(${sx.toFixed(4)} ${sy.toFixed(4)}) translate(${-ox} ${-oy})">
++    <path d="${path}" fill="url(#${uid}-body)"/>
++    <g clip-path="url(#${uid}-clip)">
++      <rect x="0" y="0" width="128" height="128" fill="url(#${uid}-bot)"/>
++      <ellipse cx="${fmt(hx)}" cy="${fmt(hy)}" rx="${fmt(hrx)}" ry="${fmt(hry)}" fill="url(#${uid}-spec)"/>
++      <ellipse cx="${fmt(hx - hrx * 0.28)}" cy="${fmt(hy - hry * 0.28)}" rx="${fmt(hrx * 0.42)}" ry="${fmt(hry * 0.36)}" fill="#FFFFFF" opacity="0.32"/>
++    </g>
++    ${faceMarkup(face)}
++  </g>
++</svg>`;
++}
++
++function hashSeed(s: string): number {
++  let h = 2166136261;
++  for (let i = 0; i < s.length; i++) {
++    h ^= s.charCodeAt(i);
++    h = Math.imul(h, 16777619);
++  }
++  return h;
++}
 diff --git a/packages/core/src/model-settings-form.test.ts b/packages/core/src/model-settings-form.test.ts
 index 661f1a4f6..8d1d3507b 100644
 --- a/packages/core/src/model-settings-form.test.ts
@@ -169508,28 +171339,98 @@ index 4c607ce65..000000000
 -  return hash.digest("hex");
 -}
 diff --git a/packages/core/src/notification-avatar.ts b/packages/core/src/notification-avatar.ts
-index d2e0ae8db..8a52aa0e7 100644
+index d2e0ae8db..91bc0b65c 100644
 --- a/packages/core/src/notification-avatar.ts
 +++ b/packages/core/src/notification-avatar.ts
-@@ -11,8 +11,8 @@ import {
- } from "./avatar-shape.js";
- import { botEyeInk, resolvePersonaColorDef } from "./bot-avatar-colors.js";
+@@ -1,19 +1,10 @@
+ import { BotAvatarValueSchema, parseBotAvatarValue } from "@rakazo/contracts";
+ import { lightTokens } from "@rakazo/ui-tokens";
+-import type { AvatarEyes } from "./avatar-shape.js";
++import { resolvePersonaColorDef } from "./bot-avatar-colors.js";
  import {
+-  avatarEyeRects,
+-  avatarIdentitySeed,
+-  ORGANIC_AVATAR_EYES,
+-  ORGANIC_AVATAR_VIEWBOX,
+-  organicAvatarEyeTilt,
+-  organicAvatarPath,
+-} from "./avatar-shape.js";
+-import { botEyeInk, resolvePersonaColorDef } from "./bot-avatar-colors.js";
+-import {
 -  SHIPPED_BOT_AVATAR_EYES,
-   SHIPPED_BOT_AVATAR_VIEWBOX,
-+  shippedBotAvatarEyes,
-   shippedBotAvatarShapePath,
+-  SHIPPED_BOT_AVATAR_VIEWBOX,
+-  shippedBotAvatarShapePath,
++  officialFaceBodyKey,
++  officialFaceBodyKeyForColor,
++  SHIPPED_BOT_AVATAR_SHAPE_KEYS,
  } from "./bot-avatar-shapes.js";
  import {
-@@ -43,7 +43,7 @@ export function notificationAvatarSource(bot: {
-   let body: string;
-   if (parsed?.kind === "shape") {
-     viewBox = SHIPPED_BOT_AVATAR_VIEWBOX;
+   LOGO_AVATAR_BODY_Y,
+@@ -23,6 +14,7 @@ import {
+   logoAvatarEyeInk,
+ } from "./logo-avatar-art.js";
+ import { logoAvatarTraits } from "./logo-avatar-traits.js";
++import { mochiAvatarSvg } from "./mochi-avatar.js";
+ 
+ /** A static notification portrait, with the same identity, saved photo and silhouette as chat. */
+ export function notificationAvatarSource(bot: {
+@@ -38,34 +30,32 @@ export function notificationAvatarSource(bot: {
+     bot.id,
+     parsed && "color" in parsed ? parsed.color : bot.color,
+   ).hex;
+-  // The push is flattened onto white, so the eyes are inked for a light page.
+-  let viewBox: string;
+-  let body: string;
+-  if (parsed?.kind === "shape") {
+-    viewBox = SHIPPED_BOT_AVATAR_VIEWBOX;
 -    body = `<path d="${shippedBotAvatarShapePath(parsed.shapeIndex)}" fill="${color}"/>${barEyes(SHIPPED_BOT_AVATAR_EYES, botEyeInk(color, lightTokens))}`;
-+    body = `<path d="${shippedBotAvatarShapePath(parsed.shapeIndex)}" fill="${color}"/>${barEyes(shippedBotAvatarEyes(parsed.shapeIndex), botEyeInk(color, lightTokens))}`;
-   } else if (bot.avatarSet === "rakazo") {
+-  } else if (bot.avatarSet === "rakazo") {
++  if (bot.avatarSet === "rakazo" && parsed?.kind !== "shape") {
      const fill = logoAvatarTraits(bot.id, color).color;
      const { width, height, leftCx, rightCx, cy } = LOGO_AVATAR_EYES;
+     const eyes = [leftCx, rightCx]
+       .map((cx) => `<ellipse cx="${cx}" cy="${cy}" rx="${width / 2}" ry="${height / 2}"/>`)
+       .join("");
+-    viewBox = LOGO_AVATAR_VIEWBOX;
+-    body = `<g transform="translate(0 ${LOGO_AVATAR_BODY_Y})"><path d="${LOGO_BODY_PATH}" fill="${fill}"/><g fill="${logoAvatarEyeInk(fill, lightTokens)}">${eyes}</g></g>`;
+-  } else {
+-    const seed = avatarIdentitySeed(bot.id);
+-    viewBox = ORGANIC_AVATAR_VIEWBOX;
+-    body = `<path d="${organicAvatarPath(seed)}" fill="${color}"/><g transform="rotate(${organicAvatarEyeTilt(seed)})">${barEyes(ORGANIC_AVATAR_EYES, botEyeInk(color, lightTokens))}</g>`;
++    const body = `<g transform="translate(0 ${LOGO_AVATAR_BODY_Y})"><path d="${LOGO_BODY_PATH}" fill="${fill}"/><g fill="${logoAvatarEyeInk(fill, lightTokens)}">${eyes}</g></g>`;
++    return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="${LOGO_AVATAR_VIEWBOX}">${body}</svg>`)}`;
+   }
+-  return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="${viewBox}">${body}</svg>`)}`;
+-}
+-
+-function barEyes(eyes: AvatarEyes, fill: string): string {
+-  const rects = avatarEyeRects(eyes)
+-    .map(
+-      ({ x, y, width, height, rx }) =>
+-        `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="${rx}"/>`,
+-    )
+-    .join("");
+-  return `<g fill="${fill}">${rects}</g>`;
++  const shape =
++    parsed?.kind === "shape"
++      ? officialFaceBodyKey(
++          SHIPPED_BOT_AVATAR_SHAPE_KEYS[
++            ((Math.trunc(parsed.shapeIndex) % SHIPPED_BOT_AVATAR_SHAPE_KEYS.length) +
++              SHIPPED_BOT_AVATAR_SHAPE_KEYS.length) %
++              SHIPPED_BOT_AVATAR_SHAPE_KEYS.length
++          ] ?? "blob",
++        )
++      : officialFaceBodyKeyForColor(color, bot.id);
++  const svg = mochiAvatarSvg({
++    shape,
++    color,
++    expression: "neutral",
++    size: 96,
++    dark: false,
++    shadow: false,
++  });
++  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+ }
 diff --git a/packages/core/src/thread-snapshot-events.ts b/packages/core/src/thread-snapshot-events.ts
 index fb55d7087..2ce60c2a9 100644
 --- a/packages/core/src/thread-snapshot-events.ts
@@ -171890,14 +173791,18 @@ index 25445d099..a52af95b2 100644
    });
  
 diff --git a/packages/ui-web/src/bot-avatar.tsx b/packages/ui-web/src/bot-avatar.tsx
-index f0319929f..545e310da 100644
+index f0319929f..364997f48 100644
 --- a/packages/ui-web/src/bot-avatar.tsx
 +++ b/packages/ui-web/src/bot-avatar.tsx
-@@ -12,10 +12,10 @@ import {
+@@ -12,10 +12,14 @@ import {
    organicAvatarEyeTilt,
    organicAvatarPath,
    resolvePersonaColorDef,
 -  SHIPPED_BOT_AVATAR_EYES,
++  mochiActivityFromSignals,
++  mochiAvatarSvg,
++  officialFaceBodyKey,
++  officialFaceBodyKeyForColor,
    SHIPPED_BOT_AVATAR_SHAPE_KEYS,
    SHIPPED_BOT_AVATAR_SHAPES,
    SHIPPED_BOT_AVATAR_VIEWBOX,
@@ -171905,24 +173810,224 @@ index f0319929f..545e310da 100644
    shippedBotAvatarShapePath,
  } from "@rakazo/core";
  import type { ComponentProps, CSSProperties } from "react";
-@@ -231,7 +231,7 @@ export const BotAvatar = memo(function BotAvatar({
-         <g>
-           <path d={shippedBotAvatarShapePath(parsed.shapeIndex)} fill={colorDef.hex} />
-           <g className={cn("bot-character-eyes", eyeFill(colorDef.hex))}>
--            <BarEyes eyes={SHIPPED_BOT_AVATAR_EYES} />
-+            <BarEyes eyes={shippedBotAvatarEyes(parsed.shapeIndex)} />
-           </g>
-         </g>
-       </svg>
-@@ -399,7 +399,7 @@ export function BotShapePreview({
-         <svg viewBox={VIEWBOX} className="size-8 overflow-visible" aria-hidden="true">
-           <path d={shippedBotAvatarShapePath(shapeIndex)} fill={colorDef.hex} />
-           <g className={eyeFill(colorDef.hex)}>
--            <BarEyes eyes={SHIPPED_BOT_AVATAR_EYES} />
-+            <BarEyes eyes={shippedBotAvatarEyes(shapeIndex)} />
-           </g>
-         </svg>
+@@ -156,90 +160,81 @@ export const BotAvatar = memo(function BotAvatar({
+       />
+     );
+   }
+-  if (parsed.shapeIndex === undefined) {
+-    return (
+-      <OrganicAvatar
+-        color={colorDef.hex}
+-        identity={effectiveId}
+-        size={size}
+-        isWorking={isWorking}
+-        className={className}
+-      />
+-    );
+-  }
++  const shape = mochiWebShape(parsed.shapeIndex, colorDef.hex, effectiveId);
++  return (
++    <MochiWebAvatar
++      shape={shape}
++      color={colorDef.hex}
++      size={size}
++      status={status}
++      activity={activity}
++      isWorking={isWorking}
++      className={className}
++    />
++  );
++});
++
+ 
++/** Only live Rakazo consumers subscribe to public activity updates. */
++
++function mochiWebShape(shapeIndex: number | undefined, color: string, identity: string): string {
++  if (shapeIndex === undefined) return officialFaceBodyKeyForColor(color, identity);
++  const key =
++    SHIPPED_SHAPE_KEYS[
++      ((shapeIndex % SHIPPED_SHAPE_KEYS.length) + SHIPPED_SHAPE_KEYS.length) %
++        SHIPPED_SHAPE_KEYS.length
++    ] ?? "blob";
++  return officialFaceBodyKey(key);
++}
++
++function MochiWebAvatar({
++  shape,
++  color,
++  size,
++  status,
++  activity,
++  isWorking,
++  className,
++}: {
++  shape: string;
++  color: string;
++  size: number;
++  status?: string;
++  activity?: LogoAvatarActivity;
++  isWorking?: boolean;
++  className?: string;
++}) {
++  const expression = (
++    {
++      idle: "neutral",
++      thinking: "thinking",
++      working: "determined",
++      done: "happy",
++      error: "worried",
++    } as const
++  )[mochiActivityFromSignals({ status, activity })];
++  const svg = mochiAvatarSvg({
++    shape,
++    color,
++    expression,
++    size,
++    dark: true,
++    shadow: size >= 40,
++  });
+   return (
+     <div
+       className={cn(
+         "rakazo-bot-avatar bot-avatar-container relative inline-flex items-center justify-center shrink-0 select-none",
+         className,
        )}
+-      style={{
+-        width: size,
+-        height: size,
+-      }}
+-      data-working={isWorking}
+-    >
+-      <svg
+-        className="rakazo-bot-avatar-ring absolute pointer-events-none"
+-        style={{
+-          inset: -4,
+-          width: size + 8,
+-          height: size + 8,
+-          filter: `drop-shadow(0 0 6px ${colorDef.hex}) drop-shadow(0 0 10px #ffffff)`,
+-        }}
+-        viewBox="0 0 48 48"
+-        fill="none"
+-        aria-hidden="true"
+-      >
+-        <circle
+-          cx="24"
+-          cy="24"
+-          r="22"
+-          stroke={`url(#${id}-ring)`}
+-          strokeWidth="3.2"
+-          strokeLinecap="round"
+-          strokeDasharray="45 80"
+-        />
+-        <circle cx="43" cy="24" r="2.8" fill="#ffffff" />
+-        <defs>
+-          <linearGradient id={`${id}-ring`} x1="0%" y1="0%" x2="100%" y2="100%">
+-            <stop offset="0%" stopColor="#ffffff" stopOpacity="1" />
+-            <stop offset="60%" stopColor={colorDef.hex} stopOpacity="0.9" />
+-            <stop offset="100%" stopColor={colorDef.hex} stopOpacity="0" />
+-          </linearGradient>
+-        </defs>
+-      </svg>
+-      <svg
+-        viewBox={VIEWBOX}
+-        aria-hidden="true"
+-        className={cn(
+-          "overflow-visible transition-transform duration-300",
+-          isWorking
+-            ? "animate-pulse scale-[1.04] motion-reduce:animate-none"
+-            : "hover:scale-[1.03] motion-reduce:hover:scale-100",
+-        )}
+-        // Inline size so a parent's icon sizing (Button sizes bare SVGs) cannot shrink it.
+-        style={{
+-          width: size,
+-          height: size,
+-          filter: isWorking
+-            ? `drop-shadow(0 0 8px ${colorDef.hex}) drop-shadow(0 0 2px #ffffff)`
+-            : "drop-shadow(0 2px 4px rgba(0,0,0,0.45))",
+-        }}
+-      >
+-        <g>
+-          <path d={shippedBotAvatarShapePath(parsed.shapeIndex)} fill={colorDef.hex} />
+-          <g className={cn("bot-character-eyes", eyeFill(colorDef.hex))}>
+-            <BarEyes eyes={SHIPPED_BOT_AVATAR_EYES} />
+-          </g>
+-        </g>
+-      </svg>
+-    </div>
++      style={{ width: size, height: size }}
++      data-working={isWorking ? true : undefined}
++      dangerouslySetInnerHTML={{ __html: svg }}
++      aria-hidden="true"
++    />
+   );
+-});
++}
+ 
+-/** Only live Rakazo consumers subscribe to public activity updates. */
+ function LiveLogoAvatar({
+   status,
+   ...props
+@@ -396,12 +391,20 @@ export function BotShapePreview({
+       {shapeIndex === undefined ? (
+         <BotAvatar color={color} identity={identity} size={32} />
+       ) : (
+-        <svg viewBox={VIEWBOX} className="size-8 overflow-visible" aria-hidden="true">
+-          <path d={shippedBotAvatarShapePath(shapeIndex)} fill={colorDef.hex} />
+-          <g className={eyeFill(colorDef.hex)}>
+-            <BarEyes eyes={SHIPPED_BOT_AVATAR_EYES} />
+-          </g>
+-        </svg>
++        <div
++          className="size-8 overflow-visible"
++          aria-hidden="true"
++          dangerouslySetInnerHTML={{
++            __html: mochiAvatarSvg({
++              shape: mochiWebShape(shapeIndex, colorDef.hex, identity ?? "preview"),
++              color: colorDef.hex,
++              expression: "neutral",
++              size: 32,
++              dark: true,
++              shadow: false,
++            }),
++          }}
++        />
+       )}
+     </button>
+   );
+diff --git a/packages/ui-web/src/notification-avatar.test.tsx b/packages/ui-web/src/notification-avatar.test.tsx
+index cca4371db..9c095407d 100644
+--- a/packages/ui-web/src/notification-avatar.test.tsx
++++ b/packages/ui-web/src/notification-avatar.test.tsx
+@@ -29,16 +29,19 @@ it.each<[string, { color: string; avatarSet?: "rakazo" }]>([
+   );
+ 
+   const [svg] = tags(portrait, "svg");
+-  expect(tags(chat, "svg")).toContainEqual(expect.objectContaining({ viewBox: svg!.viewBox }));
++  expect(chat).toContain(`viewBox="${svg!.viewBox}"`);
+   const [body] = tags(portrait, "path");
+-  const bodyGeometry = bot.avatarSet === "rakazo" ? { d: body!.d } : body!;
+-  expect(tags(chat, "path")).toContainEqual(expect.objectContaining(bodyGeometry));
+-  if (bot.avatarSet === "rakazo") expect(chat).toContain(`data-color="${body!.fill}"`);
+-  for (const transform of tags(portrait, "g").flatMap((group) => group.transform ?? [])) {
+-    expect(chat).toContain(`transform="${transform}"`);
++  expect(body?.d).toBeTruthy();
++  expect(chat).toContain(body!.d);
++
++  if (bot.avatarSet === "rakazo") {
++    expect(chat).toContain(`data-color="${body!.fill}"`);
++    for (const transform of tags(portrait, "g").flatMap((group) => group.transform ?? [])) {
++      expect(chat).toContain(`transform="${transform}"`);
++    }
++    const eyes = [...tags(portrait, "rect"), ...tags(portrait, "ellipse")];
++    expect(eyes).toHaveLength(2);
++    const chatEyes = [...tags(chat, "rect"), ...tags(chat, "ellipse")];
++    for (const eye of eyes) expect(chatEyes).toContainEqual(expect.objectContaining(eye));
+   }
+-  const eyes = [...tags(portrait, "rect"), ...tags(portrait, "ellipse")];
+-  expect(eyes).toHaveLength(2);
+-  const chatEyes = [...tags(chat, "rect"), ...tags(chat, "ellipse")];
+-  for (const eye of eyes) expect(chatEyes).toContainEqual(expect.objectContaining(eye));
+ });
 diff --git a/scripts/build-server.mjs b/scripts/build-server.mjs
 index 2bec7b3ac..5606d5389 100644
 --- a/scripts/build-server.mjs

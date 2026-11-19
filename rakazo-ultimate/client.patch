@@ -136829,6 +136829,154 @@ index 000000000..2f0b17285
 +    count: { fontSize: 12, fontWeight: "600", color: tokens.mutedForeground },
 +  });
 +}
+diff --git a/apps/mobile/components/thread/special-message-card.tsx b/apps/mobile/components/thread/special-message-card.tsx
+index 6ca1bf240..c16036d88 100644
+--- a/apps/mobile/components/thread/special-message-card.tsx
++++ b/apps/mobile/components/thread/special-message-card.tsx
+@@ -5,7 +5,7 @@ import { cloudAgentHttpsUrl, helperCardState, displayName as safeDisplayName } f
+ import { typeScale } from "@rakazo/ui-tokens";
+ import { useEffect, useRef, useState } from "react";
+ import type { ViewInstance } from "react-native";
+-import { Linking, Pressable, Text, View } from "react-native";
++import { ActivityIndicator, Linking, Pressable, Text, View } from "react-native";
+ import Animated, {
+   useAnimatedStyle,
+   useReducedMotion,
+@@ -79,6 +79,33 @@ function HelperMessageCard({
+   const [stopping, setStopping] = useState(false);
+   const running = special.status === "running";
+   const { stopped, failed, body } = helperCardState(special);
++  if (special.style === "line") {
++    return (
++      <TaskStatusLine
++        special={special}
++        actionProps={actionProps}
++        open={subagentOpen}
++        onToggle={() => {
++          if (subagentOpen) openHelpers.delete(special.agentId);
++          else openHelpers.add(special.agentId);
++          setSubagentOpen(!subagentOpen);
++        }}
++        failed={failed}
++        stopped={stopped}
++        stopping={stopping}
++        onStop={
++          running && stopHelper
++            ? () => {
++                setStopping(true);
++                // The line settles from the chat's events once the work stops.
++                rpc("threads/stopHelper", stopHelper).catch(() => setStopping(false));
++              }
++            : undefined
++        }
++        mutedColor={tokens.mutedForeground}
++      />
++    );
++  }
+   return (
+     <Pressable
+       {...actionProps}
+@@ -200,6 +227,100 @@ function HelperMessageCard({
+   );
+ }
+ 
++/**
++ * A back-office task as one borderless gray line under the opening reply (idea 11, v25): a small
++ * spinner and 「<title> · <current step>」 while it runs, live; then 「✓ 已完成 · <title>」 with a
++ * chevron that opens the steps it took. The result itself arrives as an ordinary reply bubble.
++ */
++function TaskStatusLine({
++  special,
++  actionProps,
++  open,
++  onToggle,
++  failed,
++  stopped,
++  stopping,
++  onStop,
++  mutedColor,
++}: {
++  special: Extract<MessageBlock, { kind: "subagent" }>;
++  actionProps: MessageActionProps;
++  open: boolean;
++  onToggle: () => void;
++  failed: boolean;
++  stopped: boolean;
++  stopping: boolean;
++  onStop?: () => void;
++  mutedColor: string;
++}) {
++  const { t } = useLingui();
++  const running = special.status === "running";
++  const steps = special.steps ?? [];
++  const title = safeDisplayName(special.name, t`subagent`);
++  const label = running
++    ? special.progress
++      ? `${title} · ${special.progress}`
++      : title
++    : `${stopped ? t`Stopped` : failed ? t`Failed` : t`Completed`} · ${title}`;
++  return (
++    <View
++      testID="task-status-line"
++      style={{ alignSelf: "flex-start", maxWidth: "90%", paddingHorizontal: 4 }}
++    >
++      <Pressable
++        {...actionProps}
++        onPress={onToggle}
++        accessibilityRole="button"
++        accessibilityLabel={label}
++        accessibilityState={{ expanded: open }}
++        style={{ flexDirection: "row", alignItems: "center", gap: 6, minHeight: 28 }}
++      >
++        {running ? (
++          <ActivityIndicator
++            size="small"
++            color={mutedColor}
++            style={{ transform: [{ scale: 0.7 }] }}
++          />
++        ) : (
++          <NativeSymbol
++            ios={failed || stopped ? "xmark" : "checkmark"}
++            android={failed || stopped ? "close" : "checkmark"}
++            size={11}
++            color={mutedColor}
++          />
++        )}
++        <Text numberOfLines={1} style={{ flexShrink: 1, color: mutedColor, ...typeScale.caption }}>
++          {label}
++        </Text>
++        {!running || steps.length ? (
++          <View style={{ transform: [{ rotate: open ? "180deg" : "0deg" }] }}>
++            <NativeSymbol ios="chevron.down" android="chevron-down" size={10} color={mutedColor} />
++          </View>
++        ) : null}
++      </Pressable>
++      {open ? (
++        <View style={{ paddingLeft: 18, paddingBottom: 4, gap: 2 }}>
++          {steps.map((step, index) => (
++            <Text key={`${index}-${step}`} style={{ color: mutedColor, ...typeScale.caption }}>
++              {step}
++            </Text>
++          ))}
++          {onStop ? (
++            <NativeActionButton
++              label={t`Stop`}
++              prominence="secondary"
++              size="compact"
++              busy={stopping}
++              style={{ alignSelf: "flex-start", marginTop: 4 }}
++              onPress={onStop}
++            />
++          ) : null}
++        </View>
++      ) : null}
++    </View>
++  );
++}
++
+ export function SpecialMessageCard(props: SpecialMessageCardProps) {
+   const { special, actionProps, bots, members, onOpenBot, userBubble } = props;
+   const tokens = withUserBubble(mobileTokens(), userBubble);
 diff --git a/apps/mobile/components/thread/thread-composer-dock.tsx b/apps/mobile/components/thread/thread-composer-dock.tsx
 index 5e37b8300..addc66741 100644
 --- a/apps/mobile/components/thread/thread-composer-dock.tsx
@@ -149344,7 +149492,7 @@ index d353694df..a769c0111 100644
 +  });
 +});
 diff --git a/apps/mobile/lib/message-presentation.ts b/apps/mobile/lib/message-presentation.ts
-index 7d18d6cbc..ed3b86a91 100644
+index 7d18d6cbc..8a121063d 100644
 --- a/apps/mobile/lib/message-presentation.ts
 +++ b/apps/mobile/lib/message-presentation.ts
 @@ -1,4 +1,4 @@
@@ -149353,18 +149501,20 @@ index 7d18d6cbc..ed3b86a91 100644
  import { isRetiredImportSetup, isToolActivityBlock } from "@rakazo/core";
  import { MAX_QUOTABLE_SOURCE_LENGTH, visibleTextFromMarkdown } from "@rakazo/core/message-quote";
  
-@@ -28,6 +28,23 @@ export type MessagePresentationSegment = {
+@@ -28,6 +28,25 @@ export type MessagePresentationSegment = {
    blocks: MessageBlock[];
  };
  
 +/**
-+ * The front-desk task / helper / dispatch card (`kind: "subagent"`), in any status.
++ * The front-desk task / helper / dispatch card (`kind: "subagent"`), in any status, unless it is
++ * a status line (`style: "line"`).
 + * It stays in the snapshot (and on any task-detail surface), but the thread does
 + * not draw it. A message row that exists only to hold this card is hidden here,
 + * not by rewriting stored messages.
 + */
 +export function isThreadWorkCardBlock(block: MessageBlock): boolean {
-+  return block.kind === "subagent";
++  // A line-style task (idea 11, v25) is the one exception: it draws as a single gray status line.
++  return block.kind === "subagent" && block.style !== "line";
 +}
 +
 +/** Blocks the thread may still draw after work cards are taken out. */
@@ -149377,7 +149527,7 @@ index 7d18d6cbc..ed3b86a91 100644
  /** Blocks the thread draws as their own native card instead of inside the text bubble. */
  function isCardBlock(block: MessageBlock): boolean {
    return (
-@@ -41,12 +58,14 @@ function isCardBlock(block: MessageBlock): boolean {
+@@ -41,12 +60,14 @@ function isCardBlock(block: MessageBlock): boolean {
  export function messagePresentationSegments(
    blocks: readonly MessageBlock[],
  ): MessagePresentationSegment[] {
@@ -149394,7 +149544,7 @@ index 7d18d6cbc..ed3b86a91 100644
      (block) =>
        !isToolActivityBlock(block) && !isDismissedChoice(block) && !isRetiredImportSetup(block),
    );
-@@ -88,6 +107,19 @@ export function choiceCardOptions(block: ChoiceBlock): ChoiceBlock["options"] {
+@@ -88,6 +109,19 @@ export function choiceCardOptions(block: ChoiceBlock): ChoiceBlock["options"] {
      : block.options;
  }
  
@@ -149414,7 +149564,7 @@ index 7d18d6cbc..ed3b86a91 100644
  /** Pads the content, not the scroll view, so the scroll indicator stays on the screen edge. */
  export const THREAD_COLUMN_GUTTER = 20;
  const MESSAGE_COLUMN_RATIO = 0.9;
-@@ -135,3 +167,34 @@ export function quotableMessageSegments(
+@@ -135,3 +169,34 @@ export function quotableMessageSegments(
    byRole.set(role, segments);
    return segments;
  }
@@ -154433,7 +154583,7 @@ index 35333e611..939859cb7 100644
    }
  
 diff --git a/apps/mobile/lib/thread-card-width.test.tsx b/apps/mobile/lib/thread-card-width.test.tsx
-index 3a33e3805..0daf1fcf0 100644
+index 3a33e3805..38c623298 100644
 --- a/apps/mobile/lib/thread-card-width.test.tsx
 +++ b/apps/mobile/lib/thread-card-width.test.tsx
 @@ -25,6 +25,7 @@ vi.mock("react-native", async () => {
@@ -154463,7 +154613,15 @@ index 3a33e3805..0daf1fcf0 100644
            role: accessibilityRole,
            "aria-label": accessibilityLabel,
            onClick: onPress,
-@@ -103,6 +107,22 @@ vi.mock("../components/message-caption", () => ({
+@@ -58,6 +62,7 @@ vi.mock("react-native", async () => {
+       );
+     };
+   return {
++    ActivityIndicator: element("progress"),
+     Alert: { alert: vi.fn() },
+     Appearance: { getColorScheme: () => "light", addChangeListener: () => ({ remove() {} }) },
+     Linking: { openURL: vi.fn().mockResolvedValue(undefined) },
+@@ -103,6 +108,22 @@ vi.mock("../components/message-caption", () => ({
    MessageCaption: ({ text }: { text: string }) => <span>{text}</span>,
  }));
  vi.mock("../components/bot-avatar", () => ({ BotAvatar: () => <i /> }));
@@ -154486,7 +154644,7 @@ index 3a33e3805..0daf1fcf0 100644
  vi.mock("../components/native-symbol", () => ({
    NativeSymbol: ({ ios }: { ios: string }) => <i data-symbol={ios} />,
  }));
-@@ -241,7 +261,7 @@ describe("thread cards", () => {
+@@ -241,7 +262,7 @@ describe("thread cards", () => {
    }
  
    it.each(["user", "bot"] as const)(
@@ -154495,7 +154653,7 @@ index 3a33e3805..0daf1fcf0 100644
      (role) => {
        const onPreviewImage = vi.fn();
        renderBlocks(
-@@ -271,72 +291,145 @@ describe("thread cards", () => {
+@@ -271,72 +292,145 @@ describe("thread cards", () => {
            expect(style).not.toHaveProperty("paddingVertical");
          }
        }
@@ -154532,9 +154690,9 @@ index 3a33e3805..0daf1fcf0 100644
 +          expect.objectContaining({ artifactId: "image-2" }),
 +        ]),
 +      );
-     },
-   );
- 
++    },
++  );
++
 +
 +  it.each(["user", "bot"] as const)("gives a %s file card the message's own width", (role) => {
 +    const file: MessageBlock = {
@@ -154581,9 +154739,9 @@ index 3a33e3805..0daf1fcf0 100644
 +      const card = styleOf(outer.lastElementChild);
 +      expect(card).toMatchObject({ width: "100%" });
 +      expect(card).not.toHaveProperty("borderRadius");
-+    },
-+  );
-+
+     },
+   );
+ 
 +  it.each([
 +    ["user", "flex-end"],
 +    ["bot", "flex-start"],
@@ -154611,16 +154769,16 @@ index 3a33e3805..0daf1fcf0 100644
        "helper then text",
        [helper(), text("Ship Flow B")],
 -      ["agent-1CompletedCheck the plan", "Ship Flow B"],
--    ],
++      "Ship Flow B",
++      false,
+     ],
 -    ["text around a child", [text("Before"), child, text("After")], ["Before", "Planner", "After"]],
 -    ["cloud then text", [cloud, text("Cloud result")], ["Remote taskfinished", "Cloud result"]],
 -    [
 -      "two helpers",
 -      [helper(), helper("agent-2")],
 -      ["agent-1CompletedCheck the plan", "agent-2CompletedCheck the plan"],
-+      "Ship Flow B",
-+      false,
-     ],
+-    ],
 -  ])("renders %s in block order", (_, blocks, expected) => {
 +    ["text around a child", [text("Before"), child, text("After")], ["Before", "Planner", "After"], true],
 +    ["cloud then text", [cloud, text("Cloud result")], ["Remote taskfinished", "Cloud result"], true],
@@ -154639,8 +154797,10 @@ index 3a33e3805..0daf1fcf0 100644
 +      expect(container.textContent).toBe(expected);
 +      expect(container.querySelector("button[aria-expanded]")).toBeNull();
 +    }
-+  });
-+
+   });
+ 
+-  it.each([helper(), cloud])("preserves a lone $kind card's width and padding", (block) => {
+-    renderBlocks([block]);
 +  it("does not draw a message that is only work cards, in any status", () => {
 +    for (const status of ["running", "completed", "failed"] as const) {
 +      renderBlocks([
@@ -154650,10 +154810,8 @@ index 3a33e3805..0daf1fcf0 100644
 +      expect(container.textContent).toBe("");
 +      expect(container.querySelector("button[aria-expanded]")).toBeNull();
 +    }
-   });
- 
--  it.each([helper(), cloud])("preserves a lone $kind card's width and padding", (block) => {
--    renderBlocks([block]);
++  });
++
 +  it("preserves a lone cloud card's width and padding", () => {
 +    renderBlocks([cloud]);
      expect(container.children).toHaveLength(1);
@@ -154683,7 +154841,7 @@ index 3a33e3805..0daf1fcf0 100644
    });
  
    it.each([
-@@ -363,8 +456,9 @@ describe("thread cards", () => {
+@@ -363,8 +457,9 @@ describe("thread cards", () => {
        actionProps: { onLongPress },
      });
      const cards = [...container.firstElementChild!.children] as HTMLElement[];
@@ -154695,7 +154853,7 @@ index 3a33e3805..0daf1fcf0 100644
      expect(onOpenBot).toHaveBeenCalledWith("child-1", "Planner");
      act(() =>
        cards.forEach((card) => {
-@@ -372,15 +466,13 @@ describe("thread cards", () => {
+@@ -372,15 +467,13 @@ describe("thread cards", () => {
          target.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
        }),
      );
@@ -154714,7 +154872,7 @@ index 3a33e3805..0daf1fcf0 100644
      renderBlocks([text("First"), text("Second")]);
      expect(container.children).toHaveLength(1);
      expect(container.textContent).toBe("First\nSecond");
-@@ -398,53 +490,27 @@ describe("thread cards", () => {
+@@ -398,53 +491,27 @@ describe("thread cards", () => {
      expect(onLongPress).toHaveBeenCalledTimes(1);
    });
  
@@ -154779,7 +154937,7 @@ index 3a33e3805..0daf1fcf0 100644
    });
  
    function renderAsk(
-@@ -598,104 +664,31 @@ describe("thread cards", () => {
+@@ -598,104 +665,78 @@ describe("thread cards", () => {
      expect(styleOf(card).width).toBeUndefined();
    });
  
@@ -154826,63 +154984,6 @@ index 3a33e3805..0daf1fcf0 100644
 -    expect(container.textContent).toContain("Stopped");
 -    expect(container.textContent).not.toContain("Failed");
 -    expect(stopButton()).toBeUndefined();
--  });
--
--  it("folds a helper card to one line of the task until it is pressed, across its saved message", () => {
--    const message = {
--      id: "message-1",
--      role: "bot",
--      blocks: [
--        {
--          kind: "subagent",
--          agentId: "agent-1",
--          name: "writer",
--          task: longQuestion,
--          status: "completed",
--          result: "A long report",
--        },
--      ],
--    } as MobileMessage;
--    const onLongPress = vi.fn();
--    act(() =>
--      root.render(
--        <Bubble botId="bot-1" bots={[]} message={message} actionProps={{ onLongPress }} />,
--      ),
--    );
--    const card = () => container.querySelector("button[aria-expanded]");
--    expect(container.querySelector("[data-symbol='chevron.down']")).not.toBeNull();
--    expect(container.textContent).toContain("Completed");
--    act(() => card()?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true })));
--    expect(onLongPress).toHaveBeenCalled();
--    const task = () =>
--      [...container.querySelectorAll("span")].find((span) => span.textContent === longQuestion);
--    expect(card()?.getAttribute("aria-expanded")).toBe("false");
--    expect(task()?.getAttribute("data-number-of-lines")).toBe("1");
--    expect(container.textContent).not.toContain("A long report");
--
--    act(() => (card() as HTMLElement).click());
--    expect(card()?.getAttribute("aria-expanded")).toBe("true");
--    expect(task()?.hasAttribute("data-number-of-lines")).toBe(false);
--    expect(container.textContent).toContain("A long report");
--
--    onLongPress.mockClear();
--    act(() =>
--      container.querySelector("p")?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true })),
--    );
--    expect(onLongPress).toHaveBeenCalledTimes(1);
--    act(() => container.querySelector("p")?.click());
--    expect(card()?.getAttribute("aria-expanded")).toBe("true");
--
--    // The saved message replaces the live card under a new id; the card stays open.
--    const saved = { ...message, id: "message-2" };
--    act(() =>
--      root.render(<Bubble key="saved" botId="bot-1" bots={[]} message={saved} actionProps={{}} />),
--    );
--    expect(card()?.getAttribute("aria-expanded")).toBe("true");
--
--    act(() => (card() as HTMLElement).click());
--    expect(card()?.getAttribute("aria-expanded")).toBe("false");
--    expect(container.textContent).not.toContain("A long report");
 +    for (const status of ["running", "completed", "failed"] as const) {
 +      show({
 +        id: status === "running" ? "card-1" : `card-${status}`,
@@ -154904,6 +155005,102 @@ index 3a33e3805..0daf1fcf0 100644
 +      expect(container.querySelector("[data-symbol='chevron.down']")).toBeNull();
 +      expect(stopButton()).toBeUndefined();
 +    }
+   });
+ 
+-  it("folds a helper card to one line of the task until it is pressed, across its saved message", () => {
+-    const message = {
+-      id: "message-1",
+-      role: "bot",
+-      blocks: [
+-        {
+-          kind: "subagent",
+-          agentId: "agent-1",
+-          name: "writer",
+-          task: longQuestion,
+-          status: "completed",
+-          result: "A long report",
+-        },
+-      ],
+-    } as MobileMessage;
+-    const onLongPress = vi.fn();
++  it("draws a back-office task as one gray status line, live, then Completed · title with its steps (v25)", () => {
++    const task = (status: "running" | "completed", extra: Record<string, unknown> = {}) =>
++      ({
++        id: "card-line",
++        role: "bot",
++        botId: "bot-1",
++        blocks: [
++          {
++            kind: "subagent",
++            agentId: "task-line",
++            name: "查明天北京天气",
++            task: "查明天北京天气",
++            status,
++            style: "line",
++            ...extra,
++          },
++        ],
++      }) as MobileMessage;
+     act(() =>
+       root.render(
+-        <Bubble botId="bot-1" bots={[]} message={message} actionProps={{ onLongPress }} />,
++        <Bubble
++          botId="bot-1"
++          bots={[]}
++          message={task("running", { progress: "搜索网页", steps: ["开始处理", "搜索网页"] })}
++          actionProps={{}}
++        />,
+       ),
+     );
+-    const card = () => container.querySelector("button[aria-expanded]");
+-    expect(container.querySelector("[data-symbol='chevron.down']")).not.toBeNull();
+-    expect(container.textContent).toContain("Completed");
+-    act(() => card()?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true })));
+-    expect(onLongPress).toHaveBeenCalled();
+-    const task = () =>
+-      [...container.querySelectorAll("span")].find((span) => span.textContent === longQuestion);
+-    expect(card()?.getAttribute("aria-expanded")).toBe("false");
+-    expect(task()?.getAttribute("data-number-of-lines")).toBe("1");
+-    expect(container.textContent).not.toContain("A long report");
+-
+-    act(() => (card() as HTMLElement).click());
+-    expect(card()?.getAttribute("aria-expanded")).toBe("true");
+-    expect(task()?.hasAttribute("data-number-of-lines")).toBe(false);
+-    expect(container.textContent).toContain("A long report");
+-
+-    onLongPress.mockClear();
++    expect(container.textContent).toContain("查明天北京天气 · 搜索网页");
++    expect(container.querySelector("progress")).not.toBeNull();
++    expect(container.textContent).not.toContain("Running");
+     act(() =>
+-      container.querySelector("p")?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true })),
+-    );
+-    expect(onLongPress).toHaveBeenCalledTimes(1);
+-    act(() => container.querySelector("p")?.click());
+-    expect(card()?.getAttribute("aria-expanded")).toBe("true");
+-
+-    // The saved message replaces the live card under a new id; the card stays open.
+-    const saved = { ...message, id: "message-2" };
+-    act(() =>
+-      root.render(<Bubble key="saved" botId="bot-1" bots={[]} message={saved} actionProps={{}} />),
++      root.render(
++        <Bubble
++          botId="bot-1"
++          bots={[]}
++          message={task("completed", { steps: ["开始处理", "搜索网页", "整理结果"] })}
++          actionProps={{}}
++        />,
++      ),
+     );
+-    expect(card()?.getAttribute("aria-expanded")).toBe("true");
+-
+-    act(() => (card() as HTMLElement).click());
+-    expect(card()?.getAttribute("aria-expanded")).toBe("false");
+-    expect(container.textContent).not.toContain("A long report");
++    expect(container.textContent).toContain("Completed · 查明天北京天气");
++    expect(container.textContent).not.toContain("整理结果");
++    act(() => (container.querySelector("button[aria-expanded]") as HTMLElement).click());
++    expect(container.textContent).toContain("整理结果");
    });
  });
 diff --git a/apps/mobile/lib/thread-feedback.test.tsx b/apps/mobile/lib/thread-feedback.test.tsx
@@ -155243,6 +155440,32 @@ index d9f46950d..ca8cd68e0 100644
    // A save still waiting when the chat is cleared would write the old messages back.
    useEffect(() => {
      if (!botId) return;
+diff --git a/apps/mobile/lib/thread-transcript.ts b/apps/mobile/lib/thread-transcript.ts
+index 59254cfcd..e0266066e 100644
+--- a/apps/mobile/lib/thread-transcript.ts
++++ b/apps/mobile/lib/thread-transcript.ts
+@@ -5,6 +5,7 @@ import {
+   projectBotMentions,
+   projectMessageReactions,
+   shouldShowBotSenderName,
++  statusLinesAfterOpening,
+ } from "@rakazo/core";
+ import { useMemo, useState } from "react";
+ import { applyLocalChoiceDismissals, hasVisibleMessagePresentation } from "./message-presentation";
+@@ -76,8 +77,11 @@ export function useThreadTranscript(messages: MobileMessage[] | undefined, inGro
+   );
+   const visibleMessages = useMemo(
+     () =>
+-      reactionView.visibleMessages.filter(
+-        (message) => !exchanges.lineOf.has(message.id) || exchanges.lines.has(message.id),
++      // A task's status line sits under the opening reply that took the work (idea 11, v25).
++      statusLinesAfterOpening(
++        reactionView.visibleMessages.filter(
++          (message) => !exchanges.lineOf.has(message.id) || exchanges.lines.has(message.id),
++        ),
+       ),
+     [reactionView, exchanges],
+   );
 diff --git a/apps/mobile/lib/thread-voice.ts b/apps/mobile/lib/thread-voice.ts
 index 012b02bd0..d87646355 100644
 --- a/apps/mobile/lib/thread-voice.ts
@@ -166385,7 +166608,7 @@ index d45cd5ae9..c12089443 100644
  export type ThreadSnapshot = z.infer<typeof ThreadSnapshotSchema>;
  
 diff --git a/packages/contracts/src/events.ts b/packages/contracts/src/events.ts
-index 277ebf5d3..e7205f747 100644
+index 277ebf5d3..cf40587c4 100644
 --- a/packages/contracts/src/events.ts
 +++ b/packages/contracts/src/events.ts
 @@ -6,6 +6,35 @@ import { McpTransportSchema } from "./mcp.js";
@@ -166447,6 +166670,17 @@ index 277ebf5d3..e7205f747 100644
    }),
    z.object({
      /** Inline app authorization card (Composio-backed): logo, name, one-line
+@@ -278,6 +319,10 @@ export const MessageBlock = z.discriminatedUnion("kind", [
+     status: z.enum(["running", "completed", "failed"]),
+     progress: z.string().optional(),
+     result: z.string().optional(),
++    /** "line": a back-office task's inline status line under the opening reply (idea 11, v25). */
++    style: z.literal("line").optional(),
++    /** The work's person-readable steps so far, newest last: the line's details. */
++    steps: z.array(z.string()).max(20).optional(),
+   }),
+   z.object({
+     kind: z.literal("child_bot"),
 diff --git a/packages/contracts/src/grok-bot.ts b/packages/contracts/src/grok-bot.ts
 new file mode 100644
 index 000000000..8785a2bce
@@ -171859,7 +172093,7 @@ index 000000000..9f4991ac9
 +  return avatarClipPose(avatarClip(name), seconds);
 +}
 diff --git a/packages/core/src/index.ts b/packages/core/src/index.ts
-index 0e9e48b49..54a1998ac 100644
+index 0e9e48b49..8876b75df 100644
 --- a/packages/core/src/index.ts
 +++ b/packages/core/src/index.ts
 @@ -13,13 +13,17 @@ export * from "./avatar-clips.js";
@@ -171881,7 +172115,11 @@ index 0e9e48b49..54a1998ac 100644
  export * from "./bot-sections.js";
  export * from "./bot-sender-name.js";
  export * from "./bot-templates.js";
-@@ -68,8 +72,8 @@ export * from "./message-reactions.js";
+@@ -65,11 +69,12 @@ export * from "./mcp.js";
+ export * from "./mcp-app.js";
+ export * from "./message-pages.js";
+ export * from "./message-reactions.js";
++export * from "./status-line.js";
  export * from "./message-replies.js";
  export * from "./message-text.js";
  export * from "./message-visibility.js";
@@ -173582,6 +173820,109 @@ index d2e0ae8db..91bc0b65c 100644
 +  });
 +  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
  }
+diff --git a/packages/core/src/status-line.test.ts b/packages/core/src/status-line.test.ts
+new file mode 100644
+index 000000000..5c7f9cdf2
+--- /dev/null
++++ b/packages/core/src/status-line.test.ts
+@@ -0,0 +1,33 @@
++import { describe, expect, it } from "vitest";
++import { isStatusLineMessage, statusLinesAfterOpening } from "./status-line.js";
++
++const line = (id: string, at?: string) => ({ id, role: "bot", blocks: [{ kind: "subagent", style: "line" }], ...(at ? { createdAt: at } : {}) });
++const text = (id: string, role = "bot", at?: string) => ({ id, role, blocks: [{ kind: "text" }], ...(at ? { createdAt: at } : {}) });
++
++describe("the status line sits under the opening reply that took the work", () => {
++  it("moves the opening reply saved after the line up in front of it", () => {
++    const order = statusLinesAfterOpening([
++      text("ask", "user", "2026-11-20T00:00:00Z"),
++      line("card", "2026-11-20T00:00:04Z"),
++      text("opening", "bot", "2026-11-20T00:00:05Z"),
++      text("result", "bot", "2026-11-20T00:01:00Z"),
++    ]).map((m) => m.id);
++    expect(order).toEqual(["ask", "opening", "card", "result"]);
++  });
++
++  it("keeps two lines together under one opening, and a still-streaming reply counts", () => {
++    expect(statusLinesAfterOpening([line("a"), line("b"), text("live")]).map((m) => m.id)).toEqual(["live", "a", "b"]);
++  });
++
++  it("leaves a line alone when what follows is the person, or a reply long after", () => {
++    expect(statusLinesAfterOpening([line("card"), text("you", "user")]).map((m) => m.id)).toEqual(["card", "you"]);
++    expect(
++      statusLinesAfterOpening([line("card", "2026-11-20T00:00:00Z"), text("later", "bot", "2026-11-20T00:05:00Z")]).map((m) => m.id),
++    ).toEqual(["card", "later"]);
++  });
++
++  it("only a line-style task card is a status line; a helper's card is not", () => {
++    expect(isStatusLineMessage(line("x"))).toBe(true);
++    expect(isStatusLineMessage({ role: "bot", blocks: [{ kind: "subagent" }] })).toBe(false);
++  });
++});
+diff --git a/packages/core/src/status-line.ts b/packages/core/src/status-line.ts
+new file mode 100644
+index 000000000..582e8be1f
+--- /dev/null
++++ b/packages/core/src/status-line.ts
+@@ -0,0 +1,58 @@
++/**
++ * A back-office task's status line sits under the opening reply that took the work (idea 11, v25:
++ * 「主人，我去查一下明天北京的天气。」 then 「◌ 查明天北京天气 · 正在搜索…」). The card is written the
++ * moment the work is dispatched, inside the front desk's turn, so it is saved before the turn's own
++ * reply message; drawn in saved order it would sit above the line that announced it. This moves the
++ * opening reply that follows a run of status lines up in front of them.
++ */
++type Block = { kind: string; style?: string };
++type Message = { role: string; blocks: readonly Block[]; createdAt?: string | Date | null };
++
++/** How close the opening reply must follow the line to be the one that announced its work. */
++export const STATUS_LINE_OPENING_WINDOW_MS = 30_000;
++
++export function isStatusLineMessage(message: Message): boolean {
++  return (
++    message.role === "bot" &&
++    message.blocks.length > 0 &&
++    message.blocks.every((block) => block.kind === "subagent" && block.style === "line")
++  );
++}
++
++function hasText(message: Message): boolean {
++  return message.blocks.some((block) => block.kind === "text");
++}
++
++function timeOf(message: Message): number | undefined {
++  if (!message.createdAt) return undefined;
++  const at = new Date(message.createdAt).getTime();
++  return Number.isNaN(at) ? undefined : at;
++}
++
++export function statusLinesAfterOpening<M extends Message>(messages: readonly M[]): M[] {
++  const out: M[] = [];
++  let index = 0;
++  while (index < messages.length) {
++    const message = messages[index]!;
++    if (!isStatusLineMessage(message)) {
++      out.push(message);
++      index += 1;
++      continue;
++    }
++    let end = index;
++    while (end + 1 < messages.length && isStatusLineMessage(messages[end + 1]!)) end += 1;
++    const next = messages[end + 1];
++    const first = timeOf(message);
++    const after = next ? timeOf(next) : undefined;
++    // A live row (no time yet) is this turn's reply still streaming: it belongs above too.
++    const close = first === undefined || after === undefined || after - first <= STATUS_LINE_OPENING_WINDOW_MS;
++    if (next && next.role === "bot" && hasText(next) && close) {
++      out.push(next, ...messages.slice(index, end + 1));
++      index = end + 2;
++    } else {
++      out.push(...messages.slice(index, end + 1));
++      index = end + 1;
++    }
++  }
++  return out;
++}
 diff --git a/packages/core/src/thread-snapshot-events.ts b/packages/core/src/thread-snapshot-events.ts
 index fb55d7087..2ce60c2a9 100644
 --- a/packages/core/src/thread-snapshot-events.ts

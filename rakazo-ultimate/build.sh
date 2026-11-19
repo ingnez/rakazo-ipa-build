@@ -101,6 +101,11 @@ grep -q 'allowPreloadAfterFirstPaint' apps/mobile/app/index.tsx
 # v24 crashed on launch: React Native 0.88 ships no InteractionManager in release builds, and the
 # home screen's after-first-paint hook called it. Idle work goes through run-when-idle.ts only.
 test -f apps/mobile/lib/run-when-idle.ts
+# This round: a back-office task draws as one gray status line under the opening reply.
+test -f packages/core/src/status-line.ts
+grep -q 'function TaskStatusLine' apps/mobile/components/thread/special-message-card.tsx
+grep -q 'statusLinesAfterOpening' apps/mobile/lib/thread-transcript.ts
+grep -q 'style !== "line"' apps/mobile/lib/message-presentation.ts
 grep -q 'runWhenIdle' apps/mobile/lib/after-first-paint.ts
 if grep -RnsE '\bInteractionManager\b' apps/mobile/app apps/mobile/components apps/mobile/lib apps/mobile/hooks \
   --include='*.ts' --include='*.tsx' --exclude='*.test.ts' --exclude='*.test.tsx' | grep -v '^\S*:[0-9]*: *\(//\|\*\)'; then

@@ -3,7 +3,7 @@ name: Rakazo Ultimate iOS
 # main-branch builds use) and builds the branch it was dispatched on. Dispatch only: nothing runs
 # on push, nothing is released; the unsigned .ipa and the simulator screenshots are artifacts.
 on: [workflow_dispatch]
-concurrency: { group: rakazo-ios-${{ github.ref }}, cancel-in-progress: false }
+concurrency: { group: "rakazo-ios-${{ github.ref }}", cancel-in-progress: false }
 jobs:
   build:
     runs-on: xcode-27

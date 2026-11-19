@@ -3546,10 +3546,10 @@ index c938f4ead..725c94cff 100644
      addLabel: { color: native.label, fontSize: 17 },
      tile: {
 diff --git a/apps/mobile/app/_layout.tsx b/apps/mobile/app/_layout.tsx
-index e65118bfb..8942ffccb 100644
+index e65118bfb..1ac6adf1e 100644
 --- a/apps/mobile/app/_layout.tsx
 +++ b/apps/mobile/app/_layout.tsx
-@@ -24,7 +24,7 @@ import type { ReactNode } from "react";
+@@ -24,10 +24,11 @@ import type { ReactNode } from "react";
  import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
  import { Platform, ScrollView, StyleSheet, View } from "react-native";
  import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
@@ -3558,7 +3558,11 @@ index e65118bfb..8942ffccb 100644
  import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
  import { useSafeAreaInsets } from "react-native-safe-area-context";
  import { AppErrorBoundary } from "../components/app-error-boundary";
-@@ -48,6 +48,7 @@ import {
++import { AvatarReviewGallery } from "../components/avatar-review-gallery";
+ import { CallCard } from "../components/CallCard";
+ import { chatRouteHeader } from "../components/chat-route-header";
+ import { CodeCopyButton } from "../components/code-copy-button";
+@@ -48,6 +49,7 @@ import {
  } from "../lib/api";
  import { loadApiBase } from "../lib/api-server";
  import { clearAppBadge } from "../lib/app-badge";
@@ -3566,7 +3570,7 @@ index e65118bfb..8942ffccb 100644
  import { loadAppearancePreference, mobileTokens } from "../lib/appearance";
  import { replaceWithSignIn } from "../lib/auth-routing";
  import { AvatarScreenFocus } from "../lib/avatar-life";
-@@ -57,6 +58,7 @@ import { installClientUpdates, watchForegroundUpdates } from "../lib/client-upda
+@@ -57,6 +59,7 @@ import { installClientUpdates, watchForegroundUpdates } from "../lib/client-upda
  import { loadHapticsPreference } from "../lib/haptics";
  import { bootstrapI18n } from "../lib/i18n";
  import { startIncomingCalls } from "../lib/incoming-calls";
@@ -3574,7 +3578,7 @@ index e65118bfb..8942ffccb 100644
  import { clearLastBot } from "../lib/last-bot";
  import { loadLinkFavicon } from "../lib/link-favicons";
  import {
-@@ -67,6 +69,7 @@ import { OpenPageContext } from "../lib/message-mentions";
+@@ -67,6 +70,7 @@ import { OpenPageContext } from "../lib/message-mentions";
  import { setMobileMonitoringScreen } from "../lib/monitoring";
  import { native, useMobileTokens, useResolvedAppearance } from "../lib/native";
  import { useNotificationResponses } from "../lib/open-notification";
@@ -3582,7 +3586,7 @@ index e65118bfb..8942ffccb 100644
  import { clearQueries } from "../lib/query";
  import { useReferral } from "../lib/referral";
  import {
-@@ -96,7 +99,6 @@ import {
+@@ -96,7 +100,6 @@ import {
    markMobileStartupMounted,
    trackMobileStartup,
  } from "../lib/startup";
@@ -3590,7 +3594,7 @@ index e65118bfb..8942ffccb 100644
  import {
    loadTrustedLinkSites,
    trustLinkSite,
-@@ -106,8 +108,10 @@ import { startUnsentSends } from "../lib/unsent-sends";
+@@ -106,8 +109,10 @@ import { startUnsentSends } from "../lib/unsent-sends";
  import { startWorkActivities } from "../lib/work-activity";
  import { InboxPane } from "./index";
  
@@ -3603,7 +3607,7 @@ index e65118bfb..8942ffccb 100644
  configureForegroundNotifications();
  registerSessionDiskCache(clearSavedChats);
  registerSessionDiskCache(clearQueries);
-@@ -123,6 +127,16 @@ const DIVIDER_GRAB_WIDTH = 24;
+@@ -123,6 +128,16 @@ const DIVIDER_GRAB_WIDTH = 24;
  // Screens that take the whole window even when it is wide enough for the chat list beside them.
  const FULL_WINDOW_ROUTES = new Set(["/sign-in", "/server", "/image", "/computer", "/share"]);
  
@@ -3620,7 +3624,7 @@ index e65118bfb..8942ffccb 100644
  /** On a wide window the chat list stays on the left and the stack shows the open chat beside it. */
  function SplitFrame({ children }: { children: ReactNode }) {
    const pathname = usePathname();
-@@ -358,6 +372,13 @@ function LayoutContent() {
+@@ -358,6 +373,13 @@ function LayoutContent() {
      return startWorkActivities();
    }, [ready]);
  
@@ -3634,7 +3638,7 @@ index e65118bfb..8942ffccb 100644
    useEffect(() => watchForegroundUpdates(), []);
  
    useEffect(() => {
-@@ -370,6 +391,7 @@ function LayoutContent() {
+@@ -370,6 +392,7 @@ function LayoutContent() {
            setAppearanceReady(true),
          ),
          trackMobileStartup("streaming", loadResponseStreamingPreference()),
@@ -3642,7 +3646,7 @@ index e65118bfb..8942ffccb 100644
          trackMobileStartup("images", loadRemoteImagesPreference()),
          trackMobileStartup("inbox", loadInboxWidth()),
        ]).catch(() => undefined),
-@@ -396,7 +418,7 @@ function LayoutContent() {
+@@ -396,7 +419,7 @@ function LayoutContent() {
              <ThemeProvider value={navigationTheme}>
                <StatusBar style={resolved === "light" ? "dark" : "light"} />
                <CallKeyboardContext.Provider value={call}>
@@ -3651,7 +3655,7 @@ index e65118bfb..8942ffccb 100644
                    <SplitFrame>
                      <Stack
                        screenLayout={({ navigation, options, children }) => (
-@@ -422,6 +444,10 @@ function LayoutContent() {
+@@ -422,6 +445,10 @@ function LayoutContent() {
                          headerShadowVisible: false,
                          headerBackButtonDisplayMode: "minimal",
                          contentStyle: { backgroundColor: String(native.page) },
@@ -3662,7 +3666,7 @@ index e65118bfb..8942ffccb 100644
                        }}
                      >
                        <Stack.Screen
-@@ -432,10 +458,13 @@ function LayoutContent() {
+@@ -432,10 +459,13 @@ function LayoutContent() {
                          name="search"
                          options={{
                            headerShown: false,
@@ -3680,7 +3684,7 @@ index e65118bfb..8942ffccb 100644
                          }}
                        />
                        <Stack.Screen name="share" options={{ headerShown: false }} />
-@@ -452,12 +481,13 @@ function LayoutContent() {
+@@ -452,12 +482,13 @@ function LayoutContent() {
                          name="(settings)"
                          options={{
                            headerShown: false,
@@ -3700,7 +3704,7 @@ index e65118bfb..8942ffccb 100644
                            contentStyle: { backgroundColor: native.groupedPage },
                          }}
                        />
-@@ -484,7 +514,11 @@ function LayoutContent() {
+@@ -484,7 +515,11 @@ function LayoutContent() {
                          name="new-bot"
                          options={{
                            title: t`New bot`,
@@ -3713,7 +3717,7 @@ index e65118bfb..8942ffccb 100644
                            gestureEnabled: true,
                            headerBackVisible: false,
                          }}
-@@ -532,11 +566,13 @@ function LayoutContent() {
+@@ -532,11 +567,13 @@ function LayoutContent() {
                          name="page"
                          options={{
                            headerShown: false,
@@ -3731,7 +3735,7 @@ index e65118bfb..8942ffccb 100644
                          }}
                        />
                        <Stack.Screen
-@@ -594,14 +630,15 @@ function LayoutContent() {
+@@ -594,14 +631,15 @@ function LayoutContent() {
                        />
                      </Stack>
                    </SplitFrame>
@@ -3749,6 +3753,22 @@ index e65118bfb..8942ffccb 100644
                </CallKeyboardContext.Provider>
                <ComputerUpdateProgress />
                <MessageMenuHost />
+@@ -617,11 +655,14 @@ function LayoutContent() {
+   );
+ }
+ 
++/** A review build (CI simulator screenshots) opens on the avatar page instead of the app. */
++const AVATAR_REVIEW = process.env.EXPO_PUBLIC_AVATAR_REVIEW === "1";
++
+ export default function Layout() {
+   return (
+     <I18nProvider i18n={i18n}>
+       <AppErrorBoundary>
+-        <LayoutContent />
++        {AVATAR_REVIEW ? <AvatarReviewGallery /> : <LayoutContent />}
+       </AppErrorBoundary>
+     </I18nProvider>
+   );
 diff --git a/apps/mobile/app/bot-profile.tsx b/apps/mobile/app/bot-profile.tsx
 index 9187feee6..1d678ebb4 100644
 --- a/apps/mobile/app/bot-profile.tsx
@@ -4593,9 +4613,17 @@ index 0a5db832f..e27c4936c 100644
    );
  }
 diff --git a/apps/mobile/app/new-bot.tsx b/apps/mobile/app/new-bot.tsx
-index ad487f626..1bfd6670e 100644
+index ad487f626..5329e5ecc 100644
 --- a/apps/mobile/app/new-bot.tsx
 +++ b/apps/mobile/app/new-bot.tsx
+@@ -1,6 +1,6 @@
+ import { useLingui } from "@lingui/react/macro";
+ import type { BotAvatarSet } from "@rakazo/contracts";
+-import { BOT_NAME_MAX_LENGTH, resolveBotAvatarSet } from "@rakazo/contracts";
++import { BOT_COLOR_LIST, BOT_NAME_MAX_LENGTH, resolveBotAvatarSet } from "@rakazo/contracts";
+ import {
+   botLookState,
+   newBotLook,
 @@ -10,30 +10,67 @@ import {
  } from "@rakazo/core";
  import { Stack, useLocalSearchParams, useRouter } from "expo-router";
@@ -4627,7 +4655,7 @@ index ad487f626..1bfd6670e 100644
  
 -/** Names a new bot and picks its look before creating it, as web's New bot dialog does. */
 +/** The body a new bot arrives in: a vibrant one, since a white one disappears on a light page. */
-+const DEFAULT_NEW_BOT_COLOR = "#FFAF38";
++const DEFAULT_NEW_BOT_COLOR = BOT_COLOR_LIST.find((color) => color.id === "yellow")!.hex;
 +/**
 + * The bot is the screen's subject, drawn at the reference app's 168 points while the keyboard is
 + * down. When the keyboard comes up it does not slide away or get covered: it shrinks to 64, the
@@ -63062,6 +63090,117 @@ index e29608bdd..59ba82a51 100644
            trailing={
              <NativeSymbol
                android="chevron-expand"
+diff --git a/apps/mobile/components/avatar-review-gallery.tsx b/apps/mobile/components/avatar-review-gallery.tsx
+new file mode 100644
+index 000000000..cd419477f
+--- /dev/null
++++ b/apps/mobile/components/avatar-review-gallery.tsx
+@@ -0,0 +1,105 @@
++import { BOT_COLOR_LIST } from "@rakazo/contracts";
++import { OFFICIAL_FACE_SHAPE_KEYS, SHIPPED_BOT_AVATAR_SHAPE_KEYS } from "@rakazo/core";
++import * as SplashScreen from "expo-splash-screen";
++import { useEffect } from "react";
++import { ScrollView, Text, View } from "react-native";
++import { GestureHandlerRootView } from "react-native-gesture-handler";
++import { useMobileTokens } from "../lib/native";
++import { BotAvatar } from "./bot-avatar";
++
++/**
++ * A single still page of every palette colour, every body and a short bot list, drawn by the
++ * app's own `BotAvatar`. Only a review build compiled with `EXPO_PUBLIC_AVATAR_REVIEW=1` shows
++ * it (the CI simulator job photographs it in light and dark); a shipped build never does.
++ */
++export function AvatarReviewGallery() {
++  const tokens = useMobileTokens();
++  useEffect(() => {
++    void SplashScreen.hideAsync().catch(() => undefined);
++  }, []);
++  const colors = BOT_COLOR_LIST;
++  const label = { color: tokens.mutedForeground, fontSize: 13, marginTop: 18, marginBottom: 8 };
++  const shapeValue = (key: string, index: number) => {
++    const color = colors[(index % (colors.length - 2)) + 2]!.hex;
++    return `${color}::shape_${SHIPPED_BOT_AVATAR_SHAPE_KEYS.indexOf(key as never)}`;
++  };
++  const rows = [
++    {
++      id: "review-bot-1",
++      name: "Research",
++      note: "Found 3 papers on early sepsis bundles",
++      c: "violet",
++    },
++    { id: "review-bot-2", name: "Inbox", note: "2 replies drafted, waiting for you", c: "orange" },
++    {
++      id: "review-bot-3",
++      name: "Shift planner",
++      note: "Night block: sleep 08:30–15:00",
++      c: "green",
++    },
++    { id: "review-bot-4", name: "Parcel", note: "Out for delivery", c: "blue" },
++    { id: "review-bot-5", name: "Notes", note: "Saved", c: "black" },
++  ];
++  return (
++    <GestureHandlerRootView style={{ flex: 1, backgroundColor: tokens.background }}>
++      <ScrollView
++        contentContainerStyle={{ paddingTop: 64, paddingHorizontal: 20, paddingBottom: 40 }}
++      >
++        <Text style={{ color: tokens.foreground, fontSize: 28, fontWeight: "700" }}>Avatars</Text>
++        <Text style={label}>Palette · {colors.length} colours</Text>
++        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
++          {colors.map((color) => (
++            <View key={color.id} style={{ alignItems: "center", width: 50 }}>
++              <BotAvatar
++                color={color.hex}
++                identity={`review-${color.id}`}
++                size={44}
++                motion="static"
++              />
++              <Text
++                style={{ color: tokens.mutedForeground, fontSize: 9, marginTop: 2 }}
++                numberOfLines={1}
++              >
++                {color.name}
++              </Text>
++            </View>
++          ))}
++        </View>
++        <Text style={label}>Bodies · {OFFICIAL_FACE_SHAPE_KEYS.length}</Text>
++        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
++          {OFFICIAL_FACE_SHAPE_KEYS.map((key, index) => (
++            <BotAvatar
++              key={key}
++              color={shapeValue(key, index)}
++              identity={`shape-${key}`}
++              size={44}
++              motion="static"
++            />
++          ))}
++        </View>
++        <Text style={label}>Bot list</Text>
++        {rows.map((row) => (
++          <View
++            key={row.id}
++            style={{ flexDirection: "row", alignItems: "center", paddingVertical: 8, gap: 12 }}
++          >
++            <BotAvatar
++              color={colors.find((color) => color.id === row.c)!.hex}
++              identity={row.id}
++              size={44}
++              motion="static"
++            />
++            <View style={{ flex: 1 }}>
++              <Text style={{ color: tokens.foreground, fontSize: 16, fontWeight: "600" }}>
++                {row.name}
++              </Text>
++              <Text style={{ color: tokens.mutedForeground, fontSize: 14 }} numberOfLines={1}>
++                {row.note}
++              </Text>
++            </View>
++          </View>
++        ))}
++      </ScrollView>
++    </GestureHandlerRootView>
++  );
++}
 diff --git a/apps/mobile/components/bot-avatar.tsx b/apps/mobile/components/bot-avatar.tsx
 index a58981051..da6c0da8a 100644
 --- a/apps/mobile/components/bot-avatar.tsx
@@ -63755,14 +63894,15 @@ index ded60c8d9..81f662f15 100644
          />
        ))}
 diff --git a/apps/mobile/components/bot-look-picker.tsx b/apps/mobile/components/bot-look-picker.tsx
-index dc2c99b05..79e21e0a2 100644
+index dc2c99b05..d1fba701e 100644
 --- a/apps/mobile/components/bot-look-picker.tsx
 +++ b/apps/mobile/components/bot-look-picker.tsx
-@@ -1,27 +1,78 @@
+@@ -1,27 +1,79 @@
  import { ph } from "@lingui/core/macro";
  import { useLingui } from "@lingui/react/macro";
  import type { BotAvatarSet } from "@rakazo/contracts";
 -import { BOT_COLORS } from "@rakazo/contracts";
++import { BOT_COLOR_LIST } from "@rakazo/contracts";
  import {
 +  BABYGROK_BODIES,
 +  babygrokBodyPath,
@@ -63798,9 +63938,9 @@ index dc2c99b05..79e21e0a2 100644
 +
 +/** The color rows: six, then five, black first. White is left out — it vanishes on the page. */
 +const COLOR_ROWS: readonly (readonly string[])[] = [
-+  ["#000000", "#A27952", "#FF3E51", "#FF781C", "#FFAF38", "#00C972"],
-+  ["#1CC3B0", "#2A92FE", "#A97EFE", "#FF5EB1", "#959595"],
-+];
++  ["black", "brown", "red", "orange", "yellow", "green"],
++  ["cyan", "blue", "violet", "magenta", "gray"],
++].map((row) => row.map((id) => BOT_COLOR_LIST.find((color) => color.id === id)!.hex));
 +
 +const SHAPE_INDEX = new Map<string, number>(
 +  SHIPPED_BOT_AVATAR_SHAPE_KEYS.map((key, index) => [key, index]),
@@ -63842,7 +63982,7 @@ index dc2c99b05..79e21e0a2 100644
    avatarSet,
    disabled = false,
    onChange,
-@@ -29,6 +80,11 @@ export function BotLookPicker({
+@@ -29,6 +81,11 @@ export function BotLookPicker({
    value: string;
    identity?: string;
    organicIdentities?: readonly string[];
@@ -63854,7 +63994,7 @@ index dc2c99b05..79e21e0a2 100644
    avatarSet: BotAvatarSet;
    /** While the look is being saved, so what is shown stays what is saved. */
    disabled?: boolean;
-@@ -36,119 +92,172 @@ export function BotLookPicker({
+@@ -36,119 +93,172 @@ export function BotLookPicker({
  }) {
    const { t } = useLingui();
    const tokens = useMobileTokens();
@@ -64102,7 +64242,7 @@ index dc2c99b05..79e21e0a2 100644
    return (
      <Pressable
        accessibilityRole="radio"
-@@ -157,13 +266,69 @@ function Choice({
+@@ -157,13 +267,69 @@ function Choice({
        disabled={disabled}
        onPress={onPress}
        style={{
@@ -68721,10 +68861,11 @@ index 9e490fbd0..0e0022ce4 100644
  /** Native list rows are iOS only; elsewhere a row is its content. */
 diff --git a/apps/mobile/components/onboarding/tour-stage.tsx b/apps/mobile/components/onboarding/tour-stage.tsx
 new file mode 100644
-index 000000000..efca6734e
+index 000000000..17996e3e0
 --- /dev/null
 +++ b/apps/mobile/components/onboarding/tour-stage.tsx
-@@ -0,0 +1,252 @@
+@@ -0,0 +1,259 @@
++import { BOT_COLOR_LIST } from "@rakazo/contracts";
 +import { useEffect, useRef, useState } from "react";
 +import { StyleSheet, Text, View } from "react-native";
 +import Animated, {
@@ -68742,6 +68883,9 @@ index 000000000..efca6734e
 +import { BotAvatar } from "../bot-avatar";
 +import { SandPage } from "../sand";
 +import { NativeActionButton } from "../native-action-button";
++
++/** The tour's bot wears the palette's yellow, as a new bot does. */
++const TOUR_BOT_COLOR = BOT_COLOR_LIST.find((color) => color.id === "yellow")!.hex;
 +
 +/**
 + * The reference app's stage, in its own measurements: a 300×440 window onto the one thing this
@@ -68820,12 +68964,18 @@ index 000000000..efca6734e
 +
 +  const markStyle = useAnimatedStyle(() => ({
 +    // From the computer's screen, down onto the composer: two thirds of the stage's height.
-+    transform: [{ translateY: flight.value * STAGE_HEIGHT * 0.36 }, { scale: 1 + (flight.value > 1 ? 0.06 : 0) }],
++    transform: [
++      { translateY: flight.value * STAGE_HEIGHT * 0.36 },
++      { scale: 1 + (flight.value > 1 ? 0.06 : 0) },
++    ],
 +  }));
 +  const computerStyle = useAnimatedStyle(() => ({ opacity: 1 - flight.value * 0.15 }));
 +  const copyStyle = useAnimatedStyle(() => ({
 +    opacity: copyRise.value,
-+    transform: [{ translateY: (1 - copyRise.value) * 12 }, { scale: START_SCALE + copyRise.value * (1 - START_SCALE) }],
++    transform: [
++      { translateY: (1 - copyRise.value) * 12 },
++      { scale: START_SCALE + copyRise.value * (1 - START_SCALE) },
++    ],
 +  }));
 +
 +  return (
@@ -68834,12 +68984,7 @@ index 000000000..efca6734e
 +      tone="sheet"
 +      accessibilityLabel="开场"
 +      footer={
-+        <NativeActionButton
-+          fill
-+          label="开始使用"
-+          onPress={onDone}
-+          style={{ borderRadius: 26 }}
-+        />
++        <NativeActionButton fill label="开始使用" onPress={onDone} style={{ borderRadius: 26 }} />
 +      }
 +    >
 +      <View style={styles.stageFrame}>
@@ -68867,7 +69012,7 @@ index 000000000..efca6734e
 +            <View style={styles.computerFoot} />
 +          </Animated.View>
 +          <Animated.View style={[styles.mark, markStyle]}>
-+            <BotAvatar color="#FFAF38" motion="running" size={84} />
++            <BotAvatar color={TOUR_BOT_COLOR} motion="running" size={84} />
 +          </Animated.View>
 +          {/* The composer the Bot lands on, drawn as the chat's own bar. */}
 +          <View style={styles.composer}>
@@ -68882,7 +69027,9 @@ index 000000000..efca6734e
 +      </View>
 +      <Animated.View style={[styles.copy, copyStyle]}>
 +        <Text style={styles.heading}>你的 Bot，随时开工</Text>
-+        <Text style={styles.body}>说一句话，它在自己的电脑上把活干完，再把结果放回这个对话框。</Text>
++        <Text style={styles.body}>
++          说一句话，它在自己的电脑上把活干完，再把结果放回这个对话框。
++        </Text>
 +        {revealed ? <Text style={styles.routine}>{ROUTINE_LABEL}</Text> : null}
 +      </Animated.View>
 +    </SandPage>
@@ -78255,7 +78402,7 @@ index cdada5d78..0fb11df24 100644
  }));
  
 diff --git a/apps/mobile/lib/avatar-life.test.tsx b/apps/mobile/lib/avatar-life.test.tsx
-index 085ed884b..4f90cef57 100644
+index 085ed884b..88a35e039 100644
 --- a/apps/mobile/lib/avatar-life.test.tsx
 +++ b/apps/mobile/lib/avatar-life.test.tsx
 @@ -51,7 +51,11 @@ vi.mock("react-native-reanimated", () => {
@@ -78309,7 +78456,24 @@ index 085ed884b..4f90cef57 100644
    useMobileTokens: () => ({
      mutedForeground: "#888",
      background: "#FFF",
-@@ -160,10 +182,10 @@ describe("avatar motion on mobile", () => {
+@@ -113,7 +135,7 @@ vi.mock("./native", () => ({
+   }),
+ }));
+ 
+-const SHAPE = "#2A92FE::shape_2";
++const SHAPE = "#5C7EE9::shape_2";
+ 
+ describe("avatar motion on mobile", () => {
+   let root: Root;
+@@ -153,17 +175,17 @@ describe("avatar motion on mobile", () => {
+ 
+   it.each([
+     ["a shipped shape", SHAPE],
+-    ["an organic avatar", "#FF781C"],
++    ["an organic avatar", "#F6A14F"],
+   ] as const)("plays %s's working clips in the inbox while its bot works", (_, color) => {
+     render(<BotAvatar color={color} identity="bot-1" size={62} status="running" motion="lazy" />);
+     expect(clockStarted()).toBe(true);
      expect(awake()).toBe(1);
    });
  
@@ -78360,20 +78524,32 @@ index 085ed884b..4f90cef57 100644
    });
  
    it("only blinks a busy avatar under Reduce Motion", () => {
-@@ -370,9 +393,13 @@ describe("activity mark", () => {
+@@ -356,7 +379,7 @@ describe("activity mark", () => {
+   const render = (node: ReactNode) => act(() => root.render(node));
+   const bots = [
+     { id: "bot-a", color: SHAPE, status: "running" },
+-    { id: "bot-b", color: "#FF781C", status: "running" },
++    { id: "bot-b", color: "#F6A14F", status: "running" },
+   ];
+   const grewIn = () => motion.springs.some(([, config]) => config === MARK_SPRING);
+ 
+@@ -370,10 +393,14 @@ describe("activity mark", () => {
  
    it("shows each working member of a group in turn, every 2 s", () => {
      render(<ActivityMark bots={bots} atBottom />);
 +    // Each body is one flat official colour, so the first member shows its own fill — never a
 +    // gradient.
      const shown = () => container.querySelector("[data-fill]")?.getAttribute("data-fill");
-     expect(shown()).toBe("#2A92FE");
+-    expect(shown()).toBe("#2A92FE");
++    expect(shown()).toBe("#5C7EE9");
 +    expect(shown()).not.toMatch(/^url\(/);
      act(() => vi.advanceTimersByTime(2000));
+-    expect(shown()).toBe("#FF781C");
 +    // The second member is a plain-colour bot, so its official body is filled directly too.
-     expect(shown()).toBe("#FF781C");
++    expect(shown()).toBe("#F6A14F");
    });
  
+   it("stops cycling members and pulsing photo dots on a covered screen, and resumes on return", () => {
 diff --git a/apps/mobile/lib/avatar-life.tsx b/apps/mobile/lib/avatar-life.tsx
 index 8a24afe91..ff7539157 100644
 --- a/apps/mobile/lib/avatar-life.tsx
@@ -78535,7 +78711,7 @@ index 33a71724b..7e9d5457b 100644
    it("updates native SVG hosts with finite six-value matrices and numeric eye props", () => {
      render("#3EC5A8", "rakazo");
 diff --git a/apps/mobile/lib/bot-avatar.test.ts b/apps/mobile/lib/bot-avatar.test.ts
-index 180908eb4..db880ce10 100644
+index 180908eb4..8e5ed105e 100644
 --- a/apps/mobile/lib/bot-avatar.test.ts
 +++ b/apps/mobile/lib/bot-avatar.test.ts
 @@ -1,24 +1,102 @@
@@ -78550,7 +78726,8 @@ index 180908eb4..db880ce10 100644
      const presented = mobileBotAvatarPresentation("#8B5CF6::shape_3");
      expect(presented).toEqual({
        kind: "shape",
-       color: "#A97EFE",
+-      color: "#A97EFE",
++      color: "#A369D9",
        shapeIndex: 3,
 -      shapePath: shippedBotAvatarShapePath(3),
 +      bodyKey: shippedBodyKey(3),
@@ -78601,7 +78778,7 @@ index 180908eb4..db880ce10 100644
 -    expect(mobileBotAvatarPresentation("#123456")).toEqual({ kind: "color", color: "#123456" });
 +    expect(mobileBotAvatarPresentation("#8B5CF6", "bot-a")).toMatchObject({
 +      kind: "color",
-+      color: "#A97EFE",
++      color: "#A369D9",
 +    });
 +    expect(mobileBotAvatarPresentation("#123456", "bot-a")).toMatchObject({
 +      kind: "color",
@@ -78610,8 +78787,8 @@ index 180908eb4..db880ce10 100644
 +  });
 +
 +  it("gives a bot that never picked a body one of its own, and keeps it", () => {
-+    const first = mobileBotAvatarPresentation("#FF3E51", "bot-life");
-+    const again = mobileBotAvatarPresentation("#FF3E51", "bot-life");
++    const first = mobileBotAvatarPresentation("#EC4E2F", "bot-life");
++    const again = mobileBotAvatarPresentation("#EC4E2F", "bot-life");
 +    expect(first.kind === "color" && first.bodyKey).toBeTruthy();
 +    expect(again).toEqual(first);
 +  });
@@ -78626,7 +78803,7 @@ index 180908eb4..db880ce10 100644
 +  it("spreads colour-only bots over the thirteen bodies instead of one circle", () => {
 +    const ids = ["b1", "b2", "b3", "b4", "b5", "b6", "b7", "b8", "b9", "b10"];
 +    const bodies = ids.map((id) => {
-+      const presented = mobileBotAvatarPresentation("#2A92FE", id);
++      const presented = mobileBotAvatarPresentation("#5C7EE9", id);
 +      return presented.kind === "color" ? presented.bodyKey : "";
 +    });
 +    expect(new Set(bodies).size).toBeGreaterThan(3);
@@ -93608,6 +93785,58 @@ index d163cd66d..c2d1672f7 100644
                  }}
                  onPasskey={mode === "in" && passkey.supported ? passkey.start : undefined}
                />
+diff --git a/apps/web/src/pages/shell/create-bot-dialog.test.tsx b/apps/web/src/pages/shell/create-bot-dialog.test.tsx
+index 2f5df3108..b0470938d 100644
+--- a/apps/web/src/pages/shell/create-bot-dialog.test.tsx
++++ b/apps/web/src/pages/shell/create-bot-dialog.test.tsx
+@@ -114,26 +114,26 @@ describe("CreateBotDialog", () => {
+       .fn(async (_input: CreateBotDialogInput) => undefined)
+       .mockRejectedValueOnce(new Error("Try again"));
+     await render(onCreate, "rakazo");
+-    await click(button("Color #00C972"));
++    await click(button("Color #6EC04E"));
+     await typeName("Scout");
+     await click(button("Create"));
+-    expect(onCreate.mock.lastCall?.[0]).toMatchObject({ color: "#00C972" });
++    expect(onCreate.mock.lastCall?.[0]).toMatchObject({ color: "#6EC04E" });
+     await click(button("Create"));
+-    expect(onCreate.mock.lastCall?.[0]).toMatchObject({ color: "#00C972" });
++    expect(onCreate.mock.lastCall?.[0]).toMatchObject({ color: "#6EC04E" });
+   });
+ 
+   it("sends the organic family the preview draws", async () => {
+     const onCreate = vi.fn(async (_input: CreateBotDialogInput) => undefined);
+     await render(onCreate);
+     await click(button("Shape 2"));
+-    await click(button("Color #00C972"));
++    await click(button("Color #6EC04E"));
+     const preview = document.querySelector(".rakazo-organic-avatar");
+     const family = Number(preview?.getAttribute("data-shape-family"));
+     await typeName("Scout");
+     await click(button("Create"));
+     expect(onCreate).toHaveBeenCalledWith({
+       name: "Scout",
+-      color: "#00C972",
++      color: "#6EC04E",
+       avatarFamily: family,
+     });
+     expect(family).toBe(ORGANIC_AVATAR_LOOKS[1]);
+@@ -142,13 +142,13 @@ describe("CreateBotDialog", () => {
+   it("sends a studio shape without an organic family", async () => {
+     const onCreate = vi.fn(async (_input: CreateBotDialogInput) => undefined);
+     await render(onCreate);
+-    await click(button("Color #FF781C"));
++    await click(button("Color #F6A14F"));
+     await click(button("wedge"));
+     await typeName("Scout");
+     await click(button("Create"));
+     expect(onCreate).toHaveBeenCalledWith({
+       name: "Scout",
+-      color: "#FF781C::shape_1",
++      color: "#F6A14F::shape_1",
+     });
+   });
+ 
 diff --git a/apps/worker/turbo.json b/apps/worker/turbo.json
 deleted file mode 100644
 index 7ede8d6b9..000000000
@@ -99353,7 +99582,7 @@ index ce82a7a77..9a5df17ab 100644
  
  export const ATTACHMENT_ALLOWED_MIME_TYPES = [
 diff --git a/packages/contracts/src/bot-avatar.ts b/packages/contracts/src/bot-avatar.ts
-index c2e91d367..fed94f5b1 100644
+index c2e91d367..3e2718be6 100644
 --- a/packages/contracts/src/bot-avatar.ts
 +++ b/packages/contracts/src/bot-avatar.ts
 @@ -6,7 +6,10 @@ export type BotAvatarSet = z.infer<typeof BotAvatarSetSchema>;
@@ -99368,18 +99597,156 @@ index c2e91d367..fed94f5b1 100644
  }
  
  export interface BotColorDef {
-@@ -20,6 +23,9 @@ export interface BotColorDef {
+@@ -14,79 +17,122 @@ export interface BotColorDef {
+   name: string;
+   /** The bot's one color: its avatar, name and bubble all start from it. */
+   hex: string;
+-  /** Deeper value this color was stored as before; existing bots still resolve through it. */
+-  previousHex?: string;
++  /** The body's value on the dark page; absent for a colour the dark page draws as stored. */
++  darkHex?: string;
++  /**
++   * Values earlier builds stored for this colour. A bot saved with one of them is drawn, and
++   * counted, as this colour's current value, so no stored row has to be rewritten.
++   */
++  legacyHexes?: readonly string[];
+ }
  
- /** The one bot palette: every picker offers it and the server assigns from it. */
+-/** The one bot palette: every picker offers it and the server assigns from it. */
++/**
++ * The one bot palette: every picker offers it, the server assigns from it, and the push portrait
++ * and the app both draw from it. Rakazo's own twelve: one OKLCH family (light bodies near
++ * L 0.62-0.85, chroma 0.03-0.2) with each hue placed for this app; the dark value is the same hue
++ * about 0.085 darker. `legacyHexes` only keeps old rows resolving to the colour that replaced them.
++ */
  export const BOT_COLOR_LIST: readonly BotColorDef[] = [
-+  // Black heads the list: it is the body the reference app puts first, and a new bot may not be
-+  // white, which disappears on a light page.
-+  { id: "black", name: "Obsidian Black", hex: "#000000" },
-   { id: "white", name: "Staff White", hex: "#FFFFFF" },
+-  { id: "white", name: "Staff White", hex: "#FFFFFF" },
++  // Black heads the list; a new bot may not be white, which disappears on a light page.
++  { id: "black", name: "Midnight Ink", hex: "#171922", legacyHexes: ["#000000"] },
++  {
++    id: "white",
++    name: "Porcelain",
++    hex: "#F9F6F1",
++    darkHex: "#F9F6F1",
++    legacyHexes: ["#FFFFFF", "#FFF"],
++  },
    {
      id: "violet",
-@@ -85,8 +91,8 @@ export const BOT_COLOR_LIST: readonly BotColorDef[] = [
+-    name: "Executive Violet",
+-    hex: "#A97EFE",
+-    previousHex: "#8B5CF6",
++    name: "Iris",
++    hex: "#A369D9",
++    darkHex: "#8A4EBE",
++    legacyHexes: ["#A97EFE", "#8B5CF6"],
+   },
+   {
+     id: "green",
+-    name: "Emerald",
+-    hex: "#00C972",
+-    previousHex: "#10B981",
++    name: "Fern",
++    hex: "#6EC04E",
++    darkHex: "#52A52E",
++    legacyHexes: ["#00C972", "#10B981"],
+   },
+   {
+     id: "orange",
+-    name: "Forge Orange",
+-    hex: "#FF781C",
+-    previousHex: "#F97316",
++    name: "Apricot",
++    hex: "#F6A14F",
++    darkHex: "#DB862D",
++    legacyHexes: ["#FF781C", "#F97316"],
+   },
+   {
+     id: "cyan",
+-    name: "Cyber Cyan",
+-    hex: "#1CC3B0",
+-    previousHex: "#06B6D4",
++    name: "Lagoon",
++    hex: "#2BB8CA",
++    darkHex: "#009EB0",
++    legacyHexes: ["#1CC3B0", "#06B6D4"],
+   },
+   {
+     id: "blue",
+-    name: "Cobalt Blue",
+-    hex: "#2A92FE",
+-    previousHex: "#3B82F6",
++    name: "Cornflower",
++    hex: "#5C7EE9",
++    darkHex: "#4463CD",
++    legacyHexes: ["#2A92FE", "#3B82F6"],
+   },
+   {
+     id: "yellow",
+-    name: "Amber Gold",
+-    hex: "#FFAF38",
+-    previousHex: "#EAB308",
++    name: "Saffron",
++    hex: "#EEC945",
++    darkHex: "#D3AD10",
++    legacyHexes: ["#FFAF38", "#EAB308"],
+   },
+   {
+     id: "brown",
+-    name: "Caramel Bronze",
+-    hex: "#A27952",
+-    previousHex: "#8D6E63",
++    name: "Cocoa",
++    hex: "#8C5B4A",
++    darkHex: "#724332",
++    legacyHexes: ["#A27952", "#8D6E63"],
+   },
+   {
+     id: "red",
+-    name: "Crimson Red",
+-    hex: "#FF3E51",
+-    previousHex: "#EF4444",
++    name: "Poppy",
++    hex: "#EC4E2F",
++    darkHex: "#CF2B01",
++    legacyHexes: ["#FF3E51", "#EF4444"],
+   },
+   {
+     id: "magenta",
+-    name: "Neon Pink",
+-    hex: "#FF5EB1",
+-    previousHex: "#EC4899",
++    name: "Orchid",
++    hex: "#DE70C6",
++    darkHex: "#C254AC",
++    legacyHexes: ["#FF5EB1", "#EC4899"],
+   },
+   {
+     id: "gray",
+-    name: "Slate Silver",
+-    hex: "#94A3B8",
+-    previousHex: "#64748B",
++    name: "Slate",
++    hex: "#8594A4",
++    darkHex: "#687686",
++    legacyHexes: ["#94A3B8", "#64748B", "#959595"],
+   },
+ ];
  
++/** The palette colour a stored hex names, by its current or any earlier value. */
++export function botColorDefForHex(hex: string): BotColorDef | undefined {
++  const clean = hex.trim().toLowerCase();
++  return BOT_COLOR_LIST.find(
++    (color) =>
++      color.hex.toLowerCase() === clean ||
++      (color.legacyHexes ?? []).some((legacy) => legacy.toLowerCase() === clean),
++  );
++}
++
++/** Whether a stored colour is the palette's white, which pages treat as a pale body. */
++export function isWhiteBotColor(hex: string): boolean {
++  return botColorDefForHex(hex)?.id === "white";
++}
++
  export const BOT_COLORS: readonly string[] = BOT_COLOR_LIST.map((color) => color.hex);
  
 -/** Matches the eight shipped mascot shapes in `@rakazo/core`. */
@@ -101443,12 +101810,13 @@ index 7f7242638..abb48c2ef 100644
  
 diff --git a/packages/core/src/avatar-spec.test.ts b/packages/core/src/avatar-spec.test.ts
 new file mode 100644
-index 000000000..f3495d0a4
+index 000000000..20c73bb8c
 --- /dev/null
 +++ b/packages/core/src/avatar-spec.test.ts
-@@ -0,0 +1,83 @@
+@@ -0,0 +1,123 @@
 +import { existsSync, readFileSync } from "node:fs";
 +import { fileURLToPath } from "node:url";
++import { BOT_COLOR_LIST, botColorDefForHex, isWhiteBotColor } from "@rakazo/contracts";
 +import { describe, expect, it } from "vitest";
 +import {
 +  AVATAR_BODIES,
@@ -101494,7 +101862,10 @@ index 000000000..f3495d0a4
 +      for (let k = 0; k < AVATAR_VERTICES; k += 1) {
 +        const angle = (k / AVATAR_VERTICES) * Math.PI * 2;
 +        const d = body.budget[k]!;
-+        expect(eyesInside(body.ring, body.eyes, Math.cos(angle) * d, Math.sin(angle) * d, 2), `${key} ${k}`).toBe(true);
++        expect(
++          eyesInside(body.ring, body.eyes, Math.cos(angle) * d, Math.sin(angle) * d, 2),
++          `${key} ${k}`,
++        ).toBe(true);
 +      }
 +    }
 +  });
@@ -101515,16 +101886,52 @@ index 000000000..f3495d0a4
 +  it("picks eye ink that reads on every body colour, light and dark", () => {
 +    for (const [name, solid] of Object.entries(AVATAR_SOLIDS)) {
 +      for (const fill of [solid.light, solid.dark]) {
-+        expect(contrastRatio(fill, avatarEyeInk(fill)), `${name} ${fill}`).toBeGreaterThanOrEqual(3);
++        expect(contrastRatio(fill, avatarEyeInk(fill)), `${name} ${fill}`).toBeGreaterThanOrEqual(
++          3,
++        );
 +      }
 +    }
 +    expect(Object.keys(AVATAR_GRADIENTS)).toEqual(Object.keys(AVATAR_SOLIDS));
 +  });
 +
++  it("holds Rakazo's own twelve colours, none of them a value an earlier palette stored", () => {
++    expect(BOT_COLOR_LIST).toHaveLength(12);
++    const current = BOT_COLOR_LIST.flatMap((color) => [color.hex, color.darkHex ?? color.hex]).map(
++      (hex) => hex.toUpperCase(),
++    );
++    const legacy = BOT_COLOR_LIST.flatMap((color) => color.legacyHexes ?? []).map((hex) =>
++      hex.toUpperCase(),
++    );
++    for (const hex of current) expect(legacy, hex).not.toContain(hex);
++    // Twelve different bodies, and every stored earlier value still lands on its own colour.
++    expect(new Set(BOT_COLOR_LIST.map((color) => color.hex.toUpperCase())).size).toBe(12);
++    for (const color of BOT_COLOR_LIST) {
++      for (const hex of color.legacyHexes ?? [])
++        expect(botColorDefForHex(hex)?.id, hex).toBe(color.id);
++      expect(botColorDefForHex(color.hex)?.id).toBe(color.id);
++    }
++    expect(isWhiteBotColor("#FFFFFF")).toBe(true);
++    expect(isWhiteBotColor(BOT_COLOR_LIST.find((color) => color.id === "white")!.hex)).toBe(true);
++    expect(isWhiteBotColor("#000000")).toBe(false);
++  });
++
++  it("keeps every coloured body visible on both pages", () => {
++    for (const color of BOT_COLOR_LIST) {
++      if (color.id === "white" || color.id === "black") continue;
++      // Light page: the palest (yellow) still separates from white; dark page: from near-black.
++      expect(contrastRatio(color.hex, "#FFFFFF"), color.id).toBeGreaterThanOrEqual(1.5);
++      expect(contrastRatio(color.darkHex!, "#121214"), color.id).toBeGreaterThanOrEqual(2);
++    }
++  });
++
 +  it("ships no geometry or motion extracted from another app", () => {
 +    const here = (name: string) => fileURLToPath(new URL(name, import.meta.url));
 +    expect(existsSync(here("./babygrok-geometry.json"))).toBe(false);
-+    for (const file of ["./avatar-spec.ts", "./babygrok-geometry.ts", "./bot-motion-clips-data.ts"]) {
++    for (const file of [
++      "./avatar-spec.ts",
++      "./babygrok-geometry.ts",
++      "./bot-motion-clips-data.ts",
++    ]) {
 +      const text = readFileSync(here(file), "utf8");
 +      expect(text, file).not.toMatch(/main\.jsbundle|hbc-constants|clips-full\.json|byte for byte/);
 +    }
@@ -101532,10 +101939,10 @@ index 000000000..f3495d0a4
 +});
 diff --git a/packages/core/src/avatar-spec.ts b/packages/core/src/avatar-spec.ts
 new file mode 100644
-index 000000000..d67ef8262
+index 000000000..5b4033487
 --- /dev/null
 +++ b/packages/core/src/avatar-spec.ts
-@@ -0,0 +1,651 @@
+@@ -0,0 +1,789 @@
 +/**
 + * Rakazo's own avatar specification: the single source every renderer draws from.
 + *
@@ -101554,6 +101961,9 @@ index 000000000..d67ef8262
 + * - `budget[k]` is how far the eye pair may slide along the direction `k · 360/64°` measured from
 + *   due right (screen coordinates) and still sit wholly inside the body with a margin.
 + */
++
++import type { BotColorDef } from "@rakazo/contracts";
++import { BOT_COLOR_LIST } from "@rakazo/contracts";
 +
 +export const AVATAR_SPEC_VERSION = 1;
 +export const AVATAR_VERTICES = 64;
@@ -101598,8 +102008,10 @@ index 000000000..d67ef8262
 +  return 1 + height * Math.exp(-((d / width) ** 2));
 +};
 +
-+const lobes = (count: number, depth: number, turn = 0) => (phi: number) =>
-+  1 + depth * Math.cos(count * (phi - turn));
++const lobes =
++  (count: number, depth: number, turn = 0) =>
++  (phi: number) =>
++    1 + depth * Math.cos(count * (phi - turn));
 +
 +/** Top narrower (`t > 0`) or wider (`t < 0`) than the bottom. */
 +const taper = (t: number) => (phi: number) => 1 - t * Math.cos(phi);
@@ -101653,7 +102065,14 @@ index 000000000..d67ef8262
 +  ["pebble", times(superellipse(1, 0.88, 2.3), lobes(3, 0.025, 0.4)), 0.1],
 +  ["blob", times(() => 1, lobes(5, 0.04, 0.35)), 0.12],
 +  ["teardrop", times(() => 0.86, bump(0, 0.55, 0.26), taper(-0.04)), 0.14],
-+  ["cloud", flatBelow(times(() => 1, lobes(6, 0.07, 0)), 0.72), 0.1],
++  [
++    "cloud",
++    flatBelow(
++      times(() => 1, lobes(6, 0.07, 0)),
++      0.72,
++    ),
++    0.1,
++  ],
 +  ["bean", times(superellipse(1, 0.84, 2.2), bump((3 * Math.PI) / 2, 0.42, -0.13)), 0.12],
 +  ["egg", times(superellipse(0.84, 1, 2), taper(0.09)), 0.04],
 +  ["capsule", superellipse(0.6, 1, 2.6), 0.06],
@@ -101663,12 +102082,26 @@ index 000000000..d67ef8262
 +  ["shield", times(superellipse(0.92, 0.86, 3), bump(Math.PI, 0.5, 0.18)), 0.12],
 +  ["dome", flatBelow(() => 1, 0.6), 0.16],
 +  ["arch", flatBelow(superellipse(0.86, 1, 3.2), 0.72), 0.12],
-+  ["leaf", times(superellipse(0.66, 1, 1.7), bump(0.6, 0.4, 0.1), bump(0.6 + Math.PI, 0.4, 0.1)), 0.12],
++  [
++    "leaf",
++    times(superellipse(0.66, 1, 1.7), bump(0.6, 0.4, 0.1), bump(0.6 + Math.PI, 0.4, 0.1)),
++    0.12,
++  ],
 +  ["square", superellipse(0.94, 0.94, 7), 0.1],
 +  ["sparkle", (phi) => 0.6 + 0.4 * Math.abs(Math.cos(2 * phi)) ** 2.4, 0.18],
 +  ["clover", times(() => 1, lobes(4, 0.15, Math.PI / 4)), 0.1],
 +  ["flower", times(() => 1, lobes(6, 0.11, 0)), 0.08],
-+  ["heart", times(superellipse(1, 0.9, 2.1), bump(0, 0.34, -0.22), bump(Math.PI, 0.42, 0.14), bump(0.8, 0.5, 0.06), bump(-0.8, 0.5, 0.06)), 0.1],
++  [
++    "heart",
++    times(
++      superellipse(1, 0.9, 2.1),
++      bump(0, 0.34, -0.22),
++      bump(Math.PI, 0.42, 0.14),
++      bump(0.8, 0.5, 0.06),
++      bump(-0.8, 0.5, 0.06),
++    ),
++    0.1,
++  ],
 +  ["house", flatBelow(times(polygon(5, 0), bump(0, 0.3, 0.04)), 0.66), 0.2],
 +  ["star", (phi) => 0.76 + 0.24 * Math.cos(5 * phi), 0.16],
 +  ["pumpkin", times(superellipse(1, 0.84, 2.2), lobes(8, 0.045, 0), bump(0, 0.22, -0.08)), 0.06],
@@ -101829,7 +102262,8 @@ index 000000000..d67ef8262
 +/** The ring as an SVG path, for renderers that draw a still body (push images, web). */
 +export function avatarRingPath(ring: readonly number[], scale = 1, cx = 0, cy = 0): string {
 +  const n = ring.length / 2;
-+  const at = (i: number) => [cx + ring[(i % n) * 2]! * scale, cy + ring[(i % n) * 2 + 1]! * scale] as const;
++  const at = (i: number) =>
++    [cx + ring[(i % n) * 2]! * scale, cy + ring[(i % n) * 2 + 1]! * scale] as const;
 +  // A closed Catmull-Rom spline through the ring, written as cubic Béziers.
 +  let d = "";
 +  for (let i = 0; i < n; i += 1) {
@@ -101848,53 +102282,64 @@ index 000000000..d67ef8262
 +}
 +
 +/* ---------------------------------------------------------------------------------------------
-+ * Colour. Eleven named colours plus black; hand-picked for this app, each with a light-mode and a
-+ * dark-mode two-stop gradient and one flat fill for small sizes.
++ * Colour. The twelve palette colours live in `BOT_COLOR_LIST` (`@rakazo/contracts`), because the
++ * server assigns from the same list it draws push portraits with; this spec reads them from there
++ * and derives the two-stop gradients, so the palette has one table and nothing here repeats it.
 + * ------------------------------------------------------------------------------------------- */
 +
-+export const AVATAR_COLOR_NAMES = [
-+  "black",
-+  "brown",
-+  "red",
-+  "orange",
-+  "yellow",
-+  "green",
-+  "cyan",
-+  "blue",
-+  "violet",
-+  "magenta",
-+  "gray",
-+] as const;
++/** The body colours a renderer offers, white excepted (it vanishes on the light page). */
++export const AVATAR_COLOR_NAMES: readonly string[] = BOT_COLOR_LIST.filter(
++  (color) => color.id !== "white",
++).map((color) => color.id);
 +
++function paletteColor(id: string): BotColorDef {
++  return BOT_COLOR_LIST.find((color) => color.id === id)!;
++}
++
++/** The body's dark-page value: its own, or the palette's white for the black body. */
++function darkBody(color: BotColorDef): string {
++  return color.id === "black" ? paletteColor("white").hex : (color.darkHex ?? color.hex);
++}
++
++/** Mixes a `#rrggbb` colour toward white (`amount` > 0) or black (`amount` < 0) in sRGB. */
++function shade(hex: string, amount: number): string {
++  const value = Number.parseInt(hex.replace("#", "").slice(0, 6), 16);
++  const target = amount > 0 ? 255 : 0;
++  const t = Math.abs(amount);
++  const channel = (shift: number) => {
++    const c = (value >> shift) & 255;
++    return Math.round(c + (target - c) * t)
++      .toString(16)
++      .padStart(2, "0");
++  };
++  return `#${channel(16)}${channel(8)}${channel(0)}`.toUpperCase();
++}
++
++export const AVATAR_SOLIDS: Readonly<Record<string, { light: string; dark: string }>> =
++  Object.fromEntries(
++    AVATAR_COLOR_NAMES.map((id) => {
++      const color = paletteColor(id);
++      return [id, { light: color.hex, dark: darkBody(color) }];
++    }),
++  );
++
++/** A soft top-lit gradient around each solid: 18% lighter at the top, 12% deeper at the foot. */
 +export const AVATAR_GRADIENTS: Readonly<
 +  Record<string, { lightFrom: string; lightTo: string; darkFrom: string; darkTo: string }>
-+> = {
-+  black: { lightFrom: "#4A4A4F", lightTo: "#111114", darkFrom: "#F4F4F6", darkTo: "#CFCFD6" },
-+  brown: { lightFrom: "#B88E6A", lightTo: "#8A6040", darkFrom: "#A87E5A", darkTo: "#6A4A30" },
-+  red: { lightFrom: "#FF6B6B", lightTo: "#E23B3B", darkFrom: "#FF5A5A", darkTo: "#B02A2A" },
-+  orange: { lightFrom: "#FF9A4D", lightTo: "#EC6A12", darkFrom: "#FF8A3A", darkTo: "#C25510" },
-+  yellow: { lightFrom: "#FFC24D", lightTo: "#EE9A10", darkFrom: "#FFB63A", darkTo: "#C27D0C" },
-+  green: { lightFrom: "#3CD68E", lightTo: "#13A563", darkFrom: "#25C87E", darkTo: "#0E7F4C" },
-+  cyan: { lightFrom: "#5ED8CB", lightTo: "#12AB9A", darkFrom: "#2EC6B5", darkTo: "#0C7A6E" },
-+  blue: { lightFrom: "#5AA8FF", lightTo: "#1C7BE8", darkFrom: "#3E98FF", darkTo: "#1462BE" },
-+  violet: { lightFrom: "#B99BFF", lightTo: "#8455E6", darkFrom: "#9C6BFF", darkTo: "#5E3BA8" },
-+  magenta: { lightFrom: "#FF85C6", lightTo: "#E23A92", darkFrom: "#FF5AB0", darkTo: "#A8286A" },
-+  gray: { lightFrom: "#AFAFB4", lightTo: "#73737A", darkFrom: "#BDBDC3", darkTo: "#7C7C84" },
-+};
-+
-+export const AVATAR_SOLIDS: Readonly<Record<string, { light: string; dark: string }>> = {
-+  black: { light: "#16161A", dark: "#F2F2F5" },
-+  brown: { light: "#A57A55", dark: "#8A6040" },
-+  red: { light: "#F04B4B", dark: "#E23B3B" },
-+  orange: { light: "#FA7F2A", dark: "#EC6A12" },
-+  yellow: { light: "#FFB22E", dark: "#EE9A10" },
-+  green: { light: "#22C27A", dark: "#13A563" },
-+  cyan: { light: "#2CC2B2", dark: "#12AB9A" },
-+  blue: { light: "#3A92F5", dark: "#1C7BE8" },
-+  violet: { light: "#A07BF5", dark: "#8455E6" },
-+  magenta: { light: "#F25FAE", dark: "#E23A92" },
-+  gray: { light: "#909097", dark: "#73737A" },
-+};
++> = Object.fromEntries(
++  AVATAR_COLOR_NAMES.map((id) => {
++    const solid = AVATAR_SOLIDS[id]!;
++    return [
++      id,
++      {
++        lightFrom: shade(solid.light, 0.18),
++        lightTo: shade(solid.light, -0.12),
++        darkFrom: shade(solid.dark, 0.12),
++        darkTo: shade(solid.dark, -0.18),
++      },
++    ];
++  }),
++);
 +
 +/** Top-left to bottom-right. */
 +export const AVATAR_GRADIENT_ANGLE = 140;
@@ -101981,11 +102426,11 @@ index 000000000..d67ef8262
 +const EASE_OUT: AvatarEase = [0.2, 0.8, 0.3, 1];
 +const EASE_SPRING: AvatarEase = [0.3, 1.4, 0.5, 1];
 +
-+const k = (time: number, value: readonly number[], ease: AvatarEase = EASE_SOFT): AvatarKeyframe => [
-+  time,
-+  value,
-+  ease,
-+];
++const k = (
++  time: number,
++  value: readonly number[],
++  ease: AvatarEase = EASE_SOFT,
++): AvatarKeyframe => [time, value, ease];
 +
 +const clip = (duration: number, parts: Partial<AvatarClipSpec>): AvatarClipSpec => ({
 +  duration,
@@ -102015,12 +102460,23 @@ index 000000000..d67ef8262
 +  }),
 +  // Busy: small purposeful moves, the eyes sliding to where the work is.
 +  Working_A: clip(2.4, {
-+    position: [k(0, [0, 0]), k(0.6, [0, -0.03]), k(1.2, [0, 0]), k(1.8, [0, -0.03]), k(2.4, [0, 0])],
++    position: [
++      k(0, [0, 0]),
++      k(0.6, [0, -0.03]),
++      k(1.2, [0, 0]),
++      k(1.8, [0, -0.03]),
++      k(2.4, [0, 0]),
++    ],
 +    blinks: [1.5],
 +  }),
 +  Working_B: clip(3, {
 +    position: [k(0, [0, 0]), k(0.7, [-0.05, 0.02], EASE_OUT), k(2.2, [-0.05, 0.02]), k(3, [0, 0])],
-+    rotation: [k(0, [0, 0, 0]), k(0.7, [6, -10, 0], EASE_OUT), k(2.2, [6, -10, 0]), k(3, [0, 0, 0])],
++    rotation: [
++      k(0, [0, 0, 0]),
++      k(0.7, [6, -10, 0], EASE_OUT),
++      k(2.2, [6, -10, 0]),
++      k(3, [0, 0, 0]),
++    ],
 +    blinks: [1.6],
 +  }),
 +  Working_C: clip(3, {
@@ -102034,34 +102490,90 @@ index 000000000..d67ef8262
 +    blinks: [1.1],
 +  }),
 +  Working_E: clip(2.2, {
-+    rotation: [k(0, [0, 0, 0]), k(0.55, [0, 0, 5]), k(1.1, [0, 0, -5]), k(1.65, [0, 0, 5]), k(2.2, [0, 0, 0])],
++    rotation: [
++      k(0, [0, 0, 0]),
++      k(0.55, [0, 0, 5]),
++      k(1.1, [0, 0, -5]),
++      k(1.65, [0, 0, 5]),
++      k(2.2, [0, 0, 0]),
++    ],
 +  }),
 +  Working_F: clip(2.8, {
 +    position: [k(0, [0, 0]), k(0.9, [0, 0.03]), k(1.9, [0, 0.03]), k(2.8, [0, 0])],
 +    lids: [k(0, [0]), k(0.9, [0.35]), k(1.9, [0.35]), k(2.8, [0])],
 +  }),
 +  // Talking: a nod on each phrase.
-+  Streaming_A: clip(1.6, { rotation: [k(0, [0, 0, 0]), k(0.4, [5, 0, 0]), k(0.9, [0, 0, 0]), k(1.6, [0, 0, 0])] }),
-+  Streaming_B: clip(2, { rotation: [k(0, [0, 0, 0]), k(0.5, [3, 4, 1]), k(1.2, [0, 0, 0]), k(2, [0, 0, 0])], blinks: [1.5] }),
-+  Streaming_C: clip(1.8, { position: [k(0, [0, 0]), k(0.45, [0, -0.02]), k(0.9, [0, 0]), k(1.8, [0, 0])] }),
++  Streaming_A: clip(1.6, {
++    rotation: [k(0, [0, 0, 0]), k(0.4, [5, 0, 0]), k(0.9, [0, 0, 0]), k(1.6, [0, 0, 0])],
++  }),
++  Streaming_B: clip(2, {
++    rotation: [k(0, [0, 0, 0]), k(0.5, [3, 4, 1]), k(1.2, [0, 0, 0]), k(2, [0, 0, 0])],
++    blinks: [1.5],
++  }),
++  Streaming_C: clip(1.8, {
++    position: [k(0, [0, 0]), k(0.45, [0, -0.02]), k(0.9, [0, 0]), k(1.8, [0, 0])],
++  }),
 +  // Done: a hop and a happy face.
 +  Done_A: clip(1.6, {
-+    position: [k(0, [0, 0]), k(0.25, [0, 0.03]), k(0.6, [0, -0.14], EASE_OUT), k(1.0, [0, 0], EASE_SPRING), k(1.6, [0, 0])],
-+    squash: [k(0, [1, 1]), k(0.25, [1.08, 0.92]), k(0.6, [0.95, 1.06]), k(1.0, [1.05, 0.95]), k(1.3, [1, 1])],
-+    faces: [[0.2, "happy", 0], [1.5, "neutral", 0]],
++    position: [
++      k(0, [0, 0]),
++      k(0.25, [0, 0.03]),
++      k(0.6, [0, -0.14], EASE_OUT),
++      k(1.0, [0, 0], EASE_SPRING),
++      k(1.6, [0, 0]),
++    ],
++    squash: [
++      k(0, [1, 1]),
++      k(0.25, [1.08, 0.92]),
++      k(0.6, [0.95, 1.06]),
++      k(1.0, [1.05, 0.95]),
++      k(1.3, [1, 1]),
++    ],
++    faces: [
++      [0.2, "happy", 0],
++      [1.5, "neutral", 0],
++    ],
 +  }),
 +  Done_B: clip(1.8, {
-+    rotation: [k(0, [0, 0, 0]), k(0.3, [0, 0, 8]), k(0.6, [0, 0, -8]), k(0.9, [0, 0, 6]), k(1.2, [0, 0, 0])],
-+    faces: [[0.1, "happy", 0], [1.7, "neutral", 0]],
++    rotation: [
++      k(0, [0, 0, 0]),
++      k(0.3, [0, 0, 8]),
++      k(0.6, [0, 0, -8]),
++      k(0.9, [0, 0, 6]),
++      k(1.2, [0, 0, 0]),
++    ],
++    faces: [
++      [0.1, "happy", 0],
++      [1.7, "neutral", 0],
++    ],
 +  }),
 +  Done_C: clip(2.2, {
-+    position: [k(0, [0, 0]), k(0.35, [0, -0.12], EASE_OUT), k(0.7, [0, 0], EASE_SPRING), k(1.05, [0, -0.1], EASE_OUT), k(1.4, [0, 0], EASE_SPRING), k(2.2, [0, 0])],
-+    faces: [[0.1, "happy", 0], [2.1, "neutral", 0]],
++    position: [
++      k(0, [0, 0]),
++      k(0.35, [0, -0.12], EASE_OUT),
++      k(0.7, [0, 0], EASE_SPRING),
++      k(1.05, [0, -0.1], EASE_OUT),
++      k(1.4, [0, 0], EASE_SPRING),
++      k(2.2, [0, 0]),
++    ],
++    faces: [
++      [0.1, "happy", 0],
++      [2.1, "neutral", 0],
++    ],
 +  }),
 +  // Stuck: a small shake, then a droop.
 +  Blocked_A: clip(2, {
-+    rotation: [k(0, [0, 0, 0]), k(0.2, [0, -10, 0]), k(0.4, [0, 10, 0]), k(0.6, [0, -7, 0]), k(0.8, [0, 0, 0])],
-+    faces: [[0.1, "confused", 0], [1.8, "neutral", 0]],
++    rotation: [
++      k(0, [0, 0, 0]),
++      k(0.2, [0, -10, 0]),
++      k(0.4, [0, 10, 0]),
++      k(0.6, [0, -7, 0]),
++      k(0.8, [0, 0, 0]),
++    ],
++    faces: [
++      [0.1, "confused", 0],
++      [1.8, "neutral", 0],
++    ],
 +  }),
 +  Blocked_B: clip(3, {
 +    position: [k(0, [0, 0]), k(1.2, [0, 0.06]), k(3, [0, 0.06])],
@@ -102075,27 +102587,53 @@ index 000000000..d67ef8262
 +  }),
 +  // Playful and proud, for the moments the app wants a little character.
 +  Bodymoves_A: clip(3, {
-+    rotation: [k(0, [0, 0, 0]), k(0.75, [0, 0, 7]), k(1.5, [0, 0, 0]), k(2.25, [0, 0, -7]), k(3, [0, 0, 0])],
++    rotation: [
++      k(0, [0, 0, 0]),
++      k(0.75, [0, 0, 7]),
++      k(1.5, [0, 0, 0]),
++      k(2.25, [0, 0, -7]),
++      k(3, [0, 0, 0]),
++    ],
 +    position: [k(0, [0, 0]), k(0.75, [0.03, 0]), k(1.5, [0, 0]), k(2.25, [-0.03, 0]), k(3, [0, 0])],
 +    blinks: [1.5],
 +  }),
 +  Marketing_A: clip(3, { zoom: [k(0, [1]), k(1.5, [1.05]), k(3, [1])], blinks: [2.2] }),
 +  Marketing_B: clip(2.4, {
 +    position: [k(0, [0, 0]), k(0.6, [0, -0.05], EASE_OUT), k(1.8, [0, -0.05]), k(2.4, [0, 0])],
-+    rotation: [k(0, [0, 0, 0]), k(0.6, [-6, 0, 0], EASE_OUT), k(1.8, [-6, 0, 0]), k(2.4, [0, 0, 0])],
-+    faces: [[0.4, "happy", 0], [2.2, "neutral", 0]],
++    rotation: [
++      k(0, [0, 0, 0]),
++      k(0.6, [-6, 0, 0], EASE_OUT),
++      k(1.8, [-6, 0, 0]),
++      k(2.4, [0, 0, 0]),
++    ],
++    faces: [
++      [0.4, "happy", 0],
++      [2.2, "neutral", 0],
++    ],
 +  }),
 +  Marketing_C: clip(3, { rotation: [k(0, [0, -12, 0]), k(1.5, [0, 12, 0]), k(3, [0, -12, 0])] }),
-+  Marketing_D: clip(2.6, { rotation: [k(0, [0, 0, 0]), k(1.3, [0, 0, 6]), k(2.6, [0, 0, 0])], blinks: [0.8, 2.0] }),
++  Marketing_D: clip(2.6, {
++    rotation: [k(0, [0, 0, 0]), k(1.3, [0, 0, 6]), k(2.6, [0, 0, 0])],
++    blinks: [0.8, 2.0],
++  }),
 +  Logo_A: clip(3.4, { zoom: [k(0, [1]), k(1.7, [1.02]), k(3.4, [1])], blinks: [2.6] }),
-+  Logo_B: clip(3.4, { rotation: [k(0, [0, 0, 0]), k(1.7, [0, 6, 0]), k(3.4, [0, 0, 0])], blinks: [1.0] }),
++  Logo_B: clip(3.4, {
++    rotation: [k(0, [0, 0, 0]), k(1.7, [0, 6, 0]), k(3.4, [0, 0, 0])],
++    blinks: [1.0],
++  }),
 +  Rotation_A: clip(1.8, {
 +    rotation: [k(0, [0, 0, 0]), k(0.9, [0, 180, 0], EASE_OUT), k(1.8, [0, 360, 0], EASE_OUT)],
 +    faces: [[0, "happy", 0]],
 +  }),
 +  Rotation_B: clip(6, { rotation: [k(0, [0, 0, 0]), k(6, [0, 360, 0], [0, 0, 1, 1])] }),
 +  Rotation_C: clip(1.4, {
-+    rotation: [k(0, [0, 0, 0]), k(0.35, [8, 0, 0]), k(0.7, [0, 0, 0]), k(1.05, [8, 0, 0]), k(1.4, [0, 0, 0])],
++    rotation: [
++      k(0, [0, 0, 0]),
++      k(0.35, [8, 0, 0]),
++      k(0.7, [0, 0, 0]),
++      k(1.05, [8, 0, 0]),
++      k(1.4, [0, 0, 0]),
++    ],
 +  }),
 +};
 +
@@ -102108,7 +102646,14 @@ index 000000000..d67ef8262
 +  holdSeconds?: number;
 +}
 +
-+const WORK = ["Working_A", "Working_B", "Working_C", "Working_D", "Working_E", "Working_F"] as const;
++const WORK = [
++  "Working_A",
++  "Working_B",
++  "Working_C",
++  "Working_D",
++  "Working_E",
++  "Working_F",
++] as const;
 +
 +export const AVATAR_STATES: Readonly<Record<string, AvatarStateRule>> = {
 +  idle: { clips: ["Idle_B", "Idle_A", "Idle_B", "Idle_D"], compactClips: ["Idle_B"] },
@@ -103532,10 +104077,10 @@ index 000000000..e97226a3d
 +export const BABYGROK_DRAW_MARGIN = 1.28;
 +export const BABYGROK_DRAW_VIEWBOX = "-128 -128 256 256";
 diff --git a/packages/core/src/bot-avatar-colors.test.ts b/packages/core/src/bot-avatar-colors.test.ts
-index be9defcd6..4b8db9da8 100644
+index be9defcd6..2272bb078 100644
 --- a/packages/core/src/bot-avatar-colors.test.ts
 +++ b/packages/core/src/bot-avatar-colors.test.ts
-@@ -1,6 +1,14 @@
+@@ -1,6 +1,18 @@
  import { BOT_COLOR_LIST } from "@rakazo/contracts";
  import { describe, expect, it } from "vitest";
 -import { botEyeInk, botEyeTone, chatUserBubbleColors, contrastRatio } from "./bot-avatar-colors.js";
@@ -103548,10 +104093,35 @@ index be9defcd6..4b8db9da8 100644
 +  contrastRatio,
 +  legibleOn,
 +} from "./bot-avatar-colors.js";
++
++function paletteHex(id: string): string {
++  return BOT_COLOR_LIST.find((color) => color.id === id)!.hex;
++}
  
  describe("botEyeTone", () => {
    it("cuts eyes in the page color unless the body is nearly white or black", () => {
-@@ -57,10 +65,34 @@ describe("chatUserBubbleColors", () => {
+@@ -34,14 +46,17 @@ describe("chatUserBubbleColors", () => {
+   );
+ 
+   it("leaves colors that already read well as the avatar's own", () => {
+-    expect(chatUserBubbleColors("#2A92FE", "bot-1")?.background).toBe("#2A92FE");
++    const blue = paletteHex("blue");
++    expect(chatUserBubbleColors(blue, "bot-1")?.background).toBe(blue);
+   });
+ 
+   it("deepens bright colors without turning them muddy", () => {
+-    const orange = chatUserBubbleColors("#FF781C", "bot-1")!;
++    const orange = chatUserBubbleColors(paletteHex("orange"), "bot-1")!;
+     // Darkening in RGB pulled orange toward brown; OKLCH keeps it orange.
+-    expect(orange.background).toBe("#F16B00");
++    expect(orange.background).toBe("#D17F26");
+     expect(contrastRatio(orange.background, orange.foreground)).toBeGreaterThanOrEqual(3);
++    // A bot saved with the earlier palette's orange wears the same bubble.
++    expect(chatUserBubbleColors("#FF781C", "bot-1")).toEqual(orange);
+   });
+ 
+   it("deepens custom violet for readable white text", () => {
+@@ -57,10 +72,34 @@ describe("chatUserBubbleColors", () => {
    });
  });
  
@@ -103591,10 +104161,32 @@ index be9defcd6..4b8db9da8 100644
 +  });
  });
 diff --git a/packages/core/src/bot-avatar-colors.ts b/packages/core/src/bot-avatar-colors.ts
-index 7916fec51..c8cb9f2ba 100644
+index 7916fec51..b1b0ad5e4 100644
 --- a/packages/core/src/bot-avatar-colors.ts
 +++ b/packages/core/src/bot-avatar-colors.ts
-@@ -122,15 +122,54 @@ export function botEyeTone(bodyHex: string): "page" | "dark" | "light" {
+@@ -1,7 +1,7 @@
+ import type { BotColorDef } from "@rakazo/contracts";
+-import { BOT_COLOR_LIST, parseBotAvatarValue } from "@rakazo/contracts";
++import { BOT_COLOR_LIST, botColorDefForHex, parseBotAvatarValue } from "@rakazo/contracts";
+ 
+-/** Shared identity color for Avatar Studio reset/fallback (Executive Violet). */
++/** Shared identity color for Avatar Studio reset/fallback (Iris, the violet). */
+ export const DEFAULT_BOT_AVATAR_COLOR = BOT_COLOR_LIST.find((color) => color.id === "violet")!.hex;
+ 
+ /** The bots the invite artwork draws, in order; white would vanish on a light page. */
+@@ -35,9 +35,8 @@ export function resolvePersonaColorDef(
+     const clean = explicitColor.toLowerCase();
+     const foundById = BOT_COLOR_LIST.find((c) => c.id === clean || c.name.toLowerCase() === clean);
+     if (foundById) return foundById;
+-    const foundByHex = BOT_COLOR_LIST.find(
+-      (c) => c.hex.toLowerCase() === clean || c.previousHex?.toLowerCase() === clean,
+-    );
++    // A colour stored by an earlier build (an earlier palette) draws as the colour that replaced it.
++    const foundByHex = botColorDefForHex(clean);
+     if (foundByHex) return foundByHex;
+     if (/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(explicitColor)) {
+       return { id: "custom", name: "Custom", hex: explicitColor };
+@@ -122,15 +121,54 @@ export function botEyeTone(bodyHex: string): "page" | "dark" | "light" {
    return "page";
  }
  
@@ -103660,10 +104252,11 @@ index 7916fec51..c8cb9f2ba 100644
  /** WCAG contrast ratio between two hex colors. */
 diff --git a/packages/core/src/bot-avatar-palette.test.ts b/packages/core/src/bot-avatar-palette.test.ts
 new file mode 100644
-index 000000000..36ad74578
+index 000000000..37c7d4b0f
 --- /dev/null
 +++ b/packages/core/src/bot-avatar-palette.test.ts
-@@ -0,0 +1,41 @@
+@@ -0,0 +1,45 @@
++import { BOT_COLOR_LIST } from "@rakazo/contracts";
 +import { describe, expect, it } from "vitest";
 +import { BOT_EYE_INK, botEyeInk } from "./bot-avatar-colors.js";
 +import {
@@ -103696,7 +104289,10 @@ index 000000000..36ad74578
 +    }
 +    // A body with any colour left in it keeps its own dark value.
 +    expect(botAvatarFill("#FF5EB1", true)).toBe(BOT_AVATAR_DARK_FILLS["#FF5EB1"]);
-+    expect(botAvatarFill("#FFFFFF", true)).toBe("#FFFFFF");
++    // A white body, saved as the palette's white or the earlier pure white, stays that white.
++    const white = BOT_COLOR_LIST.find((color) => color.id === "white")!.hex;
++    expect(botAvatarFill("#FFFFFF", true)).toBe(white);
++    expect(botAvatarFill(white, true)).toBe(white);
 +  });
 +
 +  it("keeps a white body off a white page, and takes a dark ink there", () => {
@@ -103707,35 +104303,27 @@ index 000000000..36ad74578
 +});
 diff --git a/packages/core/src/bot-avatar-palette.ts b/packages/core/src/bot-avatar-palette.ts
 new file mode 100644
-index 000000000..d50dd71c5
+index 000000000..08e6f8ab1
 --- /dev/null
 +++ b/packages/core/src/bot-avatar-palette.ts
-@@ -0,0 +1,56 @@
+@@ -0,0 +1,48 @@
++import { BOT_COLOR_LIST } from "@rakazo/contracts";
 +import { contrastRatio } from "./bot-avatar-colors.js";
 +
++const WHITE = BOT_COLOR_LIST.find((color) => color.id === "white")!;
++
 +/**
-+ * The shipped bot colors as the app draws them in the dark appearance: each palette color has a
-+ * deeper value there, and the white bot turns white-on-black into white-on-dark, exactly as the
-+ * reference art does. A color the palette does not hold is drawn as stored.
++ * The palette as the app draws it in the dark appearance: each colour's own `darkHex`, reached
++ * from its current value and from every value an earlier build stored for it. The black body
++ * turns into the palette's white there, so it is still a face and not a hole (see
++ * `DARK_BODY_ON_DARK`). A colour the palette does not hold is drawn as stored.
 + */
-+export const BOT_AVATAR_DARK_FILLS: Readonly<Record<string, string>> = {
-+  // A body as dark as the page is drawn white there, so it is still a face and not a hole:
-+  // the reference app's black bot turns white-on-black into white body, black eyes, and every
-+  // extremely dark body follows it (see `DARK_BODY_ON_DARK`).
-+  "#000000": "#FFFFFF",
-+  "#FFFFFF": "#FFFFFF",
-+  "#A27952": "#855C36",
-+  "#FF3E51": "#E02135",
-+  "#FF781C": "#FF6700",
-+  "#FFAF38": "#FF9800",
-+  "#00C972": "#009957",
-+  "#1CC3B0": "#00A592",
-+  "#2A92FE": "#0E74E0",
-+  "#A97EFE": "#804EE0",
-+  "#FF5EB1": "#E02A88",
-+  "#959595": "#777777",
-+  "#94A3B8": "#777777",
-+};
++export const BOT_AVATAR_DARK_FILLS: Readonly<Record<string, string>> = Object.fromEntries(
++  BOT_COLOR_LIST.flatMap((color) => {
++    const dark = color.id === "black" ? WHITE.hex : (color.darkHex ?? color.hex);
++    return [color.hex, ...(color.legacyHexes ?? [])].map((hex) => [hex.toUpperCase(), dark]);
++  }),
++);
 +
 +/** The soft gray a body too pale for the light page is drawn in instead of vanishing. */
 +export const PALE_BODY_LIGHT_FILL = "#E5E5EA";
@@ -103751,7 +104339,7 @@ index 000000000..d50dd71c5
 + */
 +const DARK_BODY_ON_DARK = 1.25;
 +/** The body a too-dark bot is drawn as, on the dark page. */
-+export const FLIPPED_BODY_DARK_FILL = "#FFFFFF";
++export const FLIPPED_BODY_DARK_FILL = WHITE.hex;
 +
 +/**
 + * The color a bot body is filled with, in the appearance it is drawn in. A white or near-white
@@ -103790,10 +104378,11 @@ index 5bbda302e..d93ab566e 100644
  
    it("emits path geometry only", () => {
 diff --git a/packages/core/src/bot-avatar-shapes.ts b/packages/core/src/bot-avatar-shapes.ts
-index 0607200c0..8f717de9c 100644
+index 0607200c0..23f34f903 100644
 --- a/packages/core/src/bot-avatar-shapes.ts
 +++ b/packages/core/src/bot-avatar-shapes.ts
-@@ -1,33 +1,48 @@
+@@ -1,33 +1,49 @@
++import { isWhiteBotColor } from "@rakazo/contracts";
  import type { AvatarEyes } from "./avatar-shape.js";
 +import {
 +  AVATAR_BASE_EYES,
@@ -103866,7 +104455,7 @@ index 0607200c0..8f717de9c 100644
  
  export const SHIPPED_BOT_AVATAR_SHAPE_KEYS = [
    "hex",
-@@ -38,10 +53,165 @@ export const SHIPPED_BOT_AVATAR_SHAPE_KEYS = [
+@@ -38,10 +54,165 @@ export const SHIPPED_BOT_AVATAR_SHAPE_KEYS = [
    "blob",
    "teardrop",
    "cloud",
@@ -103993,7 +104582,7 @@ index 0607200c0..8f717de9c 100644
 + * for every other colour.
 + */
 +export function officialFaceBodyKeyForColor(color: string, identity: string): string {
-+  if (color.toUpperCase() === "#FFFFFF" || color.toUpperCase() === "#FFF") return "blob";
++  if (isWhiteBotColor(color)) return "blob";
 +  return defaultBodyKeyForIdentity(identity || color);
 +}
 +
@@ -104032,7 +104621,7 @@ index 0607200c0..8f717de9c 100644
  export function shippedBotAvatarShapePath(shapeIndex: number): string {
    const count = SHIPPED_BOT_AVATAR_SHAPE_KEYS.length;
    const normalized = Number.isFinite(shapeIndex)
-@@ -50,3 +220,13 @@ export function shippedBotAvatarShapePath(shapeIndex: number): string {
+@@ -50,3 +221,13 @@ export function shippedBotAvatarShapePath(shapeIndex: number): string {
    const key = SHIPPED_BOT_AVATAR_SHAPE_KEYS[normalized] ?? "hex";
    return SHIPPED_BOT_AVATAR_SHAPES[key] ?? FALLBACK_SHAPE_PATH;
  }
@@ -104046,11 +104635,83 @@ index 0607200c0..8f717de9c 100644
 +  const body = AVATAR_BODIES[SHIPPED_BOT_AVATAR_SHAPE_KEYS[normalized] ?? "hex"];
 +  return body ? specEyes(body.eyes) : SHIPPED_BOT_AVATAR_EYES;
 +}
+diff --git a/packages/core/src/bot-look.test.ts b/packages/core/src/bot-look.test.ts
+index fcc207b97..db0de5591 100644
+--- a/packages/core/src/bot-look.test.ts
++++ b/packages/core/src/bot-look.test.ts
+@@ -1,3 +1,4 @@
++import { BOT_COLOR_LIST } from "@rakazo/contracts";
+ import { describe, expect, it } from "vitest";
+ import { ORGANIC_AVATAR_HEART_FAMILY, organicAvatarFamily } from "./avatar-shape.js";
+ import { DEFAULT_BOT_AVATAR_COLOR } from "./bot-avatar-colors.js";
+@@ -10,6 +11,10 @@ import {
+   newBotPreviewIdentity,
+ } from "./bot-look.js";
+ 
++function paletteHex(id: string): string {
++  return BOT_COLOR_LIST.find((color) => color.id === id)!.hex;
++}
++
+ describe("newBotLook", () => {
+   it("reserves a valid id that never draws the heart body", () => {
+     for (let index = 0; index < 50; index++) {
+@@ -20,7 +25,7 @@ describe("newBotLook", () => {
+   });
+ 
+   it("keeps the preview's look through creation", () => {
+-    const look = { id: "c".padEnd(25, "a"), color: "#2A92FE", identity: "look-3-0" };
++    const look = { id: "c".padEnd(25, "a"), color: paletteHex("blue"), identity: "look-3-0" };
+     expect(newBotPreviewIdentity("rakazo", look)).toBe(look.id);
+     expect(newBotLookInput("rakazo", look)).toEqual({ color: look.color, id: look.id });
+     expect(newBotPreviewIdentity("organic", look)).toBe(look.identity);
+@@ -28,7 +33,7 @@ describe("newBotLook", () => {
+       color: look.color,
+       avatarFamily: organicAvatarFamily(look.identity),
+     });
+-    const shaped = { ...look, color: "#2A92FE::shape_2" };
++    const shaped = { ...look, color: `${paletteHex("blue")}::shape_2` };
+     expect(newBotLookInput("organic", shaped)).toEqual({ color: shaped.color });
+     expect(newBotLookInput("rakazo", shaped)).toEqual({ color: look.color, id: look.id });
+   });
+@@ -36,18 +41,21 @@ describe("newBotLook", () => {
+ 
+ describe("botLookState", () => {
+   it("keeps the shape when the color changes and the color when the shape changes", () => {
+-    expect(botLookWithColor("#00C972::shape_3", "#FF781C")).toBe("#FF781C::shape_3");
+-    expect(botLookWithColor("#00C972", "#FF781C")).toBe("#FF781C");
+-    expect(botLookState(botLookWithShape("#FF781C", 5))).toEqual({
++    const [green, orange] = [paletteHex("green"), paletteHex("orange")];
++    expect(botLookWithColor(`${green}::shape_3`, orange)).toBe(`${orange}::shape_3`);
++    expect(botLookWithColor(green, orange)).toBe(orange);
++    expect(botLookState(botLookWithShape(orange, 5))).toEqual({
+       photo: false,
+       shapeIndex: 5,
+-      color: "#FF781C",
++      color: orange,
+       defaultLook: false,
+     });
+   });
+ 
+   it("selects a color saved as its earlier value", () => {
+-    expect(botLookState("#8B5CF6").color).toBe("#A97EFE");
++    // Both earlier violets (the first palette's and the second's) select today's violet.
++    expect(botLookState("#8B5CF6").color).toBe(paletteHex("violet"));
++    expect(botLookState("#A97EFE").color).toBe(paletteHex("violet"));
+   });
+ 
+   it("replaces a photo with a plain color", () => {
 diff --git a/packages/core/src/bot-look.ts b/packages/core/src/bot-look.ts
-index 721ed3cca..362811e84 100644
+index 721ed3cca..e9e3f4d70 100644
 --- a/packages/core/src/bot-look.ts
 +++ b/packages/core/src/bot-look.ts
-@@ -16,6 +16,14 @@ function pick<T>(options: readonly T[]): T {
+@@ -1,5 +1,5 @@
+ import type { BotAvatarSet } from "@rakazo/contracts";
+-import { BOT_COLORS, parseBotAvatarValue } from "@rakazo/contracts";
++import { BOT_COLORS, isWhiteBotColor, parseBotAvatarValue } from "@rakazo/contracts";
+ import {
+   ORGANIC_AVATAR_HEART_FAMILY,
+   ORGANIC_AVATAR_LOOKS,
+@@ -16,6 +16,12 @@ function pick<T>(options: readonly T[]): T {
    return options[Math.floor(Math.random() * options.length)]!;
  }
  
@@ -104058,14 +104719,12 @@ index 721ed3cca..362811e84 100644
 + * Bodies a new bot may start with: the palette without its white one. A white body on the light
 + * page the creation preview sits on is invisible, so it is never the look a bot arrives in.
 + */
-+const NEW_BOT_COLORS: readonly string[] = BOT_COLORS.filter(
-+  (color) => color.toUpperCase() !== "#FFFFFF",
-+);
++const NEW_BOT_COLORS: readonly string[] = BOT_COLORS.filter((color) => !isWhiteBotColor(color));
 +
  /** The look a bot being created starts with, before anyone picks. */
  export interface NewBotLook {
    /** Reserved bot id; logo avatars draw from it, so creation keeps it. Never a heart body. */
-@@ -30,7 +38,7 @@ export function newBotLook(): NewBotLook {
+@@ -30,7 +36,7 @@ export function newBotLook(): NewBotLook {
    do {
      id = `c${newClientId().replaceAll("-", "").slice(0, 24)}`;
    } while (organicAvatarFamily(id) === ORGANIC_AVATAR_HEART_FAMILY);
@@ -104946,6 +105605,26 @@ index 0e9e48b49..ba8a5f846 100644
  export * from "./messaging-providers.js";
  export * from "./model-connection-form.js";
  export * from "./model-oauth.js";
+diff --git a/packages/core/src/logo-avatar-traits.test.ts b/packages/core/src/logo-avatar-traits.test.ts
+index 9feb827e1..fbf887e07 100644
+--- a/packages/core/src/logo-avatar-traits.test.ts
++++ b/packages/core/src/logo-avatar-traits.test.ts
+@@ -1,3 +1,4 @@
++import { BOT_COLOR_LIST } from "@rakazo/contracts";
+ import { BOT_COLORS } from "@rakazo/contracts";
+ import { describe, expect, it } from "vitest";
+ import { seededLogoAvatarColor } from "./logo-avatar-traits.js";
+@@ -73,7 +74,9 @@ describe("stable logo avatar traits", () => {
+       ...second
+     } = logoAvatarTraits("bot-1", "blue");
+     expect(first).toEqual(second);
+-    expect(logoAvatarTraits("bot-1", "blue").color).toBe("#2A92FE");
++    expect(logoAvatarTraits("bot-1", "blue").color).toBe(
++      BOT_COLOR_LIST.find((color) => color.id === "blue")!.hex,
++    );
+     expect(logoAvatarTraits("bot-1", "#abc").color).toBe("#abc");
+   });
+ });
 diff --git a/packages/core/src/message-reactions.test.ts b/packages/core/src/message-reactions.test.ts
 index c6a2716b9..e7dab84fd 100644
 --- a/packages/core/src/message-reactions.test.ts
@@ -105197,6 +105876,19 @@ index fb55d7087..2ce60c2a9 100644
      const blocks = (payload.blocks as ThreadMessage["blocks"] | undefined) ?? [];
      const id = String(payload.messageId ?? event.id ?? `msg:${cursor ?? 0}`);
      const known = prev.messages.find((message) => message.id === id);
+diff --git a/packages/db/src/bot-avatar-choice.test.ts b/packages/db/src/bot-avatar-choice.test.ts
+index 3770a9290..9bf3d6efe 100644
+--- a/packages/db/src/bot-avatar-choice.test.ts
++++ b/packages/db/src/bot-avatar-choice.test.ts
+@@ -103,7 +103,7 @@ describe("chooseBotAvatar", () => {
+     // Every colour but blue is used once; blue is used once through its earlier value.
+     const existing = BOT_COLOR_LIST.map((color, index) => ({
+       id: families[index]!,
+-      color: color.id === "blue" ? blue.previousHex! : color.hex,
++      color: color.id === "blue" ? blue.legacyHexes![0]! : color.hex,
+     }));
+     existing.push({ id: families[11]!, color: blue.hex });
+     for (let seed = 1; seed <= 20; seed++) {
 diff --git a/packages/i18n/locales/de/messages.po b/packages/i18n/locales/de/messages.po
 index e4aceef75..71daefe05 100644
 --- a/packages/i18n/locales/de/messages.po
@@ -106446,6 +107138,36 @@ index 4074f42e2..37393e715 100644
    workingDot: "#3FA266",
    overlay: "rgba(0, 0, 0, 0.19)",
    scrollbar: "#C8C8C4",
+diff --git a/packages/ui-web/src/bot-avatar.test.tsx b/packages/ui-web/src/bot-avatar.test.tsx
+index 25445d099..a52af95b2 100644
+--- a/packages/ui-web/src/bot-avatar.test.tsx
++++ b/packages/ui-web/src/bot-avatar.test.tsx
+@@ -2,6 +2,7 @@ import { ACTIVE_RUN_STATUSES } from "@rakazo/core";
+ import { renderToString } from "react-dom/server";
+ import { describe, expect, it } from "vitest";
+ import {
++  BOT_COLOR_LIST,
+   BOT_COLORS,
+   BotAvatar,
+   BotShapePreview,
+@@ -67,8 +68,15 @@ describe("BotAvatar", () => {
+   });
+ 
+   it("resolves explicit colors and shapes", () => {
+-    expect(resolvePersonaColorDef("bot", "#10B981").hex).toBe("#00C972");
+-    expect(resolvePersonaColorDef("bot", "#fff").hex).toBe("#fff");
++    expect(resolvePersonaColorDef("bot", "#10B981").hex).toBe(
++      BOT_COLOR_LIST.find((color) => color.id === "green")!.hex,
++    );
++    expect(resolvePersonaColorDef("bot", "#00C972").hex).toBe(
++      resolvePersonaColorDef("bot", "#10B981").hex,
++    );
++    // Pure white, long or short, is a value the palette's white was stored as.
++    expect(resolvePersonaColorDef("bot", "#fff").id).toBe("white");
++    expect(resolvePersonaColorDef("bot", "#ABCDEF").hex).toBe("#ABCDEF");
+     expect(BOT_COLORS.length).toBeGreaterThan(0);
+   });
+ 
 diff --git a/packages/ui-web/src/bot-avatar.tsx b/packages/ui-web/src/bot-avatar.tsx
 index f0319929f..545e310da 100644
 --- a/packages/ui-web/src/bot-avatar.tsx

@@ -1,14 +1,17 @@
 name: Rakazo Ultimate iOS
-# Branch copy for grokbot-* review builds: runs on the self-hosted Mac (Mac-58) and builds the
-# branch it was dispatched on, not a fixed branch. Dispatch only: nothing runs on push.
+# Branch copy for grokbot-* review builds: runs on GitHub's hosted Xcode 27 Mac (the runner the
+# main-branch builds use) and builds the branch it was dispatched on. Dispatch only: nothing runs
+# on push, nothing is released; the unsigned .ipa and the simulator screenshots are artifacts.
 on: [workflow_dispatch]
-concurrency: { group: mac-58-ios, cancel-in-progress: false }
+concurrency: { group: rakazo-ios-${{ github.ref }}, cancel-in-progress: false }
 jobs:
   build:
-    runs-on: [self-hosted, macOS, ARM64]
+    runs-on: xcode-27
     timeout-minutes: 240
     steps:
       - { uses: actions/checkout@v4, with: { ref: "${{ github.ref }}" } }
       - { run: bash rakazo-ultimate/build.sh }
       - { if: always(), uses: actions/upload-artifact@v4, with: { name: rakazo-ultimate-ipa, path: rakazo-ultimate/Rakazo-unsigned.ipa, if-no-files-found: warn, retention-days: 30 } }
       - { if: always(), uses: actions/upload-artifact@v4, with: { name: rakazo-ultimate-log, path: rakazo-ultimate/xcodebuild.log, if-no-files-found: warn, retention-days: 30 } }
+      - { name: Simulator screenshots, continue-on-error: true, timeout-minutes: 90, run: bash rakazo-ultimate/sim-screens.sh }
+      - { if: always(), uses: actions/upload-artifact@v4, with: { name: rakazo-sim-screens, path: rakazo-ultimate/sim-screens/, if-no-files-found: warn, retention-days: 30 } }

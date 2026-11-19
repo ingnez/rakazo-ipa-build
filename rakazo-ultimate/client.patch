@@ -129613,12 +129613,158 @@ index 139a32726..56c9ec61e 100644
 -    subactions: entry.subactions?.map(toMenuAction),
 -  };
 -}
+diff --git a/apps/mobile/components/mochi-bot-avatar.test.tsx b/apps/mobile/components/mochi-bot-avatar.test.tsx
+new file mode 100644
+index 000000000..c9cf95be4
+--- /dev/null
++++ b/apps/mobile/components/mochi-bot-avatar.test.tsx
+@@ -0,0 +1,140 @@
++/** @vitest-environment jsdom */
++
++import { act } from "react";
++import { createElement, type ReactNode } from "react";
++import { createRoot } from "react-dom/client";
++import type { Root } from "react-dom/client";
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++
++const paint = vi.hoisted(() => ({ ready: false }));
++const motion = vi.hoisted(() => ({
++  repeats: 0,
++  reducedMotion: false,
++}));
++
++vi.mock("../lib/after-first-paint", () => ({
++  useAfterFirstPaint: () => paint.ready,
++}));
++
++vi.mock("../lib/avatar-life", () => ({
++  useAvatarOnScreen: () => true,
++  useSettling: () => false,
++}));
++
++vi.mock("../lib/native", () => ({
++  useResolvedAppearance: () => "light",
++}));
++
++vi.mock("react-native-reanimated", () => {
++  const passthrough = ({ children, testID, style }: { children?: ReactNode; testID?: string; style?: unknown }) =>
++    createElement("div", { "data-testid": testID, "data-style": JSON.stringify(style) ?? undefined }, children);
++  const easing = (value: unknown) => value;
++  return {
++    default: { View: passthrough, createAnimatedComponent: (component: unknown) => component ?? passthrough },
++    cancelAnimation: () => undefined,
++    Easing: { in: easing, out: easing, inOut: easing, sin: 0, quad: 0 },
++    useAnimatedStyle: (worklet: () => unknown) => worklet(),
++    useReducedMotion: () => motion.reducedMotion,
++    useSharedValue: <T,>(value: T) => ({ value }),
++    withRepeat: (value: unknown) => {
++      motion.repeats += 1;
++      return value;
++    },
++    withSequence: (...values: unknown[]) => values[0],
++    withSpring: (value: unknown) => value,
++    withTiming: (value: unknown) => value,
++  };
++});
++
++vi.mock("react-native-svg", () => {
++  const node = (name: string) => (props: Record<string, unknown>) =>
++    createElement("span", { "data-svg": name, ...named(props) }, props.children as ReactNode);
++  function named(props: Record<string, unknown>) {
++    const out: Record<string, unknown> = {};
++    if (typeof props.id === "string") out["data-id"] = props.id;
++    if (typeof props.d === "string") out["data-path"] = "1";
++    if (typeof props.fill === "string") out["data-fill"] = props.fill;
++    return out;
++  }
++  return {
++    __esModule: true,
++    default: node("svg"),
++    ClipPath: node("clip"),
++    Defs: node("defs"),
++    Ellipse: node("ellipse"),
++    G: node("g"),
++    LinearGradient: node("linear"),
++    Path: node("path"),
++    RadialGradient: node("radial"),
++    Rect: node("rect"),
++    Stop: node("stop"),
++  };
++});
++
++vi.mock("react-native", () => ({
++  Image: (props: { style?: unknown }) => createElement("span", { "data-image": "1" }),
++  Pressable: ({ children }: { children?: ReactNode }) => createElement("button", null, children),
++  InteractionManager: { runAfterInteractions: (cb: () => void) => (cb(), { cancel() {} }) },
++  Platform: { OS: "ios" },
++}));
++
++import { MochiBotAvatar } from "./mochi-bot-avatar";
++
++let root: Root;
++let container: HTMLDivElement;
++
++beforeEach(() => {
++  paint.ready = false;
++  motion.repeats = 0;
++  motion.reducedMotion = false;
++  container = document.createElement("div");
++  document.body.appendChild(container);
++  root = createRoot(container);
++});
++
++afterEach(() => {
++  act(() => root.unmount());
++  container.remove();
++});
++
++describe("MochiBotAvatar first paint", () => {
++  it("draws a static dumpling with no gradients or motion loops on the first commit", () => {
++    act(() =>
++      root.render(<MochiBotAvatar color="#E8C4A8" identity="bot-1" size={50} motion="live" />),
++    );
++    expect(container.querySelector('[data-testid="mochi-avatar-static"]')).not.toBeNull();
++    expect(container.querySelector('[data-testid="mochi-avatar-glossy"]')).toBeNull();
++    expect(container.querySelectorAll('[data-svg="radial"]')).toHaveLength(0);
++    expect(container.querySelectorAll('[data-svg="linear"]')).toHaveLength(0);
++    expect(container.querySelectorAll('[data-svg="clip"]')).toHaveLength(0);
++    expect(container.querySelectorAll('[data-svg="ellipse"]').length).toBe(1);
++    expect(container.querySelectorAll('[data-svg="path"]').length).toBeGreaterThan(0);
++    expect(motion.repeats).toBe(0);
++  });
++
++  it("adds the glossy layers and starts Reanimated loops only after the first paint", () => {
++    act(() =>
++      root.render(<MochiBotAvatar color="#E8C4A8" identity="bot-1" size={50} motion="live" />),
++    );
++    expect(motion.repeats).toBe(0);
++    paint.ready = true;
++    act(() =>
++      root.render(<MochiBotAvatar color="#E8C4A8" identity="bot-1" size={50} motion="live" />),
++    );
++    expect(container.querySelector('[data-testid="mochi-avatar-glossy"]')).not.toBeNull();
++    expect(container.querySelectorAll('[data-svg="radial"]').length).toBeGreaterThan(0);
++    expect(container.querySelectorAll('[data-svg="linear"]').length).toBeGreaterThan(0);
++    expect(container.querySelectorAll('[data-svg="ellipse"]').length).toBeGreaterThan(1);
++    expect(motion.repeats).toBeGreaterThan(0);
++  });
++
++  it("keeps Reduce Motion avatars glossy after first paint, but does not start loops", () => {
++    motion.reducedMotion = true;
++    paint.ready = true;
++    act(() =>
++      root.render(<MochiBotAvatar color="#E8C4A8" identity="bot-1" size={50} motion="live" />),
++    );
++    expect(container.querySelector('[data-testid="mochi-avatar-glossy"]')).not.toBeNull();
++    expect(motion.repeats).toBe(0);
++  });
++});
 diff --git a/apps/mobile/components/mochi-bot-avatar.tsx b/apps/mobile/components/mochi-bot-avatar.tsx
 new file mode 100644
-index 000000000..88f8f83a5
+index 000000000..57a98f633
 --- /dev/null
 +++ b/apps/mobile/components/mochi-bot-avatar.tsx
-@@ -0,0 +1,444 @@
+@@ -0,0 +1,464 @@
 +import type { LogoAvatarActivity } from "@rakazo/core";
 +import {
 +  avatarLifeState,
@@ -129649,6 +129795,7 @@ index 000000000..88f8f83a5
 +} from "react-native-reanimated";
 +import Svg, { ClipPath, Defs, Ellipse, G, LinearGradient, Path, RadialGradient, Rect, Stop } from "react-native-svg";
 +import type { AvatarMotionMode } from "@rakazo/core";
++import { useAfterFirstPaint } from "../lib/after-first-paint";
 +import { useAvatarOnScreen, useSettling } from "../lib/avatar-life";
 +import { mobileBotAvatarPresentation } from "../lib/bot-avatar";
 +import { useResolvedAppearance } from "../lib/native";
@@ -129697,6 +129844,10 @@ index 000000000..88f8f83a5
 +  const dark = useResolvedAppearance() === "dark";
 +  const onScreen = useAvatarOnScreen();
 +  const reducedMotionPref = useReducedMotion();
++  // First paint of the home list was paying for every dumpling's gradients,
++  // clip, and Reanimated loops before the splash could hide. Keep a static
++  // silhouette until the first frames are on screen, then turn the rest on.
++  const afterFirstPaint = useAfterFirstPaint();
 +  const lifeState = avatarLifeState(status, composing);
 +  const settling = useSettling(lifeState);
 +  const activity = mochiActivityFromSignals({
@@ -129705,6 +129856,7 @@ index 000000000..88f8f83a5
 +    settling,
 +  });
 +  const still =
++    !afterFirstPaint ||
 +    Boolean(reducedMotionPref) ||
 +    !onScreen ||
 +    motion === "still" ||
@@ -129728,6 +129880,7 @@ index 000000000..88f8f83a5
 +      planActivity={activity}
 +      expression={plan.expression}
 +      still={still}
++      detailed={afterFirstPaint}
 +      plan={plan}
 +      pokeable={pokeable}
 +    />
@@ -129741,6 +129894,7 @@ index 000000000..88f8f83a5
 +  planActivity,
 +  expression,
 +  still,
++  detailed,
 +  plan,
 +  pokeable,
 +}: {
@@ -129750,6 +129904,7 @@ index 000000000..88f8f83a5
 +  planActivity: ReturnType<typeof mochiActivityFromSignals>;
 +  expression: MochiExpression;
 +  still: boolean;
++  detailed: boolean;
 +  plan: ReturnType<typeof mochiMotionPlan>;
 +  pokeable: boolean;
 +}) {
@@ -129761,9 +129916,9 @@ index 000000000..88f8f83a5
 +  const morphRaf = useRef<number | null>(null);
 +
 +  useEffect(() => {
++    // The initial path and metrics already come from useState. Setting them
++    // again here would redraw every dumpling once more during first paint.
 +    if (fromKey.current === shape) {
-+      setPath(mochiBodyPath(shape));
-+      setMetrics(mochiBodyMetrics(shape));
 +      return;
 +    }
 +    const from = fromKey.current;
@@ -129998,44 +130153,55 @@ index 000000000..88f8f83a5
 +        { width: size, height: size, transformOrigin: "50% 84%" as const },
 +        motionStyle,
 +      ]}
++      testID={detailed ? "mochi-avatar-glossy" : "mochi-avatar-static"}
 +    >
 +      <Svg width={size} height={size} viewBox="0 0 128 128">
-+        <Defs>
-+          <RadialGradient id={`${uid}-body`} cx="32%" cy="28%" r="78%">
-+            <Stop offset="0%" stopColor={shades.shine} />
-+            <Stop offset="28%" stopColor={shades.shine} stopOpacity="0.55" />
-+            <Stop offset="62%" stopColor={fill} />
-+            <Stop offset="100%" stopColor={shades.shade} />
-+          </RadialGradient>
-+          <RadialGradient id={`${uid}-spec`} cx="50%" cy="50%" r="50%">
-+            <Stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.92" />
-+            <Stop offset="45%" stopColor="#FFFFFF" stopOpacity="0.35" />
-+            <Stop offset="100%" stopColor="#FFFFFF" stopOpacity="0" />
-+          </RadialGradient>
-+          <LinearGradient id={`${uid}-bot`} x1="0" y1="0" x2="0" y2="1">
-+            <Stop offset="40%" stopColor={shades.deep} stopOpacity="0" />
-+            <Stop offset="100%" stopColor={shades.deep} stopOpacity="0.38" />
-+          </LinearGradient>
-+          <ClipPath id={`${uid}-clip`}>
-+            <Path d={path} />
-+          </ClipPath>
-+        </Defs>
-+        <Ellipse cx={shadowCx} cy={shadowCy} rx={shadowRx} ry="5.5" fill={shades.shadow} opacity="0.22" />
-+        <Ellipse cx={shadowCx} cy={shadowCy} rx={shadowRx * 1.25} ry="7.5" fill={shades.shadow} opacity="0.14" />
-+        <Ellipse cx={shadowCx} cy={shadowCy} rx={shadowRx * 1.55} ry="10" fill={shades.shadow} opacity="0.08" />
-+        <Path d={path} fill={`url(#${uid}-body)`} />
-+        <G clipPath={`url(#${uid}-clip)`}>
-+          <Rect x="0" y="0" width="128" height="128" fill={`url(#${uid}-bot)`} />
-+          <Ellipse cx={hx} cy={hy} rx={hrx} ry={hry} fill={`url(#${uid}-spec)`} />
-+          <Ellipse
-+            cx={hx - hrx * 0.28}
-+            cy={hy - hry * 0.28}
-+            rx={hrx * 0.42}
-+            ry={hry * 0.36}
-+            fill="#FFFFFF"
-+            opacity="0.32"
-+          />
-+        </G>
++        {detailed ? (
++          <Defs>
++            <RadialGradient id={`${uid}-body`} cx="32%" cy="28%" r="78%">
++              <Stop offset="0%" stopColor={shades.shine} />
++              <Stop offset="28%" stopColor={shades.shine} stopOpacity="0.55" />
++              <Stop offset="62%" stopColor={fill} />
++              <Stop offset="100%" stopColor={shades.shade} />
++            </RadialGradient>
++            <RadialGradient id={`${uid}-spec`} cx="50%" cy="50%" r="50%">
++              <Stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.92" />
++              <Stop offset="45%" stopColor="#FFFFFF" stopOpacity="0.35" />
++              <Stop offset="100%" stopColor="#FFFFFF" stopOpacity="0" />
++            </RadialGradient>
++            <LinearGradient id={`${uid}-bot`} x1="0" y1="0" x2="0" y2="1">
++              <Stop offset="40%" stopColor={shades.deep} stopOpacity="0" />
++              <Stop offset="100%" stopColor={shades.deep} stopOpacity="0.38" />
++            </LinearGradient>
++            <ClipPath id={`${uid}-clip`}>
++              <Path d={path} />
++            </ClipPath>
++          </Defs>
++        ) : null}
++        {detailed ? (
++          <>
++            <Ellipse cx={shadowCx} cy={shadowCy} rx={shadowRx} ry="5.5" fill={shades.shadow} opacity="0.22" />
++            <Ellipse cx={shadowCx} cy={shadowCy} rx={shadowRx * 1.25} ry="7.5" fill={shades.shadow} opacity="0.14" />
++            <Ellipse cx={shadowCx} cy={shadowCy} rx={shadowRx * 1.55} ry="10" fill={shades.shadow} opacity="0.08" />
++          </>
++        ) : (
++          <Ellipse cx={shadowCx} cy={shadowCy} rx={shadowRx} ry="5.5" fill={shades.shadow} opacity="0.18" />
++        )}
++        <Path d={path} fill={detailed ? `url(#${uid}-body)` : fill} />
++        {detailed ? (
++          <G clipPath={`url(#${uid}-clip)`}>
++            <Rect x="0" y="0" width="128" height="128" fill={`url(#${uid}-bot)`} />
++            <Ellipse cx={hx} cy={hy} rx={hrx} ry={hry} fill={`url(#${uid}-spec)`} />
++            <Ellipse
++              cx={hx - hrx * 0.28}
++              cy={hy - hry * 0.28}
++              rx={hrx * 0.42}
++              ry={hry * 0.36}
++              fill="#FFFFFF"
++              opacity="0.32"
++            />
++          </G>
++        ) : null}
 +        {face.fills.map((f, i) => (
 +          <Path key={`f${i}`} d={f.d} fill={f.fill} />
 +        ))}
@@ -139274,6 +139440,134 @@ index 000000000..23b0970d4
 +      : `${shown.label} · ${seconds}s`
 +    : undefined;
 +  return { label, changed };
++}
+diff --git a/apps/mobile/lib/after-first-paint.test.tsx b/apps/mobile/lib/after-first-paint.test.tsx
+new file mode 100644
+index 000000000..842c070e4
+--- /dev/null
++++ b/apps/mobile/lib/after-first-paint.test.tsx
+@@ -0,0 +1,86 @@
++/** @vitest-environment jsdom */
++
++import { act, createElement, useEffect } from "react";
++import { createRoot } from "react-dom/client";
++import type { Root } from "react-dom/client";
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++
++const interact = vi.hoisted(() => ({
++  run: (cb: () => void) => {
++    cb();
++    return { cancel: vi.fn() };
++  },
++}));
++
++vi.mock("react-native", () => ({
++  InteractionManager: {
++    runAfterInteractions: (cb: () => void) => interact.run(cb),
++  },
++}));
++
++import { useAfterFirstPaint } from "./after-first-paint";
++
++let root: Root;
++let container: HTMLDivElement;
++const frames: Array<FrameRequestCallback> = [];
++
++beforeEach(() => {
++  container = document.createElement("div");
++  document.body.appendChild(container);
++  root = createRoot(container);
++  frames.length = 0;
++  vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
++    frames.push(cb);
++    return frames.length;
++  });
++  vi.stubGlobal("cancelAnimationFrame", (id: number) => {
++    frames[id - 1] = () => undefined;
++  });
++});
++
++afterEach(() => {
++  act(() => root.unmount());
++  container.remove();
++  vi.unstubAllGlobals();
++});
++
++function Probe({ onValue }: { onValue: (value: boolean) => void }) {
++  const ready = useAfterFirstPaint();
++  useEffect(() => {
++    onValue(ready);
++  }, [ready, onValue]);
++  return createElement("span", { "data-ready": String(ready) });
++}
++
++function flushFrame() {
++  const next = frames.shift();
++  if (next) act(() => next(0));
++}
++
++describe("useAfterFirstPaint", () => {
++  it("is false on the first commit, before any frame has been drawn", () => {
++    const values: boolean[] = [];
++    act(() => root.render(<Probe onValue={(value) => values.push(value)} />));
++    expect(container.querySelector("span")?.getAttribute("data-ready")).toBe("false");
++    expect(values[0]).toBe(false);
++  });
++
++  it("stays false after one frame, and becomes true after the second frame once the thread is idle", () => {
++    const values: boolean[] = [];
++    act(() => root.render(<Probe onValue={(value) => values.push(value)} />));
++    flushFrame();
++    expect(container.querySelector("span")?.getAttribute("data-ready")).toBe("false");
++    flushFrame();
++    expect(container.querySelector("span")?.getAttribute("data-ready")).toBe("true");
++    expect(values.at(-1)).toBe(true);
++  });
++
++  it("does not flip to true if the component unmounts before the second frame", () => {
++    const values: boolean[] = [];
++    act(() => root.render(<Probe onValue={(value) => values.push(value)} />));
++    flushFrame();
++    act(() => root.unmount());
++    flushFrame();
++    expect(values.at(-1)).toBe(false);
++  });
++});
+diff --git a/apps/mobile/lib/after-first-paint.ts b/apps/mobile/lib/after-first-paint.ts
+new file mode 100644
+index 000000000..7cdb5d1a4
+--- /dev/null
++++ b/apps/mobile/lib/after-first-paint.ts
+@@ -0,0 +1,30 @@
++import { useEffect, useState } from "react";
++import { InteractionManager } from "react-native";
++
++/**
++ * False on the first commit, then true once the first two frames have been
++ * drawn and the JS thread is idle. Callers should keep first paint cheap
++ * (static pictures, no Reanimated loops) until this flips.
++ */
++export function useAfterFirstPaint(): boolean {
++  const [ready, setReady] = useState(false);
++  useEffect(() => {
++    let cancelled = false;
++    let inner = 0;
++    let interaction: { cancel: () => void } | undefined;
++    const outer = requestAnimationFrame(() => {
++      inner = requestAnimationFrame(() => {
++        interaction = InteractionManager.runAfterInteractions(() => {
++          if (!cancelled) setReady(true);
++        });
++      });
++    });
++    return () => {
++      cancelled = true;
++      cancelAnimationFrame(outer);
++      cancelAnimationFrame(inner);
++      interaction?.cancel();
++    };
++  }, []);
++  return ready;
 +}
 diff --git a/apps/mobile/lib/ai-consent.test.ts b/apps/mobile/lib/ai-consent.test.ts
 index 6af5f4657..55b9713ab 100644

@@ -115,6 +115,8 @@ test -f packages/core/src/mochi-avatar.ts
 test -f packages/core/src/mochi-avatar.test.ts
 test -f apps/mobile/components/mochi-bot-avatar.tsx
 grep -q 'MochiBotAvatar' apps/mobile/components/bot-avatar.tsx
+test -f apps/mobile/lib/after-first-paint.ts
+grep -q 'useAfterFirstPaint' apps/mobile/components/mochi-bot-avatar.tsx
 test -f apps/mobile/components/image-card-stack.tsx
 test -f apps/mobile/components/composer-attach-tray.tsx
 test -f apps/mobile/modules/message-image-actions/ios/MessageImageActionsModule.swift

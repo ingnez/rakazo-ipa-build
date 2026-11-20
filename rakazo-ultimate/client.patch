@@ -151220,7 +151220,7 @@ index 000000000..86946f6a9
 +  return native.pickImages(limit);
 +}
 diff --git a/apps/mobile/lib/pick-attachments-image.test.ts b/apps/mobile/lib/pick-attachments-image.test.ts
-index c09286442..7ef966def 100644
+index c09286442..f166a2460 100644
 --- a/apps/mobile/lib/pick-attachments-image.test.ts
 +++ b/apps/mobile/lib/pick-attachments-image.test.ts
 @@ -65,6 +65,14 @@ vi.mock("./file-drop", () => ({ releaseDroppedFile: async () => {} }));
@@ -151312,7 +151312,7 @@ index c09286442..7ef966def 100644
      expect(state.manipulate).not.toHaveBeenCalled();
      expect(state.file).toHaveBeenCalledExactlyOnceWith(state.asset.uri);
      expect(state.base64).toHaveBeenCalledExactlyOnceWith(state.asset.uri);
-@@ -468,3 +502,184 @@ it("preserves PNG and closes the handle when inspection fails", async () => {
+@@ -468,3 +502,255 @@ it("preserves PNG and closes the handle when inspection fails", async () => {
    expect(state.manipulate).not.toHaveBeenCalled();
    expect(state.close).toHaveBeenCalledOnce();
  });
@@ -151497,8 +151497,79 @@ index c09286442..7ef966def 100644
 +    }
 +  });
 +});
++
++describe("a sheet that stops answering", () => {
++  async function pickWithNative(pickImages: (limit: number) => Promise<unknown>) {
++    vi.resetModules();
++    state.optionalNativeModule
++      .mockReset()
++      .mockImplementation((name: string) => (name === "PhotoPicker" ? { pickImages } : null));
++    state.file.mockReset();
++    state.info.mockReset().mockReturnValue({ size: 2 * 1024 * 1024 });
++    state.base64.mockReset().mockResolvedValue("aGVsbG8=");
++    const fresh = await import("./pick-attachments");
++    return fresh.pickFromLibrary();
++  }
++
++  it("gives up on the app's picker instead of staying on the read line", async () => {
++    vi.useFakeTimers();
++    try {
++      const pending = pickWithNative(() => new Promise(() => undefined));
++      const settled = expect(pending).resolves.toMatchObject({
++        outcome: "failed",
++        error: "the photo picker did not answer",
++      });
++      await vi.advanceTimersByTimeAsync(20 * 60_000);
++      await settled;
++    } finally {
++      vi.useRealTimers();
++    }
++  });
++
++  it("keeps waiting while someone browses their photos", async () => {
++    vi.useFakeTimers();
++    try {
++      let answer: (value: unknown) => void = () => {};
++      const pending = pickWithNative(
++        () =>
++          new Promise((resolve) => {
++            answer = resolve;
++          }),
++      );
++      let done = false;
++      void pending.then(() => {
++        done = true;
++      });
++      await vi.advanceTimersByTimeAsync(5 * 60_000);
++      expect(done).toBe(false);
++      answer({ canceled: true, assets: [] });
++      await expect(pending).resolves.toMatchObject({ outcome: "canceled" });
++    } finally {
++      vi.useRealTimers();
++    }
++  });
++
++  it("gives up on the system album the same way", async () => {
++    const ImagePicker = await import("expo-image-picker");
++    vi.mocked(ImagePicker.launchImageLibraryAsync).mockImplementationOnce(
++      () => new Promise<never>(() => undefined),
++    );
++    vi.useFakeTimers();
++    try {
++      const pending = pickFromLibrary();
++      const settled = expect(pending).resolves.toMatchObject({
++        outcome: "failed",
++        error: "the photo picker did not answer",
++      });
++      await vi.advanceTimersByTimeAsync(20 * 60_000);
++      await settled;
++    } finally {
++      vi.useRealTimers();
++    }
++  });
++});
 diff --git a/apps/mobile/lib/pick-attachments.ts b/apps/mobile/lib/pick-attachments.ts
-index c9997f15a..34e8a44ec 100644
+index c9997f15a..1fbd6df39 100644
 --- a/apps/mobile/lib/pick-attachments.ts
 +++ b/apps/mobile/lib/pick-attachments.ts
 @@ -12,6 +12,9 @@ import * as ImagePicker from "expo-image-picker";
@@ -151555,7 +151626,7 @@ index c9997f15a..34e8a44ec 100644
      return {
        uri: saved.uri,
        name: compressedImageName(name, format),
-@@ -113,42 +124,94 @@ async function readUriAsBase64(
+@@ -113,42 +124,99 @@ async function readUriAsBase64(
    return { contentBase64, size };
  }
  
@@ -151582,6 +151653,11 @@ index c9997f15a..34e8a44ec 100644
 +
 +/** How long one photo's preparation may take before it is reported instead of waited on. */
 +const PHOTO_READ_TIMEOUT_MS = 30_000;
++
++/** How long the album itself may stay silent before the pick is called a hang. The picker is
++ * open for as long as the person browses their photos, and that wait is theirs, so this only
++ * catches a sheet that has stopped answering at all — never someone taking their time. */
++const LIBRARY_PICK_WATCHDOG_MS = 20 * 60_000;
 +
 +/** Finishes with the work, or fails once the wait is over: a native read that never returns has
 + * to become something the composer can say, not silence. */
@@ -151672,7 +151748,7 @@ index c9997f15a..34e8a44ec 100644
          candidate = {
            name: prepared.name,
            mimeType: prepared.mimeType,
-@@ -174,6 +237,79 @@ export async function pickFromLibrary(
+@@ -174,6 +242,89 @@ export async function pickFromLibrary(
    return { attachments, skipped };
  }
  
@@ -151691,7 +151767,13 @@ index c9997f15a..34e8a44ec 100644
 +  if (hasNativePhotoPicker()) {
 +    let result: Awaited<ReturnType<typeof pickPhotos>>;
 +    try {
-+      result = await pickPhotos(Math.max(1, maxCount - existingCount));
++      // The module answers within its own deadlines once the sheet is up; this bound only keeps
++      // a sheet that never answers from holding the composer on "reading photos" forever.
++      result = await withTimeout(
++        pickPhotos(Math.max(1, maxCount - existingCount)),
++        LIBRARY_PICK_WATCHDOG_MS,
++        () => new Error("the photo picker did not answer"),
++      );
 +    } catch (error) {
 +      return { attachments: [], skipped: [], outcome: "failed", error: failureText(error) };
 +    }
@@ -151706,13 +151788,17 @@ index c9997f15a..34e8a44ec 100644
 +  } else {
 +    let result: Awaited<ReturnType<typeof ImagePicker.launchImageLibraryAsync>>;
 +    try {
-+      result = await ImagePicker.launchImageLibraryAsync({
-+        mediaTypes: ["images"],
-+        allowsMultipleSelection: true,
-+        quality: 1,
-+        // Ask iOS for the representation every model reads instead of an original HEIC copy.
-+        preferredAssetRepresentationMode: "compatible",
-+      });
++      result = await withTimeout(
++        ImagePicker.launchImageLibraryAsync({
++          mediaTypes: ["images"],
++          allowsMultipleSelection: true,
++          quality: 1,
++          // Ask iOS for the representation every model reads instead of an original HEIC copy.
++          preferredAssetRepresentationMode: "compatible",
++        }),
++        LIBRARY_PICK_WATCHDOG_MS,
++        () => new Error("the photo picker did not answer"),
++      );
 +    } catch (error) {
 +      return { attachments: [], skipped: [], outcome: "failed", error: failureText(error) };
 +    }
@@ -151752,7 +151838,7 @@ index c9997f15a..34e8a44ec 100644
  export async function takePhoto(
    existingCount = 0,
    maxBytes = ATTACHMENT_MAX_BYTES,
-@@ -191,7 +327,7 @@ export async function takePhoto(
+@@ -191,7 +342,7 @@ export async function takePhoto(
    const asset = result.assets[0];
    if (!asset) return { attachments: [], skipped: [] };
    const originalName = asset.fileName ?? `photo-${Date.now()}.jpg`;
@@ -151761,7 +151847,7 @@ index c9997f15a..34e8a44ec 100644
      asset.uri,
      originalName,
      asset.mimeType,
-@@ -286,7 +422,7 @@ export async function readDroppedFiles(
+@@ -286,7 +437,7 @@ export async function readDroppedFiles(
        let mimeType = inferAttachmentMimeType(name, file.mimeType || undefined);
        const full = existingCount + attachments.length >= maxCount;
        if (!full && uri && file.width && file.height && mimeType?.startsWith("image/")) {
@@ -155009,7 +155095,7 @@ index b12a1a56a..7f19b784e 100644
 +  });
  }
 diff --git a/apps/mobile/lib/thread-attachments.test.tsx b/apps/mobile/lib/thread-attachments.test.tsx
-index fe95c8c7f..7d13cb92f 100644
+index fe95c8c7f..dc6c477b0 100644
 --- a/apps/mobile/lib/thread-attachments.test.tsx
 +++ b/apps/mobile/lib/thread-attachments.test.tsx
 @@ -3,10 +3,15 @@
@@ -155042,7 +155128,7 @@ index fe95c8c7f..7d13cb92f 100644
  vi.mock("./use-file-drop", () => ({
    useFileDrop: (_key: unknown, onDrop: NonNullable<typeof fileDrop.onDrop>) => {
      fileDrop.onDrop = onDrop;
-@@ -502,3 +512,77 @@ it("keeps a share for the committed chat when a render of another chat is discar
+@@ -502,3 +512,100 @@ it("keeps a share for the committed chat when a render of another chat is discar
    const kept = committedAttachments.activePendingAttachments;
    expect(kept.map((item) => item.id)).toEqual(["t1"]);
  });
@@ -155118,6 +155204,29 @@ index fe95c8c7f..7d13cb92f 100644
 +
 +    await act(async () => settle({ attachments: [], skipped: [], outcome: "canceled" }));
 +    expect(attachments.attaching).toBe(false);
++  });
++
++  it("clears the reading state when the picker fails instead of answering", async () => {
++    vi.mocked(pickFromLibrary).mockResolvedValueOnce({
++      attachments: [],
++      skipped: [],
++      outcome: "failed",
++      error: "the photo picker did not answer",
++    });
++    mount(<Probe botId="bot-album-hung" />);
++
++    await act(async () => attachments.attachFrom("library"));
++    expect(attachments.attaching).toBe(false);
++    expect(attachments.attachmentNotice).toContain("the photo picker did not answer");
++  });
++
++  it("clears the reading state when the pick throws", async () => {
++    vi.mocked(pickFromLibrary).mockRejectedValueOnce(new Error("the photo picker did not answer"));
++    mount(<Probe botId="bot-album-throws" />);
++
++    await act(async () => attachments.attachFrom("library"));
++    expect(attachments.attaching).toBe(false);
++    expect(attachments.attachmentNotice).toBe("Could not attach files");
 +  });
 +});
 diff --git a/apps/mobile/lib/thread-attachments.ts b/apps/mobile/lib/thread-attachments.ts
@@ -158045,11 +158154,13 @@ index 000000000..38e2d6e14
 +end
 diff --git a/apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift b/apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
 new file mode 100644
-index 000000000..0adadaf40
+index 000000000..2712fb5eb
 --- /dev/null
 +++ b/apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
-@@ -0,0 +1,241 @@
+@@ -0,0 +1,511 @@
 +import ExpoModulesCore
++import ImageIO
++import Photos
 +import PhotosUI
 +import UIKit
 +import UniformTypeIdentifiers
@@ -158066,7 +158177,15 @@ index 000000000..0adadaf40
 +/// The module also hands back a JPEG when it can (`preferredAssetRepresentationMode = .compatible`),
 +/// the one representation every model reads, and copies each photo out of the picker's temporary
 +/// file before that file is taken away.
++///
++/// Every wait here ends. A screen that is still dismissing takes the sheet a moment later; a
++/// sheet UIKit drops without saying so is reported as a failure instead of leaving the composer
++/// on "reading photos" forever; and each photo's bytes may take a bounded time to arrive before
++/// that photo is reported unreadable. A promise that is never resolved, or resolved twice, is
++/// what made v26 look dead, so this module resolves exactly once on every path.
 +public class PhotoPickerModule: Module {
++  /// One sheet at a time, set and cleared on whichever thread the previous ran out on.
++  private let lock = NSLock()
 +  private var active: PickerSession?
 +
 +  public func definition() -> ModuleDefinition {
@@ -158078,13 +158197,26 @@ index 000000000..0adadaf40
 +    .runOnQueue(DispatchQueue.main)
 +  }
 +
++  private func takeSlot() -> Bool {
++    lock.lock()
++    defer { lock.unlock() }
++    guard active == nil else { return false }
++    return true
++  }
++
++  private func setActive(_ session: PickerSession?) {
++    lock.lock()
++    active = session
++    lock.unlock()
++  }
++
 +  private func start(limit: Int, promise: Promise) {
-+    guard active == nil else {
++    guard takeSlot() else {
 +      // One sheet at a time: a tap while the first one is up has nothing left to choose.
 +      promise.resolve(PickerSession.canceled(error: "a photo picker is already open"))
 +      return
 +    }
-+    guard let host = appContext?.utilities?.currentViewController() else {
++    guard let root = appContext?.utilities?.currentViewController() else {
 +      promise.resolve(PickerSession.canceled(error: "no screen to present the picker on"))
 +      return
 +    }
@@ -158097,18 +158229,118 @@ index 000000000..0adadaf40
 +    configuration.preferredAssetRepresentationMode = .compatible
 +
 +    let picker = PHPickerViewController(configuration: configuration)
-+    let session = PickerSession(promise: promise) { [weak self] in self?.active = nil }
-+    active = session
++    let session = PickerSession(promise: promise) { [weak self] in self?.setActive(nil) }
++    setActive(session)
 +    picker.delegate = session
 +    picker.presentationController?.delegate = session
-+    host.present(picker, animated: true)
++    Self.presentOnTopScreen(picker, from: root) { [weak session] presented in
++      guard let session else { return }
++      guard presented else {
++        // The sheet never reached the screen, so nothing will ever dismiss or finish it. Free
++        // the slot and answer now instead of leaving the composer on "reading photos".
++        picker.dismiss(animated: false)
++        session.settle(PickerSession.canceled(error: "failed to present photo picker"))
++        return
++      }
++      // The menu that opened the sheet can hand over a fresh presentation controller; the
++      // swipe-down still has to be heard.
++      picker.presentationController?.delegate = session
++    }
++  }
++
++  /// Presents the sheet on the screen that is actually on top, waiting out one that is still
++  /// being dismissed or presented (the `+` menu closing is exactly that moment). Calls back with
++  /// `false` when UIKit never put the sheet on screen, which it does silently when the screen it
++  /// was handed is mid-transition.
++  private static func presentOnTopScreen(
++    _ picker: PHPickerViewController,
++    from root: UIViewController,
++    completion: @escaping (Bool) -> Void
++  ) {
++    var finished = false
++    func finish(_ presented: Bool) {
++      guard !finished else { return }
++      finished = true
++      completion(presented)
++    }
++    func attempt(_ attemptsLeft: Int) {
++      DispatchQueue.main.async {
++        if isOnScreen(picker) {
++          finish(true)
++          return
++        }
++        let host = topmost(root)
++        let busy = host.isBeingDismissed || host.isBeingPresented
++          || host.presentedViewController != nil || host.view.window == nil
++        guard !busy else {
++          guard attemptsLeft > 1 else {
++            finish(false)
++            return
++          }
++          // A tenth of a second is enough for the menu to finish closing.
++          DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { attempt(attemptsLeft - 1) }
++          return
++        }
++        host.present(picker, animated: true) {
++          finish(picker.presentingViewController != nil)
++        }
++        // UIKit can drop a present without calling its completion back at all; the sheet is
++        // either on screen within a second or it never will be.
++        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
++          guard !isOnScreen(picker) else { return }
++          finish(false)
++        }
++      }
++    }
++    // Eight attempts of a tenth of a second: a menu that is slow to close still gets its sheet.
++    attempt(8)
++  }
++
++  /// Whether the sheet is on screen, without loading a view that was never shown.
++  private static func isOnScreen(_ picker: PHPickerViewController) -> Bool {
++    if picker.presentingViewController != nil { return true }
++    return picker.isViewLoaded && picker.view.window != nil
++  }
++
++  /// The screen in front of the person: the topmost presentation, through a navigation stack or
++  /// a tab bar, skipping anything already on its way out.
++  private static func topmost(_ controller: UIViewController) -> UIViewController {
++    var current = controller
++    var steps = 0
++    while steps < 16 {
++      steps += 1
++      if let presented = current.presentedViewController, !presented.isBeingDismissed {
++        current = presented
++      } else if let navigation = current as? UINavigationController,
++        let visible = navigation.visibleViewController, visible !== current
++      {
++        current = visible
++      } else if let tab = current as? UITabBarController, let selected = tab.selectedViewController,
++        selected !== current
++      {
++        current = selected
++      } else {
++        return current
++      }
++    }
++    return current
 +  }
 +}
 +
 +final class PickerSession: NSObject, PHPickerViewControllerDelegate,
 +  UIAdaptivePresentationControllerDelegate {
++  /// How long one photo's bytes may take to arrive from the item provider before that photo is
++  /// reported unreadable. Long enough for a large photo or a slow iCloud download, short enough
++  /// that the composer is never left waiting on a callback that will not come.
++  private static let readTimeout: TimeInterval = 15
++  /// How long the photo library may take to hand over a photo the item provider would not.
++  private static let libraryTimeout: TimeInterval = 20
++  /// How long a photo library permission prompt may take to be answered.
++  private static let permissionTimeout: TimeInterval = 10
++
 +  private let promise: Promise
 +  private let release: () -> Void
++  private let lock = NSLock()
 +  private var delivered = false
 +  private var settled = false
 +
@@ -158125,13 +158357,29 @@ index 000000000..0adadaf40
 +    return body
 +  }
 +
-+  private func settle(_ body: [String: Any]) {
++  /// Resolves the promise exactly once, whichever path and whichever thread gets here first.
++  func settle(_ body: [String: Any]) {
++    lock.lock()
 +    guard !settled else {
++      lock.unlock()
 +      return
 +    }
 +    settled = true
++    lock.unlock()
 +    release()
 +    promise.resolve(body)
++  }
++
++  private func markDelivered() {
++    lock.lock()
++    delivered = true
++    lock.unlock()
++  }
++
++  private var hasDelivered: Bool {
++    lock.lock()
++    defer { lock.unlock() }
++    return delivered
 +  }
 +
 +  // MARK: - PHPickerViewControllerDelegate
@@ -158139,7 +158387,7 @@ index 000000000..0adadaf40
 +  func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
 +    // The selection is here before anything is dismissed or decided, so a dismissal that follows
 +    // can never be mistaken for a cancel.
-+    delivered = true
++    markDelivered()
 +    picker.dismiss(animated: true)
 +    guard !results.isEmpty else {
 +      // The sheet's own cancel button: nothing was chosen.
@@ -158161,7 +158409,7 @@ index 000000000..0adadaf40
 +      if let failure, assets.isEmpty {
 +        body["error"] = failure
 +      }
-+      settle(body)
++      self.settle(body)
 +    }
 +  }
 +
@@ -158171,7 +158419,7 @@ index 000000000..0adadaf40
 +    // A swipe-down reaches here at once, while a selection is still on its way. Give the
 +    // selection the rest of this run loop before deciding that nothing was chosen.
 +    DispatchQueue.main.async { [weak self] in
-+      guard let self, !self.delivered else {
++      guard let self, !self.hasDelivered else {
 +        return
 +      }
 +      self.settle(Self.canceled())
@@ -158200,6 +158448,11 @@ index 000000000..0adadaf40
 +    if let file = await writeData(from: provider, type: identifier, into: directory) {
 +      return describe(file)
 +    }
++    // Neither representation came back in time: the library the sheet came from still knows the
++    // photo, and can fetch it from iCloud where the provider would not.
++    if let file = await fromPhotoLibrary(result, into: directory) {
++      return describe(file)
++    }
 +    throw PhotoPickError.unreadable
 +  }
 +
@@ -158208,9 +158461,11 @@ index 000000000..0adadaf40
 +  private static func copyFile(from provider: NSItemProvider, type: String, into directory: URL)
 +    async -> URL? {
 +    await withCheckedContinuation { (continuation: CheckedContinuation<URL?, Never>) in
++      let answer = Answer<URL?> { continuation.resume(returning: $0) }
++      DispatchQueue.global().asyncAfter(deadline: .now() + readTimeout) { answer.answer(nil) }
 +      _ = provider.loadFileRepresentation(forTypeIdentifier: type) { url, _ in
 +        guard let url else {
-+          continuation.resume(returning: nil)
++          answer.answer(nil)
 +          return
 +        }
 +        let target = destination(
@@ -158219,9 +158474,9 @@ index 000000000..0adadaf40
 +          fileExtension: url.pathExtension)
 +        do {
 +          try FileManager.default.copyItem(at: url, to: target)
-+          continuation.resume(returning: target)
++          answer.answer(target)
 +        } catch {
-+          continuation.resume(returning: nil)
++          answer.answer(nil)
 +        }
 +      }
 +    }
@@ -158229,9 +158484,12 @@ index 000000000..0adadaf40
 +
 +  private static func writeData(from provider: NSItemProvider, type: String, into directory: URL)
 +    async -> URL? {
-+    let data: Data? = await withCheckedContinuation { (continuation: CheckedContinuation<Data?, Never>) in
++    let data: Data? = await withCheckedContinuation {
++      (continuation: CheckedContinuation<Data?, Never>) in
++      let answer = Answer<Data?> { continuation.resume(returning: $0) }
++      DispatchQueue.global().asyncAfter(deadline: .now() + readTimeout) { answer.answer(nil) }
 +      _ = provider.loadDataRepresentation(forTypeIdentifier: type) { data, _ in
-+        continuation.resume(returning: data)
++        answer.answer(data)
 +      }
 +    }
 +    guard let data, !data.isEmpty else {
@@ -158247,6 +158505,104 @@ index 000000000..0adadaf40
 +    } catch {
 +      return nil
 +    }
++  }
++
++  /// The photo the item provider would not give up, read from the photo library by the asset the
++  /// picker named. A format no model reads is handed over as a JPEG.
++  private static func fromPhotoLibrary(_ result: PHPickerResult, into directory: URL) async -> URL? {
++    guard let identifier = result.assetIdentifier else { return nil }
++    guard await canReadPhotoLibrary() else { return nil }
++    let assets = PHAsset.fetchAssets(withLocalIdentifiers: [identifier], options: nil)
++    guard let asset = assets.firstObject else { return nil }
++
++    let options = PHImageRequestOptions()
++    // A photo that lives only in iCloud is still the person's photo.
++    options.isNetworkAccessAllowed = true
++    options.deliveryMode = .highQualityFormat
++    options.version = .current
++    options.resizeMode = .none
++    let name = PHAssetResource.assetResources(for: asset).first?.originalFilename
++
++    let data: Data? = await withCheckedContinuation {
++      (continuation: CheckedContinuation<Data?, Never>) in
++      let answer = Answer<Data?> { continuation.resume(returning: $0) }
++      DispatchQueue.global().asyncAfter(deadline: .now() + libraryTimeout) { answer.answer(nil) }
++      PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) {
++        data, _, _, _ in
++        answer.answer(data)
++      }
++    }
++    guard let data, !data.isEmpty else { return nil }
++    return writeImage(data, name: name, into: directory)
++  }
++
++  /// Photo library access, asked for the first time only when a photo actually needs it: the
++  /// picker itself never does, so most people never see the prompt.
++  private static func canReadPhotoLibrary() async -> Bool {
++    switch PHPhotoLibrary.authorizationStatus(for: .readWrite) {
++    case .authorized, .limited:
++      return true
++    case .notDetermined:
++      return await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
++        let answer = Answer<Bool> { continuation.resume(returning: $0) }
++        DispatchQueue.global().asyncAfter(deadline: .now() + permissionTimeout) {
++          answer.answer(false)
++        }
++        PHPhotoLibrary.requestAuthorization(for: .readWrite) { status in
++          answer.answer(status == .authorized || status == .limited)
++        }
++      }
++    default:
++      return false
++    }
++  }
++
++  /// JPEG and PNG are written as they arrived; anything else is re-encoded as a JPEG, the one
++  /// representation every model reads.
++  private static func writeImage(_ data: Data, name: String?, into directory: URL) -> URL? {
++    let stem = name.map { ($0 as NSString).deletingPathExtension } ?? "photo"
++    if let type = imageType(of: data), type.conforms(to: .jpeg) {
++      return write(data, into: directory, name: stem, fileExtension: "jpg")
++    }
++    if let type = imageType(of: data), type.conforms(to: .png) {
++      return write(data, into: directory, name: stem, fileExtension: "png")
++    }
++    guard let jpeg = jpegData(from: data) else { return nil }
++    return write(jpeg, into: directory, name: stem, fileExtension: "jpg")
++  }
++
++  private static func write(_ data: Data, into directory: URL, name: String, fileExtension: String)
++    -> URL? {
++    let target = destination(in: directory, name: name, fileExtension: fileExtension)
++    do {
++      try data.write(to: target, options: .atomic)
++      return target
++    } catch {
++      return nil
++    }
++  }
++
++  private static func imageType(of data: Data) -> UTType? {
++    guard let source = CGImageSourceCreateWithData(data as CFData, nil),
++      let identifier = CGImageSourceGetType(source)
++    else {
++      return nil
++    }
++    return UTType(identifier as String)
++  }
++
++  private static func jpegData(from data: Data) -> Data? {
++    guard let image = UIImage(data: data) else { return nil }
++    if image.imageOrientation == .up {
++      return image.jpegData(compressionQuality: 0.9)
++    }
++    // Re-encoding drops EXIF orientation, so the pixels are turned the right way up first.
++    let format = UIGraphicsImageRendererFormat.default()
++    format.scale = 1
++    let size = image.size
++    return UIGraphicsImageRenderer(size: size, format: format)
++      .image { _ in image.draw(in: CGRect(origin: .zero, size: size)) }
++      .jpegData(compressionQuality: 0.9)
 +  }
 +
 +  /// The name the chat shows, made unique so two photos of the same name keep both bytes.
@@ -158274,12 +158630,35 @@ index 000000000..0adadaf40
 +      "uri": url.absoluteString,
 +      "name": url.lastPathComponent,
 +      "width": Double(image?.size.width ?? 0),
-+      "height": Double(image?.size.height ?? 0)
++      "height": Double(image?.size.height ?? 0),
 +    ]
 +    if let mimeType = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType {
 +      body["mimeType"] = mimeType
 +    }
 +    return body
++  }
++}
++
++/// One system call's answer, delivered exactly once: a callback that never arrives, or one that
++/// arrives after the deadline, must not leave the pick waiting or resolve it twice.
++private final class Answer<Value>: @unchecked Sendable {
++  private let lock = NSLock()
++  private var answered = false
++  private let finish: (Value) -> Void
++
++  init(_ finish: @escaping (Value) -> Void) {
++    self.finish = finish
++  }
++
++  func answer(_ value: Value) {
++    lock.lock()
++    guard !answered else {
++      lock.unlock()
++      return
++    }
++    answered = true
++    lock.unlock()
++    finish(value)
 +  }
 +}
 +

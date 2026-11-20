@@ -147,6 +147,12 @@ test -f apps/mobile/modules/photo-picker/ios/PhotoPicker.podspec
 grep -q 'presentationControllerDidDismiss' apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
 grep -q 'preferredAssetRepresentationMode = .compatible' apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
 grep -q 'hasNativePhotoPicker' apps/mobile/lib/pick-attachments.ts
+# v27: a sheet that never appears, or a photo whose bytes never arrive, must end in an answer
+# instead of the composer's "reading photos" line. The module names the sheet it could not show,
+# bounds each read, and falls back to the library; the composer bounds the whole pick.
+grep -q 'failed to present photo picker' apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
+grep -q 'requestImageDataAndOrientation' apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
+grep -q 'LIBRARY_PICK_WATCHDOG_MS' apps/mobile/lib/pick-attachments.ts
 test -f apps/mobile/modules/message-image-actions/ios/MessageImageActionsModule.swift
 test -f apps/mobile/modules/message-image-actions/ios/MessageImageActions.podspec
 test -f apps/mobile/modules/message-image-actions/expo-module.config.json

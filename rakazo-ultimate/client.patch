@@ -158492,11 +158492,12 @@ index 000000000..38e2d6e14
 +end
 diff --git a/apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift b/apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
 new file mode 100644
-index 000000000..a4fe50e3b
+index 000000000..c718ef550
 --- /dev/null
 +++ b/apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
-@@ -0,0 +1,715 @@
+@@ -0,0 +1,696 @@
 +import ExpoModulesCore
++import Foundation
 +import ImageIO
 +import Photos
 +import PhotosUI
@@ -158512,17 +158513,22 @@ index 000000000..a4fe50e3b
 +/// dismissal counts as a cancel here only when no selection arrived, and only once the run loop
 +/// has had its turn to deliver one.
 +///
-+/// The module also hands back a JPEG when it can (`preferredAssetRepresentationMode = .compatible`),
-+/// the one representation every model reads, and copies each photo out of the picker's temporary
-+/// file before that file is taken away.
++/// The sheet is a process of its own, and the photos come over XPC from it. Dismissing the sheet
++/// takes that process down — v28 dismissed it first thing in `didFinishPicking`, and every read of
++/// that selection then timed out on a real phone — so the sheet stays up while the photos are read
++/// and goes away only when the pick settles.
 +///
-+/// Every wait here ends, and soon. A local photo is decoded straight from the item provider, so
-+/// it is handed back in a fraction of a second; the routes that can stall (a file the provider
-+/// still has in iCloud, the photo library's own fetch) run beside it and are given three seconds.
-+/// The whole pick then has a six-second deadline of its own, so no system callback can leave the
-+/// composer on "reading photos" for longer than that, whatever it does. A promise that is never
-+/// resolved, or resolved twice, is what made v26 look dead, so this module resolves exactly once
-+/// on every path, and a failure names the steps that were tried.
++/// A picked photo is read the way expo-image-picker's `MediaHandler` reads one, one route at a
++/// time and never several at once: the file the provider holds for the photo's own type, then the
++/// same type's bytes, then the photo library by the asset the picker named. Asking one provider
++/// four things at once is the other half of what stalled the read. Nothing is transcoded across
++/// processes either (`preferredAssetRepresentationMode = .current`): a HEIC photo is turned into a
++/// JPEG here on the phone, after it has arrived.
++///
++/// Every wait here ends, and soon. A local photo is handed over in a fraction of a second; each
++/// route has its own short bound, the whole pick has a six-second deadline of its own, and a
++/// failure names every step it tried with how long each took. A promise that is never resolved, or
++/// resolved twice, is what made v26 look dead, so this module resolves exactly once on every path.
 +public class PhotoPickerModule: Module {
 +  /// One sheet at a time, set and cleared on whichever thread the previous ran out on.
 +  private let lock = NSLock()
@@ -158566,19 +158572,21 @@ index 000000000..a4fe50e3b
 +    // 0 is the most the system allows; the caller sends the room its draft has left.
 +    configuration.selectionLimit = limit > 0 ? limit : 0
 +    configuration.selection = .ordered
-+    configuration.preferredAssetRepresentationMode = .compatible
++    // The photo as it is on the phone. `.compatible` made iOS transcode the whole selection in the
++    // picker's process before handing anything over, and that transcode is what never finished.
++    configuration.preferredAssetRepresentationMode = .current
 +
 +    let picker = PHPickerViewController(configuration: configuration)
 +    let session = PickerSession(promise: promise) { [weak self] in self?.setActive(nil) }
++    session.activePicker = picker
 +    setActive(session)
 +    picker.delegate = session
 +    picker.presentationController?.delegate = session
 +    Self.presentOnTopScreen(picker, from: root) { [weak session] presented in
 +      guard let session else { return }
 +      guard presented else {
-+        // The sheet never reached the screen, so nothing will ever dismiss or finish it. Free
-+        // the slot and answer now instead of leaving the composer on "reading photos".
-+        picker.dismiss(animated: false)
++        // The sheet never reached the screen, so nothing will ever dismiss or finish it. Answer
++        // now instead of leaving the composer on "reading photos"; settling takes it away too.
 +        session.settle(PickerSession.canceled(error: "failed to present photo picker"))
 +        return
 +      }
@@ -158669,11 +158677,13 @@ index 000000000..a4fe50e3b
 +
 +final class PickerSession: NSObject, PHPickerViewControllerDelegate,
 +  UIAdaptivePresentationControllerDelegate {
-+  /// How long one handover from the item provider may take. A local photo is decoded in a
-+  /// fraction of a second, so this is only ever reached by a photo that is not coming.
-+  private static let handoverTimeout: TimeInterval = 3
-+  /// How long the photo library may take to hand over a photo the item provider would not.
-+  private static let libraryTimeout: TimeInterval = 4
++  /// How long the provider may take to hand over the photo's own file. A local photo answers in a
++  /// fraction of a second; this is only ever reached by a file that is not coming.
++  private static let fileTimeout: TimeInterval = 1.5
++  /// How long the provider may take to hand over that type's bytes when its file does not come.
++  private static let dataTimeout: TimeInterval = 2
++  /// How long the photo library may take to hand over a photo the provider would not.
++  private static let libraryTimeout: TimeInterval = 2
 +  /// How long a photo library permission prompt may take to be answered.
 +  private static let permissionTimeout: TimeInterval = 2
 +  /// The whole read: past this the person is told, whatever any callback is doing. Short enough
@@ -158685,7 +158695,11 @@ index 000000000..a4fe50e3b
 +  private let lock = NSLock()
 +  private var delivered = false
 +  private var settled = false
-+  /// What each read step answered, so a failure says which system call refused or timed out.
++  /// The sheet the selection came from. Its process is what serves the photos, so it is kept up
++  /// while they are read and dismissed only in `settle`.
++  weak var activePicker: PHPickerViewController?
++  /// What each read step answered and how long it took, so a failure says which system call
++  /// refused or timed out instead of asking for another guess.
 +  private let trace = ReadTrace()
 +
 +  init(promise: Promise, release: @escaping () -> Void) {
@@ -158701,7 +158715,8 @@ index 000000000..a4fe50e3b
 +    return body
 +  }
 +
-+  /// Resolves the promise exactly once, whichever path and whichever thread gets here first.
++  /// Resolves the promise exactly once, whichever path and whichever thread gets here first. The
++  /// sheet goes away here and nowhere earlier: by now every route that needed it has answered.
 +  func settle(_ body: [String: Any]) {
 +    lock.lock()
 +    guard !settled else {
@@ -158709,9 +158724,30 @@ index 000000000..a4fe50e3b
 +      return
 +    }
 +    settled = true
++    let sheet = activePicker
 +    lock.unlock()
 +    release()
++    Self.dismiss(sheet)
 +    promise.resolve(body)
++  }
++
++  /// Takes the sheet away, once, on the main thread — and only when it is still up: a swipe-down
++  /// has already taken it, and one that never appeared has nothing to take away.
++  private static func dismiss(_ picker: PHPickerViewController?) {
++    guard let picker else { return }
++    let take = {
++      guard picker.presentingViewController != nil
++        || (picker.isViewLoaded && picker.view.window != nil)
++      else {
++        return
++      }
++      picker.dismiss(animated: true)
++    }
++    if Thread.isMainThread {
++      take()
++    } else {
++      DispatchQueue.main.async(execute: take)
++    }
 +  }
 +
 +  private func markDelivered() {
@@ -158729,12 +158765,12 @@ index 000000000..a4fe50e3b
 +  // MARK: - PHPickerViewControllerDelegate
 +
 +  func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
-+    // The selection is here before anything is dismissed or decided, so a dismissal that follows
-+    // can never be mistaken for a cancel.
++    // The selection is here before anything is decided, so a dismissal that follows can never be
++    // mistaken for a cancel. The sheet itself stays exactly where it is: it is taken away once the
++    // photos have been read, in `settle`.
 +    markDelivered()
-+    picker.dismiss(animated: true)
 +    guard !results.isEmpty else {
-+      // The sheet's own cancel button: nothing was chosen.
++      // The sheet's own cancel button: nothing was chosen, so there is nothing to read.
 +      settle(Self.canceled())
 +      return
 +    }
@@ -158782,19 +158818,23 @@ index 000000000..a4fe50e3b
 +
 +  // MARK: - Reading a chosen photo
 +
-+  /// The photo as a file the chat can upload, from the fastest route that has it.
++  /// The photo as a file the chat can upload, from the first route that has it.
 +  ///
-+  /// The item provider can hand a photo over two ways: decoded as a `UIImage`, and as the file it
-+  /// keeps on disk. They run at the same time, because the first is what a photo already on the
-+  /// phone answers in a fraction of a second while the second can sit on an iCloud download. Only
-+  /// when neither produces a file does the photo library get asked for the asset the picker named.
++  /// One route at a time, the way expo-image-picker reads a picked photo: the file the provider
++  /// holds for the photo's own type, then that type's bytes, then the photo library by the asset
++  /// the picker named. A route starts only after the one before it has answered or run out of time,
++  /// so one `NSItemProvider` never carries several loads at once.
 +  private static func copy(_ result: PHPickerResult, trace: ReadTrace) async throws -> [String: Any] {
 +    let provider = result.itemProvider
 +    let directory = FileManager.default.temporaryDirectory
 +      .appendingPathComponent("picked-photos", isDirectory: true)
 +    try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
++    let type = preferredType(of: provider)
 +
-+    if let file = await readFromProvider(provider, trace: trace, into: directory) {
++    if let file = await readFile(provider, type: type, trace: trace, into: directory) {
++      return describe(file)
++    }
++    if let file = await readData(provider, type: type, trace: trace, into: directory) {
 +      return describe(file)
 +    }
 +    if let file = await fromPhotoLibrary(result, trace: trace, into: directory) {
@@ -158803,136 +158843,90 @@ index 000000000..a4fe50e3b
 +    throw PhotoPickError.unreadable(trace.text)
 +  }
 +
-+  /// Every handover the provider offers, started together; the first file wins and the rest are
-+  /// left to finish unnoticed. Each is bounded, and the read ends when the last one has said no.
-+  private static func readFromProvider(
-+    _ provider: NSItemProvider,
-+    trace: ReadTrace,
-+    into directory: URL
-+  ) async -> URL? {
-+    let canDecode = provider.canLoadObject(ofClass: UIImage.self)
-+    let fileTypes = fileIdentifiers(for: provider)
-+    let routes = fileTypes.count + (canDecode ? 1 : 0)
-+    guard routes > 0 else {
-+      trace.add("provider=no-routes")
-+      return nil
-+    }
-+    return await withCheckedContinuation { (continuation: CheckedContinuation<URL?, Never>) in
-+      let read = PhotoRead(routes: routes) { url in continuation.resume(returning: url) }
-+      // The read's own bound, in case a route neither answers nor is told it timed out.
-+      DispatchQueue.global().asyncAfter(deadline: .now() + handoverTimeout) {
-+        trace.add("provider=timeout")
-+        read.deadline()
-+      }
-+      if canDecode {
-+        decodeObject(provider, trace: trace, into: directory, read: read)
-+      }
-+      for type in fileTypes {
-+        copyFile(provider, type: type, trace: trace, into: directory, read: read)
-+      }
-+    }
-+  }
-+
-+  /// The types the file route asks for: the two standards, then the concrete type the provider
-+  /// says it holds (a HEIC photo answers only to its own). Three at most — each is a system call
-+  /// and they are all bounded by the same three seconds.
-+  private static func fileIdentifiers(for provider: NSItemProvider) -> [String] {
-+    var identifiers = [UTType.jpeg.identifier, UTType.image.identifier]
++  /// The one type every route asks for: the first type the provider registers that is an image (a
++  /// HEIC photo answers to its own), and the general image type when it registers none — the same
++  /// choice expo-image-picker makes before it loads a representation.
++  private static func preferredType(of provider: NSItemProvider) -> String {
 +    for registered in provider.registeredTypeIdentifiers {
-+      let isImage = UTType(registered)?.conforms(to: .image) ?? false
-+      guard isImage, !identifiers.contains(registered) else { continue }
-+      identifiers.append(registered)
++      if let type = UTType(registered), type.conforms(to: .image) {
++        return registered
++      }
 +    }
-+    return Array(identifiers.prefix(3))
++    return UTType.image.identifier
 +  }
 +
-+  /// `loadObject` decodes the photo itself: for a photo on the phone this answers at once, and it
-+  /// is the one route `loadFileRepresentation` cannot serve — a HEIC the provider keeps only as
-+  /// data. The image arrives already turned the right way up, so only the JPEG write is left.
-+  private static func decodeObject(
-+    _ provider: NSItemProvider,
-+    trace: ReadTrace,
-+    into directory: URL,
-+    read: PhotoRead
-+  ) {
-+    let answered = Answer<RouteOutcome> { outcome in
-+      switch outcome {
-+      case .got(let url):
-+        trace.add("obj=ok")
-+        read.won(url)
-+      case .timeout:
-+        trace.add("obj=timeout")
-+        read.lost()
-+      case .refused:
-+        trace.add("obj=err")
-+        read.lost()
-+      case .missing:
-+        trace.add("obj=no")
-+        read.lost()
-+      }
-+    }
-+    DispatchQueue.global().asyncAfter(deadline: .now() + handoverTimeout) {
-+      answered.answer(.timeout)
-+    }
-+    _ = provider.loadObject(ofClass: UIImage.self) { object, error in
-+      guard let image = object as? UIImage else {
-+        answered.answer(error == nil ? .missing : .refused)
-+        return
-+      }
-+      guard let file = writeImage(image, into: directory, name: provider.suggestedName) else {
-+        answered.answer(.refused)
-+        return
-+      }
-+      answered.answer(.got(file))
-+    }
-+  }
-+
-+  /// `loadFileRepresentation` lends the file only until its callback returns, so the copy is made
-+  /// inside it. A provider that refuses, or a file that never arrives, is reported and the other
-+  /// routes carry on.
-+  private static func copyFile(
++  /// `loadFileRepresentation` lends the photo's file only until its callback returns, so the file
++  /// is taken inside it: copied as it is when it is already a JPEG or a PNG, and turned into a
++  /// JPEG here when it is not (a HEIC photo, in practice). A provider that refuses, or a file that
++  /// never arrives, is recorded with how long it took and the next route carries on.
++  private static func readFile(
 +    _ provider: NSItemProvider,
 +    type: String,
 +    trace: ReadTrace,
-+    into directory: URL,
-+    read: PhotoRead
-+  ) {
++    into directory: URL
++  ) async -> URL? {
 +    let label = "file:\(UTType(type)?.preferredFilenameExtension ?? type)"
-+    let answered = Answer<RouteOutcome> { outcome in
-+      switch outcome {
-+      case .got(let url):
-+        trace.add("\(label)=ok")
-+        read.won(url)
-+      case .timeout:
-+        trace.add("\(label)=timeout")
-+        read.lost()
-+      case .refused:
-+        trace.add("\(label)=err")
-+        read.lost()
-+      case .missing:
-+        trace.add("\(label)=no")
-+        read.lost()
++    return await withCheckedContinuation { (continuation: CheckedContinuation<URL?, Never>) in
++      let step = Step<URL?>(label, trace: trace) { continuation.resume(returning: $0) }
++      // The route's own bound, in case its callback never comes back at all.
++      DispatchQueue.global().asyncAfter(deadline: .now() + fileTimeout) {
++        step.answer(nil, note: "timeout")
++      }
++      _ = provider.loadFileRepresentation(forTypeIdentifier: type) { url, error in
++        guard let url else {
++          step.answer(nil, note: errorNote(error))
++          return
++        }
++        guard let file = land(url, name: provider.suggestedName, into: directory) else {
++          step.answer(nil, note: "unwritable")
++          return
++        }
++        step.answer(file, note: "ok")
 +      }
 +    }
-+    DispatchQueue.global().asyncAfter(deadline: .now() + handoverTimeout) {
-+      answered.answer(.timeout)
-+    }
-+    _ = provider.loadFileRepresentation(forTypeIdentifier: type) { url, error in
-+      guard let url else {
-+        answered.answer(error == nil ? .missing : .refused)
-+        return
++  }
++
++  /// The same type's bytes, when its file did not come: the route expo-image-picker falls back to,
++  /// and the one a HEIC the provider keeps only as data answers.
++  private static func readData(
++    _ provider: NSItemProvider,
++    type: String,
++    trace: ReadTrace,
++    into directory: URL
++  ) async -> URL? {
++    let label = "data:\(UTType(type)?.preferredFilenameExtension ?? type)"
++    return await withCheckedContinuation { (continuation: CheckedContinuation<URL?, Never>) in
++      let step = Step<URL?>(label, trace: trace) { continuation.resume(returning: $0) }
++      DispatchQueue.global().asyncAfter(deadline: .now() + dataTimeout) {
++        step.answer(nil, note: "timeout")
 +      }
-+      let target = destination(
-+        in: directory,
-+        name: provider.suggestedName ?? url.deletingPathExtension().lastPathComponent,
-+        fileExtension: url.pathExtension)
-+      do {
-+        try FileManager.default.copyItem(at: url, to: target)
-+        answered.answer(.got(target))
-+      } catch {
-+        answered.answer(.refused)
++      _ = provider.loadDataRepresentation(forTypeIdentifier: type) { data, error in
++        guard let data, !data.isEmpty else {
++          step.answer(nil, note: errorNote(error))
++          return
++        }
++        guard let file = writeImage(data, name: provider.suggestedName, into: directory) else {
++          step.answer(nil, note: "unwritable")
++          return
++        }
++        step.answer(file, note: "ok")
 +      }
 +    }
++  }
++
++  /// The provider's file as the chat's own file: JPEG and PNG are copied as they are, anything
++  /// else is turned into a JPEG on this phone. Converting here is the point of taking the photo as
++  /// it is on the device — the system's own cross-process transcode is what never finished.
++  private static func land(_ source: URL, name: String?, into directory: URL) -> URL? {
++    let stem = name ?? source.deletingPathExtension().lastPathComponent
++    if let type = imageType(at: source), type.conforms(to: .jpeg) {
++      return copyInto(source, directory, name: stem, fileExtension: "jpg")
++    }
++    if let type = imageType(at: source), type.conforms(to: .png) {
++      return copyInto(source, directory, name: stem, fileExtension: "png")
++    }
++    guard let data = try? Data(contentsOf: source) else { return nil }
++    return writeImage(data, name: stem, into: directory)
 +  }
 +
 +  /// The photo the item provider would not give up, read from the photo library by the asset the
@@ -158961,21 +158955,26 @@ index 000000000..a4fe50e3b
 +    options.resizeMode = .none
 +    let name = PHAssetResource.assetResources(for: asset).first?.originalFilename
 +
++    let started = Date()
 +    let data: Data? = await withCheckedContinuation {
 +      (continuation: CheckedContinuation<Data?, Never>) in
-+      let answer = Answer<Data?> { continuation.resume(returning: $0) }
++      let step = Step<Data?>("lib", trace: trace) { continuation.resume(returning: $0) }
 +      DispatchQueue.global().asyncAfter(deadline: .now() + libraryTimeout) {
-+        trace.add("lib=timeout")
-+        answer.answer(nil)
++        step.answer(nil, note: "timeout")
 +      }
-+      PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) {
++      _ = PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) {
 +        data, _, _, _ in
-+        answer.answer(data)
++        guard let data, !data.isEmpty else {
++          step.answer(nil, note: "no")
++          return
++        }
++        // The write below records how the read as a whole ended.
++        step.answer(data, note: nil)
 +      }
 +    }
-+    guard let data, !data.isEmpty else { return nil }
++    guard let data else { return nil }
 +    let file = writeImage(data, name: name, into: directory)
-+    trace.add(file == nil ? "lib=err" : "lib=ok")
++    trace.add("lib=\(file == nil ? "err" : "ok") \(seconds(since: started))")
 +    return file
 +  }
 +
@@ -158986,22 +158985,30 @@ index 000000000..a4fe50e3b
 +    case .authorized, .limited:
 +      return true
 +    case .notDetermined:
-+      let granted = await withCheckedContinuation {
-+        (continuation: CheckedContinuation<Bool, Never>) in
-+        let answer = Answer<Bool> { continuation.resume(returning: $0) }
++      return await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
++        let step = Step<Bool>("perm", trace: trace) { continuation.resume(returning: $0) }
 +        DispatchQueue.global().asyncAfter(deadline: .now() + permissionTimeout) {
-+          answer.answer(false)
++          step.answer(false, note: "timeout")
 +        }
-+        PHPhotoLibrary.requestAuthorization(for: .readWrite) { status in
-+          answer.answer(status == .authorized || status == .limited)
++        _ = PHPhotoLibrary.requestAuthorization(for: .readWrite) { status in
++          step.answer(status == .authorized || status == .limited, note: "answered")
 +        }
 +      }
-+      trace.add(granted ? "perm=granted" : "perm=denied")
-+      return granted
 +    default:
 +      trace.add("perm=denied")
 +      return false
 +    }
++  }
++
++  /// How a failed system call is named in the failure line: its own error code, or that it
++  /// answered with nothing.
++  private static func errorNote(_ error: Error?) -> String {
++    guard let error else { return "no" }
++    return "err(\((error as NSError).code))"
++  }
++
++  private static func seconds(since started: Date) -> String {
++    String(format: "%.2fs", Date().timeIntervalSince(started))
 +  }
 +
 +  /// A decoded image as a JPEG on disk, the one representation every model reads.
@@ -159026,7 +159033,8 @@ index 000000000..a4fe50e3b
 +  }
 +
 +  private static func write(_ data: Data, into directory: URL, name: String, fileExtension: String)
-+    -> URL? {
++    -> URL?
++  {
 +    let target = destination(in: directory, name: name, fileExtension: fileExtension)
 +    do {
 +      try data.write(to: target, options: .atomic)
@@ -159034,6 +159042,30 @@ index 000000000..a4fe50e3b
 +    } catch {
 +      return nil
 +    }
++  }
++
++  private static func copyInto(
++    _ source: URL,
++    _ directory: URL,
++    name: String,
++    fileExtension: String
++  ) -> URL? {
++    let target = destination(in: directory, name: name, fileExtension: fileExtension)
++    do {
++      try FileManager.default.copyItem(at: source, to: target)
++      return target
++    } catch {
++      return nil
++    }
++  }
++
++  private static func imageType(at url: URL) -> UTType? {
++    guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
++      let identifier = CGImageSourceGetType(source)
++    else {
++      return nil
++    }
++    return UTType(identifier as String)
 +  }
 +
 +  private static func imageType(of data: Data) -> UTType? {
@@ -159093,9 +159125,10 @@ index 000000000..a4fe50e3b
 +  }
 +}
 +
-+/// What every step of a read said, in the order it was tried. It is what the person sees in the
-+/// failure line — `provider=timeout; obj=no; lib=no-id` — so a photo that still will not read on
-+/// a real phone names the system call that refused instead of asking for another guess.
++/// What every step of a read said, in the order it was tried, with how long it took. It is what the
++/// person sees in the failure line — `file:heic=timeout 1.50s; data:heic=no 0.02s; lib=no-id` — so a
++/// photo that still will not read on a real phone names the system call that refused instead of
++/// asking for another guess.
 +final class ReadTrace: @unchecked Sendable {
 +  private let lock = NSLock()
 +  private var steps: [String] = []
@@ -159113,82 +159146,26 @@ index 000000000..a4fe50e3b
 +  }
 +}
 +
-+/// How one handover of a photo ended.
-+enum RouteOutcome {
-+  /// It produced the file the chat can upload.
-+  case got(URL)
-+  /// Its deadline passed with nothing.
-+  case timeout
-+  /// It answered with an error, or with something that could not be written.
-+  case refused
-+  /// It answered, and had nothing to hand over.
-+  case missing
-+}
-+
-+/// One photo's read across its routes: the first file wins and ends it, and it ends empty only
-+/// when every route has said no or the read's own deadline passes. Answers that arrive after that
-+/// are ignored, so the promise behind it is never resolved twice.
-+final class PhotoRead: @unchecked Sendable {
-+  private let lock = NSLock()
-+  private var waiting: Int
-+  private var finished = false
-+  private let finish: (URL?) -> Void
-+
-+  init(routes: Int, finish: @escaping (URL?) -> Void) {
-+    self.waiting = routes
-+    self.finish = finish
-+  }
-+
-+  func won(_ url: URL) {
-+    lock.lock()
-+    guard !finished else {
-+      lock.unlock()
-+      return
-+    }
-+    finished = true
-+    lock.unlock()
-+    finish(url)
-+  }
-+
-+  /// One route with nothing to add; the read ends only when the last one says so.
-+  func lost() {
-+    lock.lock()
-+    guard !finished else {
-+      lock.unlock()
-+      return
-+    }
-+    waiting -= 1
-+    let done = waiting <= 0
-+    if done { finished = true }
-+    lock.unlock()
-+    if done { finish(nil) }
-+  }
-+
-+  /// The read's own bound: nothing more is coming.
-+  func deadline() {
-+    lock.lock()
-+    guard !finished else {
-+      lock.unlock()
-+      return
-+    }
-+    finished = true
-+    lock.unlock()
-+    finish(nil)
-+  }
-+}
-+
-+/// One system call's answer, delivered exactly once: a callback that never arrives, or one that
-+/// arrives after the deadline, must not leave the pick waiting or resolve it twice.
-+private final class Answer<Value>: @unchecked Sendable {
++/// One system call's answer, recorded once with how long it took and handed on once: a callback
++/// that never arrives, or one that arrives after the route's deadline, must not leave the read
++/// waiting or resolve it twice.
++final class Step<Value>: @unchecked Sendable {
 +  private let lock = NSLock()
 +  private var answered = false
++  private let label: String
++  private let trace: ReadTrace
++  private let started = Date()
 +  private let finish: (Value) -> Void
 +
-+  init(_ finish: @escaping (Value) -> Void) {
++  init(_ label: String, trace: ReadTrace, finish: @escaping (Value) -> Void) {
++    self.label = label
++    self.trace = trace
 +    self.finish = finish
 +  }
 +
-+  func answer(_ value: Value) {
++  /// `note` is what the step said — `ok`, `timeout`, `no`, or the error's own code — or `nil` when
++  /// the caller records the outcome itself.
++  func answer(_ value: Value, note: String?) {
 +    lock.lock()
 +    guard !answered else {
 +      lock.unlock()
@@ -159196,12 +159173,16 @@ index 000000000..a4fe50e3b
 +    }
 +    answered = true
 +    lock.unlock()
++    if let note {
++      trace.add("\(label)=\(note) \(String(format: "%.2fs", Date().timeIntervalSince(started)))")
++    }
 +    finish(value)
 +  }
 +}
 +
 +enum PhotoPickError: LocalizedError {
-+  /// The read that failed, with the steps it tried: `file:heic=timeout; obj=err; lib=no-id`.
++  /// The read that failed, with the steps it tried: `file:heic=timeout 1.50s; data:heic=err(-1002)
++  /// 0.20s; lib=no-id`.
 +  case unreadable(String)
 +
 +  var errorDescription: String? {

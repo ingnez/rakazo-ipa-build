@@ -145,7 +145,6 @@ test -f apps/mobile/components/composer-attach-tray.tsx
 test -f apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
 test -f apps/mobile/modules/photo-picker/ios/PhotoPicker.podspec
 grep -q 'presentationControllerDidDismiss' apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
-grep -q 'preferredAssetRepresentationMode = .compatible' apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
 grep -q 'hasNativePhotoPicker' apps/mobile/lib/pick-attachments.ts
 # v27: a sheet that never appears, or a photo whose bytes never arrive, must end in an answer
 # instead of the composer's "reading photos" line. The module names the sheet it could not show,
@@ -153,17 +152,33 @@ grep -q 'hasNativePhotoPicker' apps/mobile/lib/pick-attachments.ts
 grep -q 'failed to present photo picker' apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
 grep -q 'requestImageDataAndOrientation' apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
 grep -q 'LIBRARY_PICK_WATCHDOG_MS' apps/mobile/lib/pick-attachments.ts
-# v28: a photo on the phone is decoded straight from the item provider, beside the file route,
-# so it arrives at once instead of after a copy that stalls on an iCloud download; and the whole
-# read is over within six seconds whatever a system callback does. A patch that lost the race or
-# the deadline still compiles and still leaves the composer on "reading photos", so gate here.
-grep -q 'canLoadObject(ofClass: UIImage.self)' apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
-grep -q 'provider.loadObject(ofClass: UIImage.self)' apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
-grep -q 'static let totalDeadline: TimeInterval = 6' apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
-grep -q 'final class PhotoRead' apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
-# A failure names the steps it tried, so a real phone tells which system call refused.
-grep -q 'case unreadable(String)' apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
-grep -q 'final class ReadTrace' apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
+# v29: the sheet is the process the photos are served from, so it has to still be up while they
+# are read — v28 dismissed it first thing in didFinishPicking, and every read of that selection
+# then timed out on a real phone. It is dismissed in settle, when the pick is over; nothing in the
+# delegate may take it away before that.
+grep -q 'weak var activePicker: PHPickerViewController?' apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
+PICKER=apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
+if sed -n '/func picker(_ picker: PHPickerViewController, didFinishPicking/,/^  }$/p' "$PICKER" \
+  | grep -n 'dismiss('; then
+  echo "::error::the photo picker takes its sheet away before the photos are read; the sheet is what serves them"
+  exit 1
+fi
+# v29: the photo is read the way expo-image-picker reads one — for its own registered type, the
+# file route first and the bytes route after it, one route at a time — and no longer as several
+# loads racing on one item provider. A patch that went back to the race or to .compatible fails here.
+grep -q 'configuration.preferredAssetRepresentationMode = .current' "$PICKER"
+grep -q 'private static func preferredType(of provider: NSItemProvider) -> String' "$PICKER"
+grep -q 'provider.loadFileRepresentation(forTypeIdentifier: type)' "$PICKER"
+grep -q 'provider.loadDataRepresentation(forTypeIdentifier: type)' "$PICKER"
+grep -q 'static let totalDeadline: TimeInterval = 6' "$PICKER"
+if grep -n 'loadObject(ofClass: UIImage.self)' "$PICKER"; then
+  echo "::error::the picker asks one item provider for the photo several ways at once again"
+  exit 1
+fi
+# A failure names the steps it tried and how long each took, so a real phone tells which system
+# call refused or timed out.
+grep -q 'case unreadable(String)' "$PICKER"
+grep -q 'final class ReadTrace' "$PICKER"
 # v28 crashed on the first image card: a worklet method written inside ImageStackLayout's own
 # object literal cannot see the object it belongs to, and the worklet build leaves it undefined.
 # The literal may hold constants and module-level functions only.

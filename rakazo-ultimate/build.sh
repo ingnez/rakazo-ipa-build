@@ -150,27 +150,67 @@ grep -q 'hasNativePhotoPicker' apps/mobile/lib/pick-attachments.ts
 # instead of the composer's "reading photos" line. The module names the sheet it could not show,
 # bounds each read, and falls back to the library; the composer bounds the whole pick.
 grep -q 'failed to present photo picker' apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
-grep -q 'requestImageDataAndOrientation' apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
 grep -q 'LIBRARY_PICK_WATCHDOG_MS' apps/mobile/lib/pick-attachments.ts
+PICKER=apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
+# v30: a photo that lives only in iCloud was the case the six-second read was wrong for — its
+# file does not exist on this phone, so every route timed out at once. The library is the route
+# such a photo takes, and it is asked for a 2048-pixel copy with twenty-five seconds to download:
+# not for the original bytes, which have to arrive whole before anything can be drawn.
+grep -q 'PHImageManager.default().requestImage(' "$PICKER"
+grep -q 'targetSize: libraryTarget' "$PICKER"
+grep -q 'private static let libraryTarget = CGSize(width: 2048, height: 2048)' "$PICKER"
+grep -q 'static let libraryTimeout: TimeInterval = 25' "$PICKER"
+grep -q 'static let dataTimeout: TimeInterval = 15' "$PICKER"
+grep -q 'static let fileTimeout: TimeInterval = 2' "$PICKER"
+if grep -n 'requestImageDataAndOrientation' "$PICKER"; then
+  echo "::error::the photo library is asked for the original bytes again; that download is what never finished on a phone"
+  exit 1
+fi
+# v30: the download says it is a download, a first rougher copy is not taken for the photo, and a
+# download that ran out of time is cancelled and named as one.
+grep -q 'options.progressHandler' "$PICKER"
+grep -q 'trace.addOnce("icloud=downloading")' "$PICKER"
+grep -q 'PHImageResultIsDegradedKey' "$PICKER"
+grep -q 'progress.cancel()' "$PICKER"
+grep -q 'request.cancel()' "$PICKER"
+grep -q 'iCloud 照片下载超时' "$PICKER"
+# v30: once the photo is read from the app's own library, the sheet is serving nothing, so it goes
+# before the download — the person sees the composer's reading line instead of a still sheet. It is
+# the only place outside settle that may take it away.
+grep -q 'dismiss(sheet)' "$PICKER"
+grep -q 'if result.assetIdentifier != nil, await canReadPhotoLibrary(trace: trace) {' "$PICKER"
+if [ "$(grep -c 'dismiss(sheet)' "$PICKER")" != "2" ] \
+  || ! grep -qx '    dismiss(sheet)' "$PICKER" \
+  || ! grep -q 'Self.dismiss(sheet)' "$PICKER"; then
+  echo "::error::the sheet is taken away somewhere other than settle and the library route"
+  exit 1
+fi
+# v30: the library is tried before the provider's bytes, because a photo in iCloud has no file for
+# the provider to hand over, and the bytes route only serves the sheet that is still up.
+lib_line=$(grep -n 'switch await fromPhotoLibrary' "$PICKER" | head -1 | cut -d: -f1)
+data_line=$(grep -n 'await readData(provider, type: type' "$PICKER" | head -1 | cut -d: -f1)
+if [ -z "$lib_line" ] || [ -z "$data_line" ] || [ "$lib_line" -ge "$data_line" ]; then
+  echo "::error::the provider's bytes are tried before the photo library; an iCloud photo has no file to hand over"
+  exit 1
+fi
 # v29: the sheet is the process the photos are served from, so it has to still be up while they
 # are read — v28 dismissed it first thing in didFinishPicking, and every read of that selection
 # then timed out on a real phone. It is dismissed in settle, when the pick is over; nothing in the
 # delegate may take it away before that.
 grep -q 'weak var activePicker: PHPickerViewController?' apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
-PICKER=apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
 if sed -n '/func picker(_ picker: PHPickerViewController, didFinishPicking/,/^  }$/p' "$PICKER" \
   | grep -n 'dismiss('; then
   echo "::error::the photo picker takes its sheet away before the photos are read; the sheet is what serves them"
   exit 1
 fi
-# v29: the photo is read the way expo-image-picker reads one — for its own registered type, the
-# file route first and the bytes route after it, one route at a time — and no longer as several
-# loads racing on one item provider. A patch that went back to the race or to .compatible fails here.
+# v29: the photo is read the way expo-image-picker reads one — for its own registered type, one
+# route at a time — and no longer as several loads racing on one item provider. A patch that went
+# back to the race or to .compatible fails here.
 grep -q 'configuration.preferredAssetRepresentationMode = .current' "$PICKER"
 grep -q 'private static func preferredType(of provider: NSItemProvider) -> String' "$PICKER"
 grep -q 'provider.loadFileRepresentation(forTypeIdentifier: type)' "$PICKER"
 grep -q 'provider.loadDataRepresentation(forTypeIdentifier: type)' "$PICKER"
-grep -q 'static let totalDeadline: TimeInterval = 6' "$PICKER"
+grep -q 'static let totalDeadline: TimeInterval = 30' "$PICKER"
 if grep -n 'loadObject(ofClass: UIImage.self)' "$PICKER"; then
   echo "::error::the picker asks one item provider for the photo several ways at once again"
   exit 1
@@ -178,6 +218,7 @@ fi
 # A failure names the steps it tried and how long each took, so a real phone tells which system
 # call refused or timed out.
 grep -q 'case unreadable(String)' "$PICKER"
+grep -q 'case cloudTimeout(String)' "$PICKER"
 grep -q 'final class ReadTrace' "$PICKER"
 # v28 crashed on the first image card: a worklet method written inside ImageStackLayout's own
 # object literal cannot see the object it belongs to, and the worklet build leaves it undefined.

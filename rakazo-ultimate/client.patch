@@ -158492,10 +158492,10 @@ index 000000000..38e2d6e14
 +end
 diff --git a/apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift b/apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
 new file mode 100644
-index 000000000..c718ef550
+index 000000000..43c2bab4d
 --- /dev/null
 +++ b/apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
-@@ -0,0 +1,696 @@
+@@ -0,0 +1,874 @@
 +import ExpoModulesCore
 +import Foundation
 +import ImageIO
@@ -158520,15 +158520,25 @@ index 000000000..c718ef550
 +///
 +/// A picked photo is read the way expo-image-picker's `MediaHandler` reads one, one route at a
 +/// time and never several at once: the file the provider holds for the photo's own type, then the
-+/// same type's bytes, then the photo library by the asset the picker named. Asking one provider
++/// photo library by the asset the picker named, then the same type's bytes. Asking one provider
 +/// four things at once is the other half of what stalled the read. Nothing is transcoded across
 +/// processes either (`preferredAssetRepresentationMode = .current`): a HEIC photo is turned into a
 +/// JPEG here on the phone, after it has arrived.
 +///
++/// A photo that is only in iCloud is the case the six-second rule was wrong for. Its file does not
++/// exist on this phone, so the provider can neither hand it over nor say how long the download will
++/// take, and every read of it timed out at once on a real phone (`IMG_2986`). So the file route
++/// keeps its two-second bound, and the photo that outlives it is read from the photo library
++/// instead — the app's own `Photos` framework, not the sheet's process — at 2048 pixels on the
++/// longest side rather than as the original 48 megapixels, with twenty-five seconds to download
++/// and progress of its own in the trace. That size is still larger than the 1600 the chat keeps.
++///
 +/// Every wait here ends, and soon. A local photo is handed over in a fraction of a second; each
-+/// route has its own short bound, the whole pick has a six-second deadline of its own, and a
-+/// failure names every step it tried with how long each took. A promise that is never resolved, or
-+/// resolved twice, is what made v26 look dead, so this module resolves exactly once on every path.
++/// route has its own bound, and the whole pick has a deadline of its own — thirty seconds for the
++/// first photo and each further one on top, because a selection of five photos from iCloud is five
++/// downloads and not one. A failure names every step it tried with how long each took. A promise
++/// that is never resolved, or resolved twice, is what made v26 look dead, so this module resolves
++/// exactly once on every path.
 +public class PhotoPickerModule: Module {
 +  /// One sheet at a time, set and cleared on whichever thread the previous ran out on.
 +  private let lock = NSLock()
@@ -158678,17 +158688,26 @@ index 000000000..c718ef550
 +final class PickerSession: NSObject, PHPickerViewControllerDelegate,
 +  UIAdaptivePresentationControllerDelegate {
 +  /// How long the provider may take to hand over the photo's own file. A local photo answers in a
-+  /// fraction of a second; this is only ever reached by a file that is not coming.
-+  private static let fileTimeout: TimeInterval = 1.5
-+  /// How long the provider may take to hand over that type's bytes when its file does not come.
-+  private static let dataTimeout: TimeInterval = 2
-+  /// How long the photo library may take to hand over a photo the provider would not.
-+  private static let libraryTimeout: TimeInterval = 2
++  /// fraction of a second; this is only ever reached by a file that is not on this phone.
++  private static let fileTimeout: TimeInterval = 2
++  /// How long the provider may take to hand over that type's bytes when there is no library asset
++  /// to read instead: long enough for an iCloud download to finish over a phone connection.
++  private static let dataTimeout: TimeInterval = 15
++  /// How long the photo library may take to hand over the photo, download from iCloud included.
++  /// This is the route an iCloud photo takes, so it is the one wait that is allowed to be long.
++  private static let libraryTimeout: TimeInterval = 25
 +  /// How long a photo library permission prompt may take to be answered.
 +  private static let permissionTimeout: TimeInterval = 2
-+  /// The whole read: past this the person is told, whatever any callback is doing. Short enough
-+  /// that a failure is a hiccup rather than a hang — a local photo never comes near it.
-+  static let totalDeadline: TimeInterval = 6
++  /// The size the library hands the photo over at: 2048 on the longest side. The chat keeps
++  /// nothing wider than 1600, and a picture this size is a fraction of a 48-megapixel original —
++  /// which is what has to come down from iCloud before it can be drawn at all.
++  private static let libraryTarget = CGSize(width: 2048, height: 2048)
++  /// The whole read of one photo: past this the person is told, whatever any callback is doing.
++  /// Further photos in the same selection each get their own, since each is its own download.
++  static let totalDeadline: TimeInterval = 30
++  /// What each further photo in one selection adds to that deadline: its library read, and the
++  /// step before it, with a second to spare.
++  private static let deadlinePerExtraPhoto: TimeInterval = 26
 +
 +  private let promise: Promise
 +  private let release: () -> Void
@@ -158775,21 +158794,27 @@ index 000000000..c718ef550
 +      return
 +    }
 +    // The deadline that does not depend on any callback: a photo whose bytes never arrive, a
-+    // file hanging on iCloud, a library fetch that stops answering — all of it ends here.
-+    DispatchQueue.global().asyncAfter(deadline: .now() + Self.totalDeadline) { [weak self] in
++    // download that stops answering — all of it ends here. Each photo in the selection is its own
++    // read and its own iCloud download, so the selection gets one deadline per photo.
++    let deadline = Self.totalDeadline
++      + Double(results.count - 1) * Self.deadlinePerExtraPhoto
++    DispatchQueue.global().asyncAfter(deadline: .now() + deadline) { [weak self] in
 +      guard let self else { return }
 +      self.settle(
 +        Self.canceled(
-+          error: "读图超过 \(Int(Self.totalDeadline)) 秒（\(self.trace.text)）"
++          error: "读图超过 \(Int(deadline)) 秒（\(self.trace.text)）"
 +        )
 +      )
 +    }
++    // Read off the main thread below, so the sheet is taken now while it is certain. It is the
++    // one that is dismissed when the photos are read from the library instead of from it.
++    let sheet = activePicker
 +    Task {
 +      var assets: [[String: Any]] = []
 +      var failure: String?
 +      for result in results {
 +        do {
-+          assets.append(try await Self.copy(result, trace: trace))
++          assets.append(try await Self.copy(result, sheet: sheet, trace: trace))
 +        } catch {
 +          // One photo that cannot be read costs that photo, not the whole selection.
 +          failure = error.localizedDescription
@@ -158821,10 +158846,21 @@ index 000000000..c718ef550
 +  /// The photo as a file the chat can upload, from the first route that has it.
 +  ///
 +  /// One route at a time, the way expo-image-picker reads a picked photo: the file the provider
-+  /// holds for the photo's own type, then that type's bytes, then the photo library by the asset
-+  /// the picker named. A route starts only after the one before it has answered or run out of time,
-+  /// so one `NSItemProvider` never carries several loads at once.
-+  private static func copy(_ result: PHPickerResult, trace: ReadTrace) async throws -> [String: Any] {
++  /// holds for the photo's own type, then the photo library by the asset the picker named, then
++  /// that type's bytes. A route starts only after the one before it has answered or run out of
++  /// time, so one `NSItemProvider` never carries several loads at once.
++  ///
++  /// The library comes before the bytes because a photo that lives only in iCloud has no file to
++  /// hand over: the provider would have to pull the whole original through the sheet's process
++  /// first, and on a phone connection that is the wait that never finished. The library is asked
++  /// for a 2048-pixel copy instead — less to download, and ready to write out at once. The bytes
++  /// stay for the case the library knows nothing of the photo, which is also the case the sheet is
++  /// still up for.
++  private static func copy(
++    _ result: PHPickerResult,
++    sheet: PHPickerViewController?,
++    trace: ReadTrace
++  ) async throws -> [String: Any] {
 +    let provider = result.itemProvider
 +    let directory = FileManager.default.temporaryDirectory
 +      .appendingPathComponent("picked-photos", isDirectory: true)
@@ -158834,13 +158870,41 @@ index 000000000..c718ef550
 +    if let file = await readFile(provider, type: type, trace: trace, into: directory) {
 +      return describe(file)
 +    }
++    if result.assetIdentifier != nil, await canReadPhotoLibrary(trace: trace) {
++      switch await fromPhotoLibrary(result, sheet: sheet, trace: trace, into: directory) {
++      case .read(let file):
++        return describe(file)
++      case .noAsset:
++        // The library knows nothing of this photo, so the sheet is still up and its bytes are the
++        // only route left.
++        break
++      case .failed:
++        throw libraryFailure(trace)
++      }
++    }
 +    if let file = await readData(provider, type: type, trace: trace, into: directory) {
 +      return describe(file)
 +    }
-+    if let file = await fromPhotoLibrary(result, trace: trace, into: directory) {
-+      return describe(file)
++    throw libraryFailure(trace)
++  }
++
++  /// What a library read came to: the file, a library that has never heard of the photo, or a
++  /// library that was asked and could not deliver.
++  private enum LibraryRead {
++    case read(URL)
++    /// A selection made under limited access, in practice: the picker named an asset the app's own
++    /// library is not allowed to see.
++    case noAsset
++    case failed
++  }
++
++  /// The failure line for a read that ended without a photo: a download that ran out of time is
++  /// named as one, since that is the one the person can do something about.
++  private static func libraryFailure(_ trace: ReadTrace) -> Error {
++    if trace.cloudTimedOutBeforeArriving {
++      return PhotoPickError.cloudTimeout(trace.text)
 +    }
-+    throw PhotoPickError.unreadable(trace.text)
++    return PhotoPickError.unreadable(trace.text)
 +  }
 +
 +  /// The one type every route asks for: the first type the provider registers that is an image (a
@@ -158868,11 +158932,7 @@ index 000000000..c718ef550
 +    let label = "file:\(UTType(type)?.preferredFilenameExtension ?? type)"
 +    return await withCheckedContinuation { (continuation: CheckedContinuation<URL?, Never>) in
 +      let step = Step<URL?>(label, trace: trace) { continuation.resume(returning: $0) }
-+      // The route's own bound, in case its callback never comes back at all.
-+      DispatchQueue.global().asyncAfter(deadline: .now() + fileTimeout) {
-+        step.answer(nil, note: "timeout")
-+      }
-+      _ = provider.loadFileRepresentation(forTypeIdentifier: type) { url, error in
++      let progress = provider.loadFileRepresentation(forTypeIdentifier: type) { url, error in
 +        guard let url else {
 +          step.answer(nil, note: errorNote(error))
 +          return
@@ -158882,6 +158942,13 @@ index 000000000..c718ef550
 +          return
 +        }
 +        step.answer(file, note: "ok")
++      }
++      // The route's own bound, in case its callback never comes back at all. The load itself is
++      // cancelled with it: a photo that is still coming is about to be read from the library, and
++      // two downloads of one photo would only fight over the connection.
++      DispatchQueue.global().asyncAfter(deadline: .now() + fileTimeout) {
++        progress.cancel()
++        step.answer(nil, note: "timeout")
 +      }
 +    }
 +  }
@@ -158929,53 +158996,100 @@ index 000000000..c718ef550
 +    return writeImage(data, name: stem, into: directory)
 +  }
 +
-+  /// The photo the item provider would not give up, read from the photo library by the asset the
-+  /// picker named. A format no model reads is handed over as a JPEG.
++  /// The photo the provider would not give up, read from the photo library by the asset the picker
++  /// named — the route a photo that lives only in iCloud has to take.
++  ///
++  /// It is asked for at 2048 pixels rather than as the original: the original has to be downloaded
++  /// whole before it can be decoded, and at 48 megapixels that is tens of megabytes of a phone
++  /// connection for a photo the chat will shrink to 1600 anyway. The wait is the download, so it
++  /// gets twenty-five seconds and reports its progress into the trace.
 +  private static func fromPhotoLibrary(
 +    _ result: PHPickerResult,
++    sheet: PHPickerViewController?,
 +    trace: ReadTrace,
 +    into directory: URL
-+  ) async -> URL? {
++  ) async -> LibraryRead {
 +    guard let identifier = result.assetIdentifier else {
 +      trace.add("lib=no-id")
-+      return nil
++      return .noAsset
 +    }
-+    guard await canReadPhotoLibrary(trace: trace) else { return nil }
 +    let assets = PHAsset.fetchAssets(withLocalIdentifiers: [identifier], options: nil)
 +    guard let asset = assets.firstObject else {
 +      trace.add("lib=no-asset")
-+      return nil
++      return .noAsset
 +    }
 +
++    // The photo comes from the app's own photo library from here, not from the sheet's process, so
++    // the sheet can go: the person sees the composer's reading line while the photo arrives
++    // instead of a sheet that sits there for the length of a download.
++    dismiss(sheet)
++
 +    let options = PHImageRequestOptions()
-+    // A photo that lives only in iCloud is still the person's photo.
++    // A photo that lives only in iCloud is still the person's photo, and this is the call that
++    // fetches it.
 +    options.isNetworkAccessAllowed = true
 +    options.deliveryMode = .highQualityFormat
 +    options.version = .current
-+    options.resizeMode = .none
-+    let name = PHAssetResource.assetResources(for: asset).first?.originalFilename
-+
-+    let started = Date()
-+    let data: Data? = await withCheckedContinuation {
-+      (continuation: CheckedContinuation<Data?, Never>) in
-+      let step = Step<Data?>("lib", trace: trace) { continuation.resume(returning: $0) }
-+      DispatchQueue.global().asyncAfter(deadline: .now() + libraryTimeout) {
-+        step.answer(nil, note: "timeout")
++    options.resizeMode = .fast
++    // What the download is doing: a slow read then says it is a download, not a mystery.
++    options.progressHandler = { progress, error, _, _ in
++      if let error {
++        trace.add("icloud=err(\((error as NSError).code))")
++        return
 +      }
-+      _ = PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) {
-+        data, _, _, _ in
-+        guard let data, !data.isEmpty else {
-+          step.answer(nil, note: "no")
-+          return
-+        }
-+        // The write below records how the read as a whole ended.
-+        step.answer(data, note: nil)
++      if progress < 1 {
++        trace.sawICloud()
++        trace.addOnce("icloud=downloading")
 +      }
 +    }
-+    guard let data else { return nil }
-+    let file = writeImage(data, name: name, into: directory)
-+    trace.add("lib=\(file == nil ? "err" : "ok") \(seconds(since: started))")
-+    return file
++
++    let name = PHAssetResource.assetResources(for: asset).first?.originalFilename
++    let request = RequestBox()
++    let image: UIImage? = await withCheckedContinuation {
++      (continuation: CheckedContinuation<UIImage?, Never>) in
++      let step = Step<UIImage?>("lib", trace: trace) { continuation.resume(returning: $0) }
++      DispatchQueue.global().asyncAfter(deadline: .now() + libraryTimeout) {
++        // A download that ran out of time is stopped rather than left running: the connection is
++        // what the person's next attempt needs.
++        request.cancel()
++        trace.cloudRanOutIfWaiting()
++        step.answer(nil, note: trace.waitedOnICloud ? "icloud-timeout" : "timeout")
++      }
++      request.start(
++        PHImageManager.default().requestImage(
++          for: asset,
++          targetSize: libraryTarget,
++          contentMode: .aspectFit,
++          options: options
++        ) { image, info in
++          // A first, rougher copy can arrive before the photo itself while the full one is still
++          // being prepared — from iCloud, almost always. Only the last answer is the photo.
++          if (info?[PHImageResultIsDegradedKey] as? Bool) == true {
++            trace.addOnce("lib=preview")
++            return
++          }
++          if (info?[PHImageCancelledKey] as? Bool) == true {
++            step.answer(nil, note: "canceled")
++            return
++          }
++          if let error = info?[PHImageErrorKey] as? Error {
++            step.answer(nil, note: errorNote(error))
++            return
++          }
++          guard let image else {
++            step.answer(nil, note: "no")
++            return
++          }
++          step.answer(image, note: "ok")
++        }
++      )
++    }
++    guard let image else { return .failed }
++    guard let file = writeImage(image, into: directory, name: name) else {
++      trace.add("lib=unwritable")
++      return .failed
++    }
++    return .read(file)
 +  }
 +
 +  /// Photo library access, asked for the first time only when a photo actually needs it: the
@@ -159005,10 +159119,6 @@ index 000000000..c718ef550
 +  private static func errorNote(_ error: Error?) -> String {
 +    guard let error else { return "no" }
 +    return "err(\((error as NSError).code))"
-+  }
-+
-+  private static func seconds(since started: Date) -> String {
-+    String(format: "%.2fs", Date().timeIntervalSince(started))
 +  }
 +
 +  /// A decoded image as a JPEG on disk, the one representation every model reads.
@@ -159132,11 +159242,48 @@ index 000000000..c718ef550
 +final class ReadTrace: @unchecked Sendable {
 +  private let lock = NSLock()
 +  private var steps: [String] = []
++  private var cloud = false
++  private var cloudRanOut = false
 +
 +  func add(_ step: String) {
 +    lock.lock()
 +    steps.append(step)
 +    lock.unlock()
++  }
++
++  /// Records a step only the first time it is said: a download reports its progress many times
++  /// over, and the failure line needs one word for it.
++  func addOnce(_ step: String) {
++    lock.lock()
++    defer { lock.unlock() }
++    guard !steps.contains(step) else { return }
++    steps.append(step)
++  }
++
++  /// The photo had to come down from iCloud: it was not on this phone.
++  func sawICloud() {
++    lock.lock()
++    cloud = true
++    lock.unlock()
++  }
++
++  var waitedOnICloud: Bool {
++    lock.lock()
++    defer { lock.unlock() }
++    return cloud
++  }
++
++  /// The download outlived its bound without the photo arriving.
++  func cloudRanOutIfWaiting() {
++    lock.lock()
++    cloudRanOut = cloud
++    lock.unlock()
++  }
++
++  var cloudTimedOutBeforeArriving: Bool {
++    lock.lock()
++    defer { lock.unlock() }
++    return cloudRanOut
 +  }
 +
 +  var text: String {
@@ -159180,15 +159327,46 @@ index 000000000..c718ef550
 +  }
 +}
 +
++/// The photo library request's own id, so a read that ran out of time can stop the download it
++/// started instead of leaving it to run on with the radio awake.
++final class RequestBox: @unchecked Sendable {
++  private let lock = NSLock()
++  private var id: PHImageRequestID = PHInvalidImageRequestID
++  private var cancelled = false
++
++  func start(_ request: PHImageRequestID) {
++    lock.lock()
++    id = request
++    let alreadyCancelled = cancelled
++    lock.unlock()
++    guard alreadyCancelled else { return }
++    PHImageManager.default().cancelImageRequest(request)
++  }
++
++  func cancel() {
++    lock.lock()
++    cancelled = true
++    let request = id
++    lock.unlock()
++    guard request != PHInvalidImageRequestID else { return }
++    PHImageManager.default().cancelImageRequest(request)
++  }
++}
++
 +enum PhotoPickError: LocalizedError {
-+  /// The read that failed, with the steps it tried: `file:heic=timeout 1.50s; data:heic=err(-1002)
++  /// The read that failed, with the steps it tried: `file:heic=timeout 2.00s; data:heic=err(-1002)
 +  /// 0.20s; lib=no-id`.
 +  case unreadable(String)
++  /// The photo is in iCloud and did not finish downloading: the one failure with something to do
++  /// about, so it says so instead of naming system calls.
++  case cloudTimeout(String)
 +
 +  var errorDescription: String? {
 +    switch self {
 +    case .unreadable(let steps):
 +      return "the photo could not be read (\(steps))"
++    case .cloudTimeout(let steps):
++      return "iCloud 照片下载超时，联网后再试一次或改用「文件」（\(steps)）"
 +    }
 +  }
 +}

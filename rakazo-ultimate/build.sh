@@ -140,6 +140,13 @@ test -f apps/mobile/lib/after-first-paint.ts
 grep -q 'useAfterFirstPaint' apps/mobile/components/mochi-bot-avatar.tsx
 test -f apps/mobile/components/image-card-stack.tsx
 test -f apps/mobile/components/composer-attach-tray.tsx
+# The composer's own photo picker module: without it the shipped app falls back to the package,
+# which reports a taken photo as a cancel on a current iOS and left the album looking dead.
+test -f apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
+test -f apps/mobile/modules/photo-picker/ios/PhotoPicker.podspec
+grep -q 'presentationControllerDidDismiss' apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
+grep -q 'preferredAssetRepresentationMode = .compatible' apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
+grep -q 'hasNativePhotoPicker' apps/mobile/lib/pick-attachments.ts
 test -f apps/mobile/modules/message-image-actions/ios/MessageImageActionsModule.swift
 test -f apps/mobile/modules/message-image-actions/ios/MessageImageActions.podspec
 test -f apps/mobile/modules/message-image-actions/expo-module.config.json
@@ -188,6 +195,8 @@ cd ios
 pod install --repo-update || pod install
 grep -q 'MessageImageActions' Podfile.lock ||
   { echo "::error::message-image-actions was not autolinked"; exit 1; }
+grep -q 'PhotoPicker' Podfile.lock ||
+  { echo "::error::photo-picker was not autolinked"; exit 1; }
 # A simulator-only check needs the prepared project, not the device build.
 if [ -n "${PREPARE_ONLY:-}" ]; then exit 0; fi
 xcodebuild -workspace Rakazo.xcworkspace -scheme Rakazo -configuration Release \

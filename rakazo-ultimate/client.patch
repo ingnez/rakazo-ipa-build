@@ -136978,10 +136978,10 @@ index 6ca1bf240..c16036d88 100644
    const { special, actionProps, bots, members, onOpenBot, userBubble } = props;
    const tokens = withUserBubble(mobileTokens(), userBubble);
 diff --git a/apps/mobile/components/thread/thread-composer-dock.tsx b/apps/mobile/components/thread/thread-composer-dock.tsx
-index 5e37b8300..addc66741 100644
+index 5e37b8300..b312446c4 100644
 --- a/apps/mobile/components/thread/thread-composer-dock.tsx
 +++ b/apps/mobile/components/thread/thread-composer-dock.tsx
-@@ -1,98 +1,69 @@
+@@ -1,98 +1,72 @@
 -import { ph } from "@lingui/core/macro";
 -import { useLingui } from "@lingui/react/macro";
 -import { replyAttachment } from "@rakazo/core";
@@ -137039,6 +137039,7 @@ index 5e37b8300..addc66741 100644
    attachmentNotice,
 -  attachments,
 -  onRemoveAttachment,
++  attachmentBusy,
    children,
  }: {
    hidden: boolean;
@@ -137057,6 +137058,8 @@ index 5e37b8300..addc66741 100644
    attachmentNotice: string | null;
 -  attachments: readonly PendingAttachment[];
 -  onRemoveAttachment: (id: string) => void;
++  /** A picked photo is being read: the chat says so instead of looking untouched. */
++  attachmentBusy: boolean;
    children: ReactNode;
  }) {
    const tokens = mobileTokens();
@@ -137104,7 +137107,7 @@ index 5e37b8300..addc66741 100644
    }));
  
    const noticeHeight = useRef(0);
-@@ -132,98 +103,11 @@ export function ThreadComposerDock({
+@@ -132,98 +106,16 @@ export function ThreadComposerDock({
              report();
            }}
          >
@@ -137139,7 +137142,11 @@ index 5e37b8300..addc66741 100644
 -              />
 -              <ReplyDismissButton onPress={onDismissReply} />
 -            </GlassSurface>
--          ) : null}
++          {attachmentBusy ? (
++            <Text style={{ color: tokens.mutedForeground, marginTop: 12, fontSize: 13 }}>
++              正在读取照片…
++            </Text>
+           ) : null}
            {attachmentNotice ? (
              <Text style={{ color: tokens.warning, marginTop: 12, fontSize: 13 }}>
                {attachmentNotice}
@@ -137444,7 +137451,7 @@ index 722969faa..2360c7e8b 100644
        react: (message, reaction) => rowActionsRef.current.react(message, reaction),
        markUnread: (message) => rowActionsRef.current.markUnread(message),
 diff --git a/apps/mobile/components/thread/thread-screen.tsx b/apps/mobile/components/thread/thread-screen.tsx
-index c3c0cfd9b..f2c72e347 100644
+index c3c0cfd9b..628979216 100644
 --- a/apps/mobile/components/thread/thread-screen.tsx
 +++ b/apps/mobile/components/thread/thread-screen.tsx
 @@ -1,9 +1,9 @@
@@ -137862,7 +137869,7 @@ index c3c0cfd9b..f2c72e347 100644
          <View style={{ flex: 1 }}>
            <NewestPageCards.Provider value={newestPages}>
              <ThreadMessageList
-@@ -610,46 +795,21 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -610,46 +795,22 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
                showLatest={showLatest}
              />
            </NewestPageCards.Provider>
@@ -137903,6 +137910,7 @@ index c3c0cfd9b..f2c72e347 100644
 -                current.filter((item) => item.id !== id),
 -              )
 -            }
++            attachmentBusy={attachments.attaching}
            >
              <ThreadComposer
                key={threadKey}
@@ -137914,7 +137922,7 @@ index c3c0cfd9b..f2c72e347 100644
                draftScope={draftScope}
                agentSkills={agentSkills}
                composerMentionTargets={composerMentionTargets}
-@@ -657,9 +817,46 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -657,9 +818,46 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
                composerPrompt={composerPrompt}
                replyTargetId={replyTarget?.id}
                replyQuote={replyQuote}
@@ -137961,7 +137969,7 @@ index c3c0cfd9b..f2c72e347 100644
                botId={botId}
                onCall={onCall}
                sending={attachments.shareImporting}
-@@ -673,27 +870,51 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -673,27 +871,51 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
              />
            </ThreadComposerDock>
          </View>
@@ -151171,8 +151179,48 @@ index 000000000..f25818965
 +  if (method === "phoneLocation") return "location";
 +  return undefined;
 +}
+diff --git a/apps/mobile/lib/photo-picker.ts b/apps/mobile/lib/photo-picker.ts
+new file mode 100644
+index 000000000..86946f6a9
+--- /dev/null
++++ b/apps/mobile/lib/photo-picker.ts
+@@ -0,0 +1,34 @@
++import { requireOptionalNativeModule } from "expo-modules-core";
++
++/** One chosen photo, as the picker's module hands it over: a file it already copied out. */
++export type PickedPhoto = {
++  uri: string;
++  name: string;
++  mimeType?: string | null;
++  width?: number;
++  height?: number;
++};
++
++export type PhotoPickResult = {
++  canceled: boolean;
++  assets?: PickedPhoto[];
++  /** Why the picker itself failed, when it did: the composer shows it instead of staying quiet. */
++  error?: string;
++};
++
++type NativePhotoPicker = {
++  pickImages(limit: number): Promise<PhotoPickResult>;
++};
++
++// The app's own picker. Binaries built before it existed fall back to expo-image-picker.
++const native = requireOptionalNativeModule<NativePhotoPicker>("PhotoPicker");
++
++export function hasNativePhotoPicker(): boolean {
++  return typeof native?.pickImages === "function";
++}
++
++/** Opens the system photo library and resolves with the files it picked. */
++export async function pickPhotos(limit: number): Promise<PhotoPickResult> {
++  if (!native?.pickImages) return { canceled: true, assets: [], error: "no photo picker" };
++  return native.pickImages(limit);
++}
 diff --git a/apps/mobile/lib/pick-attachments-image.test.ts b/apps/mobile/lib/pick-attachments-image.test.ts
-index c09286442..5e1da5232 100644
+index c09286442..7ef966def 100644
 --- a/apps/mobile/lib/pick-attachments-image.test.ts
 +++ b/apps/mobile/lib/pick-attachments-image.test.ts
 @@ -65,6 +65,14 @@ vi.mock("./file-drop", () => ({ releaseDroppedFile: async () => {} }));
@@ -151190,7 +151238,15 @@ index c09286442..5e1da5232 100644
  
  // Vitest's ESM mocks do not intercept Metro's CommonJS require.
  const nodeModule = Module as unknown as {
-@@ -89,6 +97,7 @@ function asset(overrides: Partial<typeof state.asset> = {}) {
+@@ -75,6 +83,7 @@ const originalLoad = nodeModule._load;
+ let pickFromLibrary: typeof PickFromLibrary;
+ let takePhoto: typeof import("./pick-attachments").takePhoto;
+ let readDroppedFiles: typeof ReadDroppedFiles;
++let withTimeout: typeof import("./pick-attachments").withTimeout;
+ 
+ function asset(overrides: Partial<typeof state.asset> = {}) {
+   state.asset = {
+@@ -89,6 +98,7 @@ function asset(overrides: Partial<typeof state.asset> = {}) {
  }
  
  beforeEach(async () => {
@@ -151198,7 +151254,27 @@ index c09286442..5e1da5232 100644
    vi.resetModules();
    state.optionalNativeModule.mockReset().mockReturnValue({});
    state.loadManipulator.mockReset().mockImplementation(() => ({
-@@ -228,6 +237,28 @@ describe("image attachment preparation", () => {
+@@ -100,7 +110,9 @@ beforeEach(async () => {
+       ? state.loadManipulator(id)
+       : originalLoad.call(Module, id, ...args),
+   );
+-  ({ pickFromLibrary, readDroppedFiles, takePhoto } = await import("./pick-attachments"));
++  ({ pickFromLibrary, readDroppedFiles, takePhoto, withTimeout } = await import(
++    "./pick-attachments"
++  ));
+   asset();
+   state.assets = [state.asset];
+   state.file.mockReset();
+@@ -128,7 +140,7 @@ describe("image attachment preparation", () => {
+     const result = await pickFromLibrary();
+     await pickFromLibrary();
+ 
+-    expect(state.optionalNativeModule).toHaveBeenCalledExactlyOnceWith("ExpoImageManipulator");
++    expect(state.optionalNativeModule).toHaveBeenCalledWith("ExpoImageManipulator");
+     expect(state.loadManipulator).not.toHaveBeenCalled();
+     expect(state.manipulate).not.toHaveBeenCalled();
+     expect(state.file).toHaveBeenCalledWith(state.asset.uri);
+@@ -228,6 +240,28 @@ describe("image attachment preparation", () => {
      expect(result.attachments[0]).toMatchObject({ name: "photo.jpg", mimeType: "image/jpeg" });
    });
  
@@ -151227,20 +151303,215 @@ index c09286442..5e1da5232 100644
    it.each(["missing", "failed"])(
      "skips an unconverted small HEIC when conversion is %s",
      async (failure) => {
+@@ -292,7 +326,7 @@ describe("image attachment preparation", () => {
+ 
+     const result = await pickFromLibrary();
+ 
+-    expect(state.optionalNativeModule).not.toHaveBeenCalled();
++    expect(state.optionalNativeModule).not.toHaveBeenCalledWith("ExpoImageManipulator");
+     expect(state.manipulate).not.toHaveBeenCalled();
+     expect(state.file).toHaveBeenCalledExactlyOnceWith(state.asset.uri);
+     expect(state.base64).toHaveBeenCalledExactlyOnceWith(state.asset.uri);
+@@ -468,3 +502,184 @@ it("preserves PNG and closes the handle when inspection fails", async () => {
+   expect(state.manipulate).not.toHaveBeenCalled();
+   expect(state.close).toHaveBeenCalledOnce();
+ });
++
++describe("what the photo library answers", () => {
++  /** A build that carries the app's own picker, whose answer stands in for the system sheet. */
++  async function pickWithNative(
++    pickImages: (limit: number) => Promise<unknown>,
++    existingCount = 0,
++    setup?: () => void,
++  ) {
++    vi.resetModules();
++    state.optionalNativeModule
++      .mockReset()
++      .mockImplementation((name: string) => (name === "PhotoPicker" ? { pickImages } : null));
++    state.file.mockReset();
++    state.info.mockReset().mockReturnValue({ size: 2 * 1024 * 1024 });
++    state.base64.mockReset().mockResolvedValue("aGVsbG8=");
++    setup?.();
++    const fresh = await import("./pick-attachments");
++    return fresh.pickFromLibrary(existingCount);
++  }
++
++  it("takes the files the app's own picker returns", async () => {
++    const result = await pickWithNative(async () => ({
++      canceled: false,
++      assets: [
++        {
++          uri: "file:///picked/a.jpg",
++          name: "a.jpg",
++          mimeType: "image/jpeg",
++          width: 1200,
++          height: 900,
++        },
++      ],
++    }));
++
++    expect(result.outcome).toBe("picked");
++    expect(result.attachments[0]).toMatchObject({
++      name: "a.jpg",
++      mimeType: "image/jpeg",
++      previewUri: "file:///picked/a.jpg",
++      contentBase64: "aGVsbG8=",
++    });
++    // The module already converted and copied the photo, so no second conversion runs.
++    expect(state.manipulate).not.toHaveBeenCalled();
++  });
++
++  it("asks for no more photos than the draft has room for", async () => {
++    const limits: number[] = [];
++    await pickWithNative(async (limit) => {
++      limits.push(limit);
++      return { canceled: true, assets: [] };
++    }, ATTACHMENT_MAX_COUNT - 1);
++
++    expect(limits).toEqual([1]);
++  });
++
++  it("leaves a cancel with nothing to say", async () => {
++    const result = await pickWithNative(async () => ({ canceled: true, assets: [] }));
++
++    expect(result.outcome).toBe("canceled");
++    expect(result.error).toBeUndefined();
++    expect(result.attachments).toEqual([]);
++  });
++
++  it("reports a sheet that never opened as a failure, not a cancel", async () => {
++    const result = await pickWithNative(async () => ({
++      canceled: true,
++      assets: [],
++      error: "a photo picker is already open",
++    }));
++
++    expect(result.outcome).toBe("failed");
++    expect(result.error).toBe("a photo picker is already open");
++  });
++
++  it("reports a pick that came back with no photos instead of returning in silence", async () => {
++    const result = await pickWithNative(async () => ({ canceled: false, assets: [] }));
++
++    expect(result.outcome).toBe("failed");
++    expect(result.error).toBe("the picker returned no photos");
++  });
++
++  it("reports a picker that failed to answer", async () => {
++    const result = await pickWithNative(async () => {
++      throw new Error("Picking operation context has been lost.");
++    });
++
++    expect(result.outcome).toBe("failed");
++    expect(result.error).toBe("Picking operation context has been lost.");
++  });
++
++  it("reports a zero-result answer from expo-image-picker the same way", async () => {
++    state.assets = [];
++    const result = await pickFromLibrary();
++
++    expect(result.outcome).toBe("failed");
++    expect(result.error).toBe("the picker returned no photos");
++  });
++
++  it("reports a picker that could not open at all", async () => {
++    const ImagePicker = await import("expo-image-picker");
++    vi.mocked(ImagePicker.launchImageLibraryAsync).mockRejectedValueOnce(
++      new Error("launchImageLibraryAsync is not available"),
++    );
++
++    const result = await pickFromLibrary();
++
++    expect(result.outcome).toBe("failed");
++    expect(result.error).toBe("launchImageLibraryAsync is not available");
++  });
++
++  it("asks iOS for the representation every model reads", async () => {
++    const ImagePicker = await import("expo-image-picker");
++    const launch = vi.mocked(ImagePicker.launchImageLibraryAsync);
++    launch.mockClear();
++
++    await pickFromLibrary();
++
++    expect(launch).toHaveBeenCalledWith(
++      expect.objectContaining({ preferredAssetRepresentationMode: "compatible" }),
++    );
++  });
++
++  it("keeps the photos it could read when one of them cannot be read", async () => {
++    const result = await pickWithNative(
++      async () => ({
++        canceled: false,
++        assets: [
++          {
++            uri: "file:///picked/a.jpg",
++            name: "a.jpg",
++            mimeType: "image/jpeg",
++            width: 100,
++            height: 100,
++          },
++          {
++            uri: "file:///picked/bad.jpg",
++            name: "bad.jpg",
++            mimeType: "image/jpeg",
++            width: 100,
++            height: 100,
++          },
++        ],
++      }),
++      0,
++      () =>
++        state.base64.mockImplementation((uri: string) =>
++          uri === "file:///picked/bad.jpg"
++            ? Promise.reject(new Error("read failed"))
++            : Promise.resolve("aGVsbG8="),
++        ),
++    );
++
++    expect(result.attachments.map((item) => item.name)).toEqual(["a.jpg"]);
++    expect(result.skipped).toEqual([{ name: "bad.jpg", reason: "could not read" }]);
++    expect(result.outcome).toBe("picked");
++  });
++});
++
++describe("a read that never returns", () => {
++  it("keeps the value when the work finishes in time", async () => {
++    await expect(withTimeout(Promise.resolve(7), 1_000, () => new Error("too slow"))).resolves.toBe(
++      7,
++    );
++  });
++
++  it("fails instead of waiting forever", async () => {
++    vi.useFakeTimers();
++    try {
++      const guarded = withTimeout(
++        new Promise<number>(() => undefined),
++        1_000,
++        () => new Error("too slow"),
++      );
++      const settled = expect(guarded).rejects.toThrow("too slow");
++      await vi.advanceTimersByTimeAsync(1_000);
++      await settled;
++    } finally {
++      vi.useRealTimers();
++    }
++  });
++});
 diff --git a/apps/mobile/lib/pick-attachments.ts b/apps/mobile/lib/pick-attachments.ts
-index c9997f15a..c539270f9 100644
+index c9997f15a..34e8a44ec 100644
 --- a/apps/mobile/lib/pick-attachments.ts
 +++ b/apps/mobile/lib/pick-attachments.ts
-@@ -10,6 +10,8 @@ import { File, FileMode } from "expo-file-system";
- import type * as ImageManipulatorModule from "expo-image-manipulator";
- import * as ImagePicker from "expo-image-picker";
+@@ -12,6 +12,9 @@ import * as ImagePicker from "expo-image-picker";
  import { requireOptionalNativeModule } from "expo-modules-core";
-+import { getKeepOriginalImages } from "./image-send-preference";
-+import { ImageSendPolicy } from "./image-stack-layout";
  import type { DroppedFile } from "./file-drop";
  import { releaseDroppedFile } from "./file-drop";
++import { getKeepOriginalImages } from "./image-send-preference";
++import { ImageSendPolicy } from "./image-stack-layout";
++import { hasNativePhotoPicker, pickPhotos } from "./photo-picker";
  import type { PickedAttachment, PickSkip } from "./pick-attachments-filter.js";
-@@ -43,22 +45,26 @@ function compressedImageName(name: string, format: ImageManipulatorModule.SaveFo
+ import {
+   attachmentCountSkipReason,
+@@ -43,22 +46,27 @@ function compressedImageName(name: string, format: ImageManipulatorModule.SaveFo
    return `${name.replace(/\.[^./\\]+$/, "") || "photo"}${extension}`;
  }
  
@@ -151259,7 +151530,8 @@ index c9997f15a..c539270f9 100644
 -  const needsResize = width && height && Math.max(width, height) > ATTACHMENT_IMAGE_MAX_EDGE;
 +  const heic = ImageSendPolicy.needsHeicConversion(name, sourceMimeType ?? mimeType);
 +  const needsResize =
-+    !keepOriginal && Boolean(width && height && Math.max(width, height) > ATTACHMENT_IMAGE_MAX_EDGE);
++    !keepOriginal &&
++    Boolean(width && height && Math.max(width, height) > ATTACHMENT_IMAGE_MAX_EDGE);
    // Unsupported photo formats (such as HEIC) need conversion even when already small.
 -  if (!needsResize && mimeType) {
 +  // Keep-original still converts HEIC to JPEG, but does not shrink the pixels.
@@ -151271,7 +151543,7 @@ index c9997f15a..c539270f9 100644
      try {
        const handle = new File(uri).open(FileMode.ReadOnly);
        try {
-@@ -87,7 +93,10 @@ async function prepareImage(
+@@ -87,7 +95,10 @@ async function prepareImage(
        );
      }
      const image = await context.renderAsync();
@@ -151283,16 +151555,204 @@ index c9997f15a..c539270f9 100644
      return {
        uri: saved.uri,
        name: compressedImageName(name, format),
-@@ -141,7 +150,7 @@ export async function pickFromLibrary(
+@@ -113,42 +124,94 @@ async function readUriAsBase64(
+   return { contentBase64, size };
+ }
+ 
+-export async function pickFromLibrary(
+-  existingCount = 0,
+-  maxBytes = ATTACHMENT_MAX_BYTES,
+-  maxCount = ATTACHMENT_MAX_COUNT,
+-): Promise<{
++/** What a picker did, so a pick that came back empty is never taken for a cancel. */
++export type LibraryPickOutcome = "picked" | "canceled" | "skipped" | "empty" | "failed";
++
++export type LibraryPick = {
+   attachments: PickedAttachment[];
+   skipped: PickSkip[];
+-}> {
+-  const result = await ImagePicker.launchImageLibraryAsync({
+-    mediaTypes: ["images"],
+-    allowsMultipleSelection: true,
+-    quality: 1,
++  outcome: LibraryPickOutcome;
++  /** The picker's own failure, when it failed; the composer says it instead of staying quiet. */
++  error?: string;
++};
++
++/** How long one photo's preparation may take before it is reported instead of waited on. */
++const PHOTO_READ_TIMEOUT_MS = 30_000;
++
++/** Finishes with the work, or fails once the wait is over: a native read that never returns has
++ * to become something the composer can say, not silence. */
++export function withTimeout<T>(work: Promise<T>, ms: number, onTimeout: () => Error): Promise<T> {
++  return new Promise<T>((resolve, reject) => {
++    const timer = setTimeout(() => reject(onTimeout()), ms);
++    work.then(
++      (value) => {
++        clearTimeout(timer);
++        resolve(value);
++      },
++      (error: unknown) => {
++        clearTimeout(timer);
++        reject(error);
++      },
++    );
+   });
+-  if (result.canceled) return { attachments: [], skipped: [] };
++}
++
++/** The text of a failure, when the failure carries one. */
++export function failureText(error: unknown): string | undefined {
++  if (typeof error === "string") return error.trim() || undefined;
++  if (error && typeof error === "object" && "message" in error) {
++    const message = (error as { message?: unknown }).message;
++    if (typeof message === "string") return message.trim() || undefined;
++  }
++  return undefined;
++}
++
++/** A picked photo, whichever picker returned it. */
++export type PickedPhotoFile = {
++  uri: string;
++  name?: string | null;
++  mimeType?: string | null;
++  width?: number;
++  height?: number;
++};
++
++/** A picked photo becomes the draft's attachment, or the reason it was skipped. */
++async function readPickedPhotos(
++  photos: readonly PickedPhotoFile[],
++  existingCount: number,
++  maxBytes: number,
++  maxCount: number,
++): Promise<{ attachments: PickedAttachment[]; skipped: PickSkip[] }> {
+   const attachments: PickedAttachment[] = [];
+   const skipped: PickSkip[] = [];
+-  for (const asset of result.assets) {
+-    const originalName = asset.fileName ?? `photo-${asset.assetId ?? Date.now()}.jpg`;
++  for (const photo of photos) {
++    const originalName = photo.name ?? `photo-${Date.now()}.jpg`;
+     // Once full, let the filter report the skip without processing the file.
+     let candidate: Parameters<typeof filterPickedAttachments>[1][number] = {
+       name: originalName,
+-      mimeType: inferAttachmentMimeType(originalName, asset.mimeType ?? undefined),
++      mimeType: inferAttachmentMimeType(originalName, photo.mimeType ?? undefined),
+       size: 0,
+       contentBase64: "",
+-      previewUri: asset.uri,
++      previewUri: photo.uri,
      };
      if (existingCount + attachments.length < maxCount) {
        try {
 -        const prepared = await prepareImage(
-+        const prepared = await prepareImageAttachment(
-           asset.uri,
-           originalName,
-           asset.mimeType,
-@@ -191,7 +200,7 @@ export async function takePhoto(
+-          asset.uri,
+-          originalName,
+-          asset.mimeType,
+-          asset.width,
+-          asset.height,
++        const prepared = await withTimeout(
++          prepareImageAttachment(
++            photo.uri,
++            originalName,
++            photo.mimeType,
++            photo.width,
++            photo.height,
++          ),
++          PHOTO_READ_TIMEOUT_MS,
++          () => new Error("a photo took too long to read"),
++        );
++        const { contentBase64, size } = await withTimeout(
++          readUriAsBase64(prepared.uri, maxBytes),
++          PHOTO_READ_TIMEOUT_MS,
++          () => new Error("a photo took too long to read"),
+         );
+-        const { contentBase64, size } = await readUriAsBase64(prepared.uri, maxBytes);
+         candidate = {
+           name: prepared.name,
+           mimeType: prepared.mimeType,
+@@ -174,6 +237,79 @@ export async function pickFromLibrary(
+   return { attachments, skipped };
+ }
+ 
++/**
++ * The photo library. The app's own picker is used when this build carries it: it keeps a selection
++ * the system reports as a dismissal, and hands back a JPEG for a HEIC photo. Binaries built before
++ * it fall back to expo-image-picker, whose zero-result answer is reported rather than swallowed.
++ */
++export async function pickFromLibrary(
++  existingCount = 0,
++  maxBytes = ATTACHMENT_MAX_BYTES,
++  maxCount = ATTACHMENT_MAX_COUNT,
++): Promise<LibraryPick> {
++  let photos: PickedPhotoFile[] | null = null;
++  let failure: string | undefined;
++  if (hasNativePhotoPicker()) {
++    let result: Awaited<ReturnType<typeof pickPhotos>>;
++    try {
++      result = await pickPhotos(Math.max(1, maxCount - existingCount));
++    } catch (error) {
++      return { attachments: [], skipped: [], outcome: "failed", error: failureText(error) };
++    }
++    if (result.canceled) {
++      // A sheet that never opened is a failure, not a cancel.
++      return result.error
++        ? { attachments: [], skipped: [], outcome: "failed", error: result.error }
++        : { attachments: [], skipped: [], outcome: "canceled" };
++    }
++    failure = result.error;
++    photos = result.assets ?? [];
++  } else {
++    let result: Awaited<ReturnType<typeof ImagePicker.launchImageLibraryAsync>>;
++    try {
++      result = await ImagePicker.launchImageLibraryAsync({
++        mediaTypes: ["images"],
++        allowsMultipleSelection: true,
++        quality: 1,
++        // Ask iOS for the representation every model reads instead of an original HEIC copy.
++        preferredAssetRepresentationMode: "compatible",
++      });
++    } catch (error) {
++      return { attachments: [], skipped: [], outcome: "failed", error: failureText(error) };
++    }
++    if (result.canceled) return { attachments: [], skipped: [], outcome: "canceled" };
++    photos = result.assets.map((asset) => ({
++      uri: asset.uri,
++      name: asset.fileName ?? `photo-${asset.assetId ?? Date.now()}.jpg`,
++      mimeType: asset.mimeType,
++      width: asset.width,
++      height: asset.height,
++    }));
++  }
++  if (!photos.length) {
++    // A picker that says it is done and hands back nothing is the failure this fix exists for:
++    // the person chose photos, so say so instead of returning in silence.
++    return {
++      attachments: [],
++      skipped: [],
++      outcome: "failed",
++      error: failure ?? "the picker returned no photos",
++    };
++  }
++  const { attachments, skipped } = await readPickedPhotos(
++    photos,
++    existingCount,
++    maxBytes,
++    maxCount,
++  );
++  const outcome: LibraryPickOutcome = attachments.length
++    ? "picked"
++    : skipped.length
++      ? "skipped"
++      : "empty";
++  return { attachments, skipped, outcome, error: failure };
++}
++
+ export async function takePhoto(
+   existingCount = 0,
+   maxBytes = ATTACHMENT_MAX_BYTES,
+@@ -191,7 +327,7 @@ export async function takePhoto(
    const asset = result.assets[0];
    if (!asset) return { attachments: [], skipped: [] };
    const originalName = asset.fileName ?? `photo-${Date.now()}.jpg`;
@@ -151301,7 +151761,7 @@ index c9997f15a..c539270f9 100644
      asset.uri,
      originalName,
      asset.mimeType,
-@@ -286,7 +295,7 @@ export async function readDroppedFiles(
+@@ -286,7 +422,7 @@ export async function readDroppedFiles(
        let mimeType = inferAttachmentMimeType(name, file.mimeType || undefined);
        const full = existingCount + attachments.length >= maxCount;
        if (!full && uri && file.width && file.height && mimeType?.startsWith("image/")) {
@@ -154548,19 +155008,164 @@ index b12a1a56a..7f19b784e 100644
 +    configurable: true,
 +  });
  }
+diff --git a/apps/mobile/lib/thread-attachments.test.tsx b/apps/mobile/lib/thread-attachments.test.tsx
+index fe95c8c7f..7d13cb92f 100644
+--- a/apps/mobile/lib/thread-attachments.test.tsx
++++ b/apps/mobile/lib/thread-attachments.test.tsx
+@@ -3,10 +3,15 @@
+ import { act, Suspense, startTransition, use, useLayoutEffect } from "react";
+ import type { Root } from "react-dom/client";
+ import { createRoot } from "react-dom/client";
+-import { afterEach, beforeEach, expect, it, vi } from "vitest";
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+ import { releaseIncomingShareFiles, retryIncomingShare, takeIncomingShare } from "./incoming-share";
+ import type { PickedAttachment } from "./pick-attachments";
+-import { pickDocuments, readDroppedFiles, readSharedFiles } from "./pick-attachments";
++import {
++  pickDocuments,
++  pickFromLibrary,
++  readDroppedFiles,
++  readSharedFiles,
++} from "./pick-attachments";
+ import { useIncomingShareImport, useThreadAttachments } from "./thread-attachments";
+ 
+ const sessionCaches = vi.hoisted(() => [] as Array<() => void>);
+@@ -26,6 +31,11 @@ vi.mock("./pick-attachments", () => ({
+   readSharedFiles: vi.fn(),
+   takePhoto: vi.fn(),
+ }));
++// The document camera draws through react-native, which this environment does not load.
++vi.mock("./document-scanner", () => ({
++  canScanDocuments: () => false,
++  scanDocuments: vi.fn(),
++}));
+ vi.mock("./use-file-drop", () => ({
+   useFileDrop: (_key: unknown, onDrop: NonNullable<typeof fileDrop.onDrop>) => {
+     fileDrop.onDrop = onDrop;
+@@ -502,3 +512,77 @@ it("keeps a share for the committed chat when a render of another chat is discar
+   const kept = committedAttachments.activePendingAttachments;
+   expect(kept.map((item) => item.id)).toEqual(["t1"]);
+ });
++
++describe("what the album's answer looks like on screen", () => {
++  it("says why nothing was attached when the picker hands back no photos", async () => {
++    mount(<Probe botId="bot-album-empty" />);
++    vi.mocked(pickFromLibrary).mockResolvedValueOnce({
++      attachments: [],
++      skipped: [],
++      outcome: "failed",
++      error: "the picker returned no photos",
++    });
++
++    await act(async () => attachments.attachFrom("library"));
++
++    expect(attachments.activePendingAttachments).toEqual([]);
++    expect(attachments.attachmentNotice).toContain("照片没能读出来");
++    expect(attachments.attachmentNotice).toContain("the picker returned no photos");
++  });
++
++  it("says the library returned nothing when the pick came back empty without an error", async () => {
++    mount(<Probe botId="bot-album-silent" />);
++    vi.mocked(pickFromLibrary).mockResolvedValueOnce({
++      attachments: [],
++      skipped: [],
++      outcome: "empty",
++    });
++
++    await act(async () => attachments.attachFrom("library"));
++
++    expect(attachments.attachmentNotice).toBe("相册没有返回照片，再试一次或改用「文件」");
++  });
++
++  it("stays quiet when the person canceled the sheet", async () => {
++    mount(<Probe botId="bot-album-cancel" />);
++    vi.mocked(pickFromLibrary).mockResolvedValueOnce({
++      attachments: [],
++      skipped: [],
++      outcome: "canceled",
++    });
++
++    await act(async () => attachments.attachFrom("library"));
++
++    expect(attachments.attachmentNotice).toBeNull();
++  });
++
++  it("keeps the photos of a pick where one photo could not be read", async () => {
++    mount(<Probe botId="bot-album-partial" />);
++    vi.mocked(pickFromLibrary).mockResolvedValueOnce({
++      attachments: [picked("a1")],
++      skipped: [{ name: "bad.jpg", reason: "could not read" }],
++      outcome: "picked",
++    });
++
++    await act(async () => attachments.attachFrom("library"));
++
++    expect(attachments.activePendingAttachments.map((item) => item.id)).toEqual(["a1"]);
++    expect(attachments.attachmentNotice).toBe("Skipped bad.jpg (could not read)");
++  });
++
++  it("says a photo is being read while it is read", async () => {
++    let settle!: (result: Awaited<ReturnType<typeof pickFromLibrary>>) => void;
++    vi.mocked(pickFromLibrary).mockReturnValueOnce(
++      new Promise((resolve) => {
++        settle = resolve;
++      }),
++    );
++    mount(<Probe botId="bot-album-busy" />);
++
++    act(() => attachments.attachFrom("library"));
++    expect(attachments.attaching).toBe(true);
++
++    await act(async () => settle({ attachments: [], skipped: [], outcome: "canceled" }));
++    expect(attachments.attaching).toBe(false);
++  });
++});
 diff --git a/apps/mobile/lib/thread-attachments.ts b/apps/mobile/lib/thread-attachments.ts
-index 35333e611..939859cb7 100644
+index 35333e611..8927b390b 100644
 --- a/apps/mobile/lib/thread-attachments.ts
 +++ b/apps/mobile/lib/thread-attachments.ts
-@@ -21,6 +21,7 @@ import {
-   readSharedFiles,
-   takePhoto,
- } from "./pick-attachments";
+@@ -7,13 +7,14 @@ import type { RefObject } from "react";
+ import { useEffect, useLayoutEffect, useRef, useState } from "react";
+ import type { ThreadComposerHandle } from "../components/thread-composer";
+ import type { ComposerDraftScope } from "./composer-draft";
 +import { canScanDocuments, scanDocuments } from "./document-scanner";
- import { attachmentCountSkipReason } from "./pick-attachments-filter";
- import { registerSessionDiskCache } from "./session";
- import { useFileDrop } from "./use-file-drop";
-@@ -145,9 +146,13 @@ export function useThreadAttachments({
+ import {
+   isIncomingShareCurrent,
+   releaseIncomingShareFiles,
+   retryIncomingShare,
+   takeIncomingShare,
+ } from "./incoming-share";
+-import type { PickedAttachment } from "./pick-attachments";
++import type { LibraryPickOutcome, PickedAttachment } from "./pick-attachments";
+ import {
+   pickDocuments,
+   pickFromLibrary,
+@@ -65,6 +66,15 @@ function clearRetainedAttachments() {
+ }
+ registerSessionDiskCache(clearRetainedAttachments);
+ 
++/** What a picker returned. A picker that can tell a cancel from a pick that came back empty says
++ * so in `outcome`, so the composer can never sit silent after a failed pick. */
++type PickedBy = {
++  attachments: PickedAttachment[];
++  skipped: Array<{ name: string; reason: string }>;
++  outcome?: LibraryPickOutcome;
++  error?: string;
++};
++
+ function formatAttachmentSkip(item: { name: string; reason: string }): string {
+   const name = item.name === "camera" ? t`Camera` : item.name;
+   if (item.reason === "permission denied") return t`${name} (permission denied)`;
+@@ -100,6 +110,8 @@ export function useThreadAttachments({
+     draftScope ? (retainedDraftAttachments.get(retainedScopeKey(draftScope)) ?? []) : [],
+   );
+   const [attachmentNotice, setAttachmentNotice] = useState<string | null>(null);
++  // True while a picker's photos are being read, so a slow photo shows as work instead of nothing.
++  const [attaching, setAttaching] = useState(false);
+   const activePendingAttachments = attachmentsForThread(pendingAttachments, threadKey);
+   // Read by a second drop that starts before the first one commits.
+   const pendingAttachmentsRef = useRef(pendingAttachments);
+@@ -145,9 +157,13 @@ export function useThreadAttachments({
      }
    }, [pendingAttachments, draftScope, uploadConfig]);
  
@@ -154574,7 +155179,7 @@ index 35333e611..939859cb7 100644
      { id: "file", title: t`File`, image: "doc" },
    ];
  
-@@ -155,6 +160,7 @@ export function useThreadAttachments({
+@@ -155,22 +171,17 @@ export function useThreadAttachments({
      if (importingShare.current) return;
      if (source === "library") void addAttachments(pickFromLibrary);
      else if (source === "camera") void addAttachments(takePhoto);
@@ -154582,6 +155187,59 @@ index 35333e611..939859cb7 100644
      else if (source === "file") void addAttachments(pickDocuments);
    }
  
+   async function addAttachments(
+-    picker: (
+-      existingCount: number,
+-      maxBytes: number,
+-      maxCount: number,
+-    ) => Promise<{
+-      attachments: PickedAttachment[];
+-      skipped: Array<{ name: string; reason: string }>;
+-    }>,
++    picker: (existingCount: number, maxBytes: number, maxCount: number) => Promise<PickedBy>,
+   ) {
+     const targetKey = groupId ?? botId;
+     if (!targetKey) return;
+-    let result: Awaited<ReturnType<typeof picker>>;
++    setAttaching(true);
++    let result: PickedBy;
+     try {
+       result = await picker(
+         activePendingAttachments.length,
+@@ -181,6 +192,8 @@ export function useThreadAttachments({
+       // A picker that fails to open reports it instead of rejecting unhandled.
+       setAttachmentNotice(errorText(error, t`Could not attach files`));
+       return;
++    } finally {
++      setAttaching(false);
+     }
+     if ((groupId ?? botId) !== targetKey) return;
+     // Two drops can overlap, so the room left is settled against the draft as it
+@@ -206,6 +219,16 @@ export function useThreadAttachments({
+         reason: attachmentCountSkipReason(attachmentMaxCount(uploadConfig)),
+       })),
+     ];
++    // The picker's own answer decides the line: a pick that came back empty, or a picker that
++    // failed, is said out loud — never a silent return that looks like a dead button.
++    if (result.outcome === "failed" || result.outcome === "empty") {
++      setAttachmentNotice(
++        result.error
++          ? `照片没能读出来（${result.error}），再试一次或改用「文件」`
++          : "相册没有返回照片，再试一次或改用「文件」",
++      );
++      return;
++    }
+     setAttachmentNotice(
+       skipped.length
+         ? t`Skipped ${ph({ items: skipped.map((item) => formatAttachmentSkip(item)).join(", ") })}`
+@@ -234,6 +257,7 @@ export function useThreadAttachments({
+     activePendingAttachments,
+     attachmentNotice,
+     setAttachmentNotice,
++    attaching,
+     attachActions,
+     attachFrom,
+     importingShare,
 diff --git a/apps/mobile/lib/thread-card-width.test.tsx b/apps/mobile/lib/thread-card-width.test.tsx
 index 3a33e3805..38c623298 100644
 --- a/apps/mobile/lib/thread-card-width.test.tsx
@@ -157349,6 +158007,297 @@ index 000000000..85511e02c
 @@ -0,0 +1,5 @@
 +{
 +  "name": "message-image-actions",
++  "version": "0.1.0",
++  "private": true
++}
+diff --git a/apps/mobile/modules/photo-picker/expo-module.config.json b/apps/mobile/modules/photo-picker/expo-module.config.json
+new file mode 100644
+index 000000000..a522cdeda
+--- /dev/null
++++ b/apps/mobile/modules/photo-picker/expo-module.config.json
+@@ -0,0 +1,6 @@
++{
++  "platforms": ["apple"],
++  "apple": {
++    "modules": ["PhotoPickerModule"]
++  }
++}
+diff --git a/apps/mobile/modules/photo-picker/ios/PhotoPicker.podspec b/apps/mobile/modules/photo-picker/ios/PhotoPicker.podspec
+new file mode 100644
+index 000000000..38e2d6e14
+--- /dev/null
++++ b/apps/mobile/modules/photo-picker/ios/PhotoPicker.podspec
+@@ -0,0 +1,15 @@
++Pod::Spec.new do |s|
++  s.name           = 'PhotoPicker'
++  s.version        = '0.1.0'
++  s.summary        = 'Pick photos for a chat without losing the selection'
++  s.author         = ''
++  s.homepage       = 'https://docs.expo.dev/modules/'
++  s.platforms      = { :ios => '16.4' }
++  s.swift_version  = '5.9'
++  s.source         = { git: '' }
++  s.static_framework = true
++  s.dependency 'ExpoModulesCore'
++  s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES' }
++  s.source_files = '**/*.swift'
++  s.frameworks = 'Photos', 'PhotosUI', 'UIKit'
++end
+diff --git a/apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift b/apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
+new file mode 100644
+index 000000000..0adadaf40
+--- /dev/null
++++ b/apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
+@@ -0,0 +1,241 @@
++import ExpoModulesCore
++import PhotosUI
++import UIKit
++import UniformTypeIdentifiers
++
++/// The photo picker behind the composer's "Photo library" menu entry.
++///
++/// The sheet reports two things of its own: the chosen photos and its dismissal. A current iOS
++/// closes the sheet for the app as soon as the person is done, so the dismissal can be reported
++/// before the selection arrives. Read at face value that is a cancel, and every chosen photo is
++/// thrown away with nothing on screen to say why — which is how the album looked dead. So a
++/// dismissal counts as a cancel here only when no selection arrived, and only once the run loop
++/// has had its turn to deliver one.
++///
++/// The module also hands back a JPEG when it can (`preferredAssetRepresentationMode = .compatible`),
++/// the one representation every model reads, and copies each photo out of the picker's temporary
++/// file before that file is taken away.
++public class PhotoPickerModule: Module {
++  private var active: PickerSession?
++
++  public func definition() -> ModuleDefinition {
++    Name("PhotoPicker")
++
++    AsyncFunction("pickImages") { (limit: Int, promise: Promise) in
++      self.start(limit: limit, promise: promise)
++    }
++    .runOnQueue(DispatchQueue.main)
++  }
++
++  private func start(limit: Int, promise: Promise) {
++    guard active == nil else {
++      // One sheet at a time: a tap while the first one is up has nothing left to choose.
++      promise.resolve(PickerSession.canceled(error: "a photo picker is already open"))
++      return
++    }
++    guard let host = appContext?.utilities?.currentViewController() else {
++      promise.resolve(PickerSession.canceled(error: "no screen to present the picker on"))
++      return
++    }
++
++    var configuration = PHPickerConfiguration(photoLibrary: PHPhotoLibrary.shared())
++    configuration.filter = .images
++    // 0 is the most the system allows; the caller sends the room its draft has left.
++    configuration.selectionLimit = limit > 0 ? limit : 0
++    configuration.selection = .ordered
++    configuration.preferredAssetRepresentationMode = .compatible
++
++    let picker = PHPickerViewController(configuration: configuration)
++    let session = PickerSession(promise: promise) { [weak self] in self?.active = nil }
++    active = session
++    picker.delegate = session
++    picker.presentationController?.delegate = session
++    host.present(picker, animated: true)
++  }
++}
++
++final class PickerSession: NSObject, PHPickerViewControllerDelegate,
++  UIAdaptivePresentationControllerDelegate {
++  private let promise: Promise
++  private let release: () -> Void
++  private var delivered = false
++  private var settled = false
++
++  init(promise: Promise, release: @escaping () -> Void) {
++    self.promise = promise
++    self.release = release
++  }
++
++  static func canceled(error: String? = nil) -> [String: Any] {
++    var body: [String: Any] = ["canceled": true, "assets": [[String: Any]]()]
++    if let error {
++      body["error"] = error
++    }
++    return body
++  }
++
++  private func settle(_ body: [String: Any]) {
++    guard !settled else {
++      return
++    }
++    settled = true
++    release()
++    promise.resolve(body)
++  }
++
++  // MARK: - PHPickerViewControllerDelegate
++
++  func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
++    // The selection is here before anything is dismissed or decided, so a dismissal that follows
++    // can never be mistaken for a cancel.
++    delivered = true
++    picker.dismiss(animated: true)
++    guard !results.isEmpty else {
++      // The sheet's own cancel button: nothing was chosen.
++      settle(Self.canceled())
++      return
++    }
++    Task {
++      var assets: [[String: Any]] = []
++      var failure: String?
++      for result in results {
++        do {
++          assets.append(try await Self.copy(result))
++        } catch {
++          // One photo that cannot be read costs that photo, not the whole selection.
++          failure = error.localizedDescription
++        }
++      }
++      var body: [String: Any] = ["canceled": false, "assets": assets]
++      if let failure, assets.isEmpty {
++        body["error"] = failure
++      }
++      settle(body)
++    }
++  }
++
++  // MARK: - UIAdaptivePresentationControllerDelegate
++
++  func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
++    // A swipe-down reaches here at once, while a selection is still on its way. Give the
++    // selection the rest of this run loop before deciding that nothing was chosen.
++    DispatchQueue.main.async { [weak self] in
++      guard let self, !self.delivered else {
++        return
++      }
++      self.settle(Self.canceled())
++    }
++  }
++
++  // MARK: - Copying a chosen photo out of the picker
++
++  private static func copy(_ result: PHPickerResult) async throws -> [String: Any] {
++    let provider = result.itemProvider
++    // The type the provider actually holds. Asking a file representation for the abstract
++    // `public.image` gives no file at all for a HEIC photo.
++    let type = provider.registeredTypeIdentifiers
++      .compactMap { UTType($0) }
++      .first { $0.conforms(to: .image) }
++    let identifier = type?.identifier ?? UTType.image.identifier
++    let directory = FileManager.default.temporaryDirectory
++      .appendingPathComponent("picked-photos", isDirectory: true)
++    try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
++
++    if let file = await copyFile(from: provider, type: identifier, into: directory) {
++      return describe(file)
++    }
++    // A photo the picker cannot hand over as a file still arrives as data (an item still in
++    // iCloud, a format the provider keeps as memory).
++    if let file = await writeData(from: provider, type: identifier, into: directory) {
++      return describe(file)
++    }
++    throw PhotoPickError.unreadable
++  }
++
++  /// `loadFileRepresentation` lends the file only until its callback returns, so the copy is made
++  /// inside it.
++  private static func copyFile(from provider: NSItemProvider, type: String, into directory: URL)
++    async -> URL? {
++    await withCheckedContinuation { (continuation: CheckedContinuation<URL?, Never>) in
++      _ = provider.loadFileRepresentation(forTypeIdentifier: type) { url, _ in
++        guard let url else {
++          continuation.resume(returning: nil)
++          return
++        }
++        let target = destination(
++          in: directory,
++          name: provider.suggestedName ?? url.deletingPathExtension().lastPathComponent,
++          fileExtension: url.pathExtension)
++        do {
++          try FileManager.default.copyItem(at: url, to: target)
++          continuation.resume(returning: target)
++        } catch {
++          continuation.resume(returning: nil)
++        }
++      }
++    }
++  }
++
++  private static func writeData(from provider: NSItemProvider, type: String, into directory: URL)
++    async -> URL? {
++    let data: Data? = await withCheckedContinuation { (continuation: CheckedContinuation<Data?, Never>) in
++      _ = provider.loadDataRepresentation(forTypeIdentifier: type) { data, _ in
++        continuation.resume(returning: data)
++      }
++    }
++    guard let data, !data.isEmpty else {
++      return nil
++    }
++    let target = destination(
++      in: directory,
++      name: provider.suggestedName ?? UUID().uuidString,
++      fileExtension: UTType(type)?.preferredFilenameExtension ?? "jpg")
++    do {
++      try data.write(to: target, options: .atomic)
++      return target
++    } catch {
++      return nil
++    }
++  }
++
++  /// The name the chat shows, made unique so two photos of the same name keep both bytes.
++  private static func destination(in directory: URL, name: String, fileExtension: String) -> URL {
++    let base = sanitized(name)
++    let suffix = fileExtension.isEmpty ? "" : ".\(fileExtension)"
++    var candidate = directory.appendingPathComponent(base + suffix)
++    var index = 2
++    while FileManager.default.fileExists(atPath: candidate.path) {
++      candidate = directory.appendingPathComponent("\(base)-\(index)\(suffix)")
++      index += 1
++    }
++    return candidate
++  }
++
++  private static func sanitized(_ name: String) -> String {
++    let trimmed = name.replacingOccurrences(of: "/", with: "-")
++      .trimmingCharacters(in: .whitespacesAndNewlines)
++    return trimmed.isEmpty ? UUID().uuidString : trimmed
++  }
++
++  private static func describe(_ url: URL) -> [String: Any] {
++    let image = UIImage(contentsOfFile: url.path)
++    var body: [String: Any] = [
++      "uri": url.absoluteString,
++      "name": url.lastPathComponent,
++      "width": Double(image?.size.width ?? 0),
++      "height": Double(image?.size.height ?? 0)
++    ]
++    if let mimeType = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType {
++      body["mimeType"] = mimeType
++    }
++    return body
++  }
++}
++
++enum PhotoPickError: LocalizedError {
++  case unreadable
++
++  var errorDescription: String? {
++    "the photo could not be read"
++  }
++}
+diff --git a/apps/mobile/modules/photo-picker/package.json b/apps/mobile/modules/photo-picker/package.json
+new file mode 100644
+index 000000000..3d2bd5289
+--- /dev/null
++++ b/apps/mobile/modules/photo-picker/package.json
+@@ -0,0 +1,5 @@
++{
++  "name": "photo-picker",
 +  "version": "0.1.0",
 +  "private": true
 +}

@@ -3653,7 +3653,7 @@ index c938f4ead..725c94cff 100644
      addLabel: { color: native.label, fontSize: 17 },
      tile: {
 diff --git a/apps/mobile/app/_layout.tsx b/apps/mobile/app/_layout.tsx
-index e65118bfb..ec1b7ed82 100644
+index e65118bfb..1360268f8 100644
 --- a/apps/mobile/app/_layout.tsx
 +++ b/apps/mobile/app/_layout.tsx
 @@ -24,10 +24,11 @@ import type { ReactNode } from "react";
@@ -3731,7 +3731,7 @@ index e65118bfb..ec1b7ed82 100644
  /** On a wide window the chat list stays on the left and the stack shows the open chat beside it. */
  function SplitFrame({ children }: { children: ReactNode }) {
    const pathname = usePathname();
-@@ -358,6 +373,13 @@ function LayoutContent() {
+@@ -358,34 +373,46 @@ function LayoutContent() {
      return startWorkActivities();
    }, [ready]);
  
@@ -3745,15 +3745,60 @@ index e65118bfb..ec1b7ed82 100644
    useEffect(() => watchForegroundUpdates(), []);
  
    useEffect(() => {
-@@ -370,6 +392,7 @@ function LayoutContent() {
-           setAppearanceReady(true),
-         ),
+     markMobileStartupMounted();
+     void loadHapticsPreference();
+-    void Promise.all([
+-      Promise.all([
+-        trackMobileStartup("server", loadApiBase()),
+-        trackMobileStartup("appearance", loadAppearancePreference()).finally(() =>
+-          setAppearanceReady(true),
+-        ),
++    // Only what the first frame is drawn with holds the native splash: the server its requests go
++    // to, the appearance its pixels are mixed in, and the language its words are in. Everything
++    // else that used to be waited on here — response streaming, the text weight, remote images,
++    // the inbox width — shapes a detail inside a screen that is already up, so each is read behind
++    // the first frame and applied by its own subscription when it lands. Waiting on all seven was
++    // several Keychain reads deep before a single pixel appeared (`IMG_2997`).
++    const firstFrame = Promise.all([
++      trackMobileStartup("server", loadApiBase()),
++      trackMobileStartup("appearance", loadAppearancePreference()).finally(() =>
++        setAppearanceReady(true),
++      ),
++      trackMobileStartup("language", bootstrapI18n()),
++    ]).catch(() => undefined);
++    void firstFrame.then(() => {
++      setReady(true);
++      // The native poller stores the locale its notification copy uses, so the restart waits for
++      // the language to load rather than saving the default. Notification restoration must not
++      // keep the native splash visible.
++      void loadSessionToken()
++        .then((token) => resumeLiveNotifications(currentApiBase(), token, selectedSpaceId() ?? ""))
++        .catch(() => undefined);
++      void Promise.all([
          trackMobileStartup("streaming", loadResponseStreamingPreference()),
 +        trackMobileStartup("font-weight", loadAppFontWeight()),
          trackMobileStartup("images", loadRemoteImagesPreference()),
          trackMobileStartup("inbox", loadInboxWidth()),
-       ]).catch(() => undefined),
-@@ -396,7 +419,7 @@ function LayoutContent() {
+-      ]).catch(() => undefined),
+-      trackMobileStartup("language", bootstrapI18n()).catch(() => undefined),
+-    ])
+-      .then(() => {
+-        // The native poller stores the locale its notification copy uses, so the
+-        // restart waits for the language to load rather than saving the default.
+-        // Notification restoration must not keep the native splash visible.
+-        void loadSessionToken()
+-          .then((token) =>
+-            resumeLiveNotifications(currentApiBase(), token, selectedSpaceId() ?? ""),
+-          )
+-          .catch(() => undefined);
+-      })
+-      .finally(() => setReady(true));
++      ]).catch(() => undefined);
++    });
+   }, []);
+ 
+   return (
+@@ -396,7 +423,7 @@ function LayoutContent() {
              <ThemeProvider value={navigationTheme}>
                <StatusBar style={resolved === "light" ? "dark" : "light"} />
                <CallKeyboardContext.Provider value={call}>
@@ -3762,7 +3807,7 @@ index e65118bfb..ec1b7ed82 100644
                    <SplitFrame>
                      <Stack
                        screenLayout={({ navigation, options, children }) => (
-@@ -422,20 +445,27 @@ function LayoutContent() {
+@@ -422,20 +449,24 @@ function LayoutContent() {
                          headerShadowVisible: false,
                          headerBackButtonDisplayMode: "minimal",
                          contentStyle: { backgroundColor: String(native.page) },
@@ -3772,11 +3817,11 @@ index e65118bfb..ec1b7ed82 100644
 +                        statusBarStyle: resolved === "dark" ? "light" : "dark",
                        }}
                      >
-                       <Stack.Screen
-                         name="index"
+-                      <Stack.Screen
+-                        name="index"
 -                        options={{ headerShown: false, title: "Rakazo" }}
-+                        options={{ headerShown: false, title: "Bot" }}
-                       />
+-                      />
++                      <Stack.Screen name="index" options={{ headerShown: false, title: "Bot" }} />
                        <Stack.Screen
                          name="search"
                          options={{
@@ -3795,7 +3840,7 @@ index e65118bfb..ec1b7ed82 100644
                          }}
                        />
                        <Stack.Screen name="share" options={{ headerShown: false }} />
-@@ -452,12 +482,13 @@ function LayoutContent() {
+@@ -452,12 +483,13 @@ function LayoutContent() {
                          name="(settings)"
                          options={{
                            headerShown: false,
@@ -3815,7 +3860,7 @@ index e65118bfb..ec1b7ed82 100644
                            contentStyle: { backgroundColor: native.groupedPage },
                          }}
                        />
-@@ -484,7 +515,11 @@ function LayoutContent() {
+@@ -484,7 +516,11 @@ function LayoutContent() {
                          name="new-bot"
                          options={{
                            title: t`New bot`,
@@ -3828,7 +3873,7 @@ index e65118bfb..ec1b7ed82 100644
                            gestureEnabled: true,
                            headerBackVisible: false,
                          }}
-@@ -532,11 +567,13 @@ function LayoutContent() {
+@@ -532,11 +568,13 @@ function LayoutContent() {
                          name="page"
                          options={{
                            headerShown: false,
@@ -3846,7 +3891,7 @@ index e65118bfb..ec1b7ed82 100644
                          }}
                        />
                        <Stack.Screen
-@@ -594,14 +631,15 @@ function LayoutContent() {
+@@ -594,14 +632,15 @@ function LayoutContent() {
                        />
                      </Stack>
                    </SplitFrame>
@@ -3864,7 +3909,7 @@ index e65118bfb..ec1b7ed82 100644
                </CallKeyboardContext.Provider>
                <ComputerUpdateProgress />
                <MessageMenuHost />
-@@ -617,11 +655,14 @@ function LayoutContent() {
+@@ -617,11 +656,14 @@ function LayoutContent() {
    );
  }
  
@@ -135315,10 +135360,10 @@ index 000000000..76bdd981e
 +});
 diff --git a/apps/mobile/components/thread/link-preview-card.tsx b/apps/mobile/components/thread/link-preview-card.tsx
 new file mode 100644
-index 000000000..261b18094
+index 000000000..330c75c54
 --- /dev/null
 +++ b/apps/mobile/components/thread/link-preview-card.tsx
-@@ -0,0 +1,306 @@
+@@ -0,0 +1,314 @@
 +import { ph } from "@lingui/core/macro";
 +import { useLingui } from "@lingui/react/macro";
 +import type { Bot } from "@rakazo/contracts";
@@ -135338,12 +135383,15 @@ index 000000000..261b18094
 +import { PressScale } from "../press-scale";
 +
 +/**
-+ * The card a pasted link becomes — kept small so it never takes the chat's screen.
++ * The card a pasted link becomes — the page's own picture across the top, as the reference app
++ * draws one.
 + *
-+ * A page the server could read a picture from draws as a compact card: the cover as a small
-+ * square on the right, the page's title beside it, and the domain at the foot. The cover is a
-+ * thumbnail, never the half-screen banner it once was, so a chat can hold several of these cards
-+ * and still read.
++ * A page the server could read a picture from draws as a wide card: the cover across the top at
++ * `2:1`, the page's title under it, and the domain at the foot. The card takes the width the
++ * message column gives it, so a `1280×640` banner reads as the page it belongs to; the cover used
++ * to be a `96pt` square on the right, which cropped that banner down to a middle slice and squeezed
++ * the title into a column two words wide (`IMG_2989`). Its height stays the banner's own, so a chat
++ * can hold several of these cards and still read.
 + *
 + * A link whose page is a form to fill in or an authorization to confirm (a sign-in, a device code,
 + * a page that asks the person to continue) is the one thing here a person must act on, so it is
@@ -135379,7 +135427,7 @@ index 000000000..261b18094
 +  );
 +});
 +
-+/** A page with a picture: the cover as a small square, its title and domain beside it. */
++/** A page with a picture: its cover across the top, then the title, and the domain at the foot. */
 +function LinkCard({
 +  url,
 +  title,
@@ -135408,7 +135456,14 @@ index 000000000..261b18094
 +        { backgroundColor: card, borderColor: tokens.border, opacity: pressed ? 0.85 : 1 },
 +      ]}
 +    >
-+      <View style={styles.cardText}>
++      <Image
++        accessibilityIgnoresInvertColors
++        source={{ uri: cover }}
++        resizeMode="cover"
++        testID="link-card-cover"
++        style={[styles.cardCover, { backgroundColor: tokens.muted }]}
++      />
++      <View style={styles.cardBody}>
 +        <Text numberOfLines={2} style={[styles.cardTitle, { color: tokens.foreground }]}>
 +          {title}
 +        </Text>
@@ -135432,12 +135487,6 @@ index 000000000..261b18094
 +          </Text>
 +        </View>
 +      </View>
-+      <Image
-+        accessibilityIgnoresInvertColors
-+        source={{ uri: cover }}
-+        resizeMode="cover"
-+        style={[styles.cardCover, { backgroundColor: tokens.muted }]}
-+      />
 +    </Pressable>
 +  );
 +}
@@ -135594,25 +135643,29 @@ index 000000000..261b18094
 +  continueContainer: { alignSelf: "flex-end" },
 +  continue: { borderRadius: 999, paddingHorizontal: 16, paddingVertical: 7 },
 +  continueLabel: { fontSize: 13.5, fontWeight: "600" },
-+  // The page card: a small square of cover, then the words. 96pt keeps it a card, not a banner.
++  // The page card: a banner of cover across the top, then the words underneath. It fills the
++  // column the message row gives it (up to 310pt), so the banner is the page's own shape, and its
++  // corners are cut by the card rather than by the picture.
 +  card: {
 +    alignSelf: "flex-start",
-+    flexDirection: "row",
-+    alignItems: "stretch",
-+    gap: 10,
-+    minWidth: 208,
-+    maxWidth: 292,
-+    borderRadius: 16,
++    width: "100%",
++    maxWidth: 310,
++    borderRadius: 18,
 +    borderCurve: "continuous",
 +    borderWidth: StyleSheet.hairlineWidth,
-+    padding: 10,
++    overflow: "hidden",
 +  },
-+  cardText: { flex: 1, flexShrink: 1, justifyContent: "flex-start", gap: 3 },
-+  cardTitle: { fontSize: 15, fontWeight: "600", lineHeight: 20 },
-+  cardDescription: { fontSize: 12.5, lineHeight: 17 },
-+  cardSiteRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: "auto" },
-+  cardSite: { fontSize: 11.5, flexShrink: 1 },
-+  cardCover: { width: 96, height: 96, borderRadius: 12, borderCurve: "continuous" },
++  cardCover: { width: "100%", aspectRatio: 2 },
++  cardBody: {
++    paddingHorizontal: 14,
++    paddingTop: 10,
++    paddingBottom: 12,
++    gap: 3,
++  },
++  cardTitle: { fontSize: 16, fontWeight: "600", lineHeight: 21 },
++  cardDescription: { fontSize: 13, lineHeight: 18 },
++  cardSiteRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 },
++  cardSite: { fontSize: 12, flexShrink: 1 },
 +  line: {
 +    flexDirection: "row",
 +    alignItems: "center",
@@ -140030,6 +140083,55 @@ index 000000000..23b0970d4
 +    : undefined;
 +  return { label, changed };
 +}
+diff --git a/apps/mobile/lib/activity.test.ts b/apps/mobile/lib/activity.test.ts
+index 95010853f..3f9b16f71 100644
+--- a/apps/mobile/lib/activity.test.ts
++++ b/apps/mobile/lib/activity.test.ts
+@@ -1,7 +1,7 @@
+ import type { RunActivityRow } from "@rakazo/contracts";
+ import { afterEach, describe, expect, it, vi } from "vitest";
+ import { activityPreview, formatActivityRelativeTime, routineRunLateLabel } from "./activity";
+-import { resetI18nForTests } from "./i18n";
++import { resetI18nForTests, resetI18nForTestsAsync } from "./i18n";
+ 
+ vi.mock("./api-server", () => ({}));
+ vi.mock("./api-auth", () => ({}));
+@@ -29,7 +29,7 @@ describe("formatActivityRelativeTime", () => {
+ });
+ 
+ describe("activity preview", () => {
+-  it("composes translated activity labels, including empty text and sender fallbacks", () => {
++  it("composes translated activity labels, including empty text and sender fallbacks", async () => {
+     const run = {
+       trigger: "bot_message" as const,
+       promptSnippet: "Legacy English label",
+@@ -50,7 +50,7 @@ describe("activity preview", () => {
+         ...overrides,
+       });
+     expect(preview()).toBe("Update from Maya: Ready");
+-    resetI18nForTests("de");
++    await resetI18nForTestsAsync("de");
+     expect(preview()).toBe("Update von Maya: Ready");
+     expect(preview({ agentMessage: { fromBotName: "Maya", kind: "update", text: "" } })).toBe(
+       "Update von Maya",
+@@ -94,7 +94,7 @@ describe("routineRunLateLabel", () => {
+     messageId: null,
+   };
+ 
+-  it("labels only a run that started late, in the active language", () => {
++  it("labels only a run that started late, in the active language", async () => {
+     expect(routineRunLateLabel(run)).toBeUndefined();
+     expect(routineRunLateLabel({ ...run, lateSince: "2026-01-02T11:40:00Z" })).toBe(
+       "Started 20m late",
+@@ -102,7 +102,7 @@ describe("routineRunLateLabel", () => {
+     expect(routineRunLateLabel({ ...run, lateSince: "2026-01-02T09:30:00Z" })).toBe(
+       "Started 2h late",
+     );
+-    resetI18nForTests("de");
++    await resetI18nForTestsAsync("de");
+     expect(routineRunLateLabel({ ...run, lateSince: "2025-12-30T12:00:00Z" })).toBe(
+       "3 T. verspätet gestartet",
+     );
 diff --git a/apps/mobile/lib/after-first-paint.test.tsx b/apps/mobile/lib/after-first-paint.test.tsx
 new file mode 100644
 index 000000000..f0cf35886
@@ -140668,35 +140770,148 @@ index 0659ba7a3..7cc1cdb36 100644
 -  });
 +  return Promise.resolve(true);
  }
+diff --git a/apps/mobile/lib/api-server.test.ts b/apps/mobile/lib/api-server.test.ts
+index f33181650..286b18628 100644
+--- a/apps/mobile/lib/api-server.test.ts
++++ b/apps/mobile/lib/api-server.test.ts
+@@ -1104,6 +1104,24 @@ describe("mobile API server and Space selection", () => {
+     expect(SecureStore.deleteItemAsync).not.toHaveBeenCalledWith("rakazo.org_spaces");
+   });
+ 
++  it("reads the server, its headers and the Space without waiting on each other", async () => {
++    const started: string[] = [];
++    vi.mocked(SecureStore.getItemAsync).mockImplementation(async (key) => {
++      started.push(key);
++      return null;
++    });
++    const loading = loadApiBase();
++    // The launch's entries are all being read at once: a read that waited on another would have
++    // been asked for only after that one answered, and the call has not yielded yet.
++    expect(started.sort()).toEqual([
++      "rakazo.api_base",
++      "rakazo.server_headers",
++      "rakazo.space_id",
++      "rakazo.space_rollback",
++    ]);
++    await loading;
++  });
++
+   it("restores a persisted space when its initial load failed", async () => {
+     vi.mocked(SecureStore.getItemAsync).mockResolvedValue(null);
+     await loadApiBase();
 diff --git a/apps/mobile/lib/api-server.ts b/apps/mobile/lib/api-server.ts
-index 74ecac53e..4186fb8bb 100644
+index 74ecac53e..45531ffc9 100644
 --- a/apps/mobile/lib/api-server.ts
 +++ b/apps/mobile/lib/api-server.ts
-@@ -1,5 +1,6 @@
- import { t } from "@lingui/core/macro";
- import * as SecureStore from "expo-secure-store";
-+import { resumeLiveNotifications } from "./live-notifications";
- import type { PendingSignOut } from "./api";
- import {
-   clearStoredValue,
-@@ -23,7 +24,7 @@ import {
- } from "./api";
+@@ -24,8 +24,14 @@ import {
  import type { EndpointResult } from "./endpoint";
  import { defaultApiBase, normalizeApiBase } from "./endpoint";
--import { resumeLiveNotifications } from "./live-notifications";
+ import { resumeLiveNotifications } from "./live-notifications";
 +import { loadSavedServers, recordSavedServer } from "./saved-servers";
  import { API_BASE_STORAGE_KEY as ENDPOINT_KEY } from "./server-config";
- import { loadServerHeaders, saveServerHeaders, serverHeaders } from "./server-headers";
+-import { loadServerHeaders, saveServerHeaders, serverHeaders } from "./server-headers";
++import {
++  applyStoredServerHeaders,
++  readStoredServerHeaders,
++  saveServerHeaders,
++  serverHeaders,
++} from "./server-headers";
  import {
-@@ -63,6 +64,7 @@ export async function loadApiBase() {
-     // SecureStore is unavailable in some test / web hosts.
+   clearSessionToken,
+   currentSessionGeneration,
+@@ -37,6 +43,8 @@ import {
+ 
+ /** The Space last used in each organization on this device, by organization id. */
+ const ORGANIZATION_SPACES_KEY = "rakazo.org_spaces";
++/** A stored entry that was read, or one the device would not give up this launch. */
++type StoredValue = { ok: true; value: string | null } | { ok: false };
+ const confirmedSpaceSwitchListeners = new Set<() => void>();
+ /** Fires when a selection change to another Space is confirmed durable; a
+  * rollback after a failed switch, or selecting the same Space again, does not. */
+@@ -51,32 +59,46 @@ function noteConfirmedSpaceSwitch(): void {
+ }
+ export async function loadApiBase() {
+   let apiBase = defaultApiBase();
+-  try {
+-    const stored = await SecureStore.getItemAsync(ENDPOINT_KEY);
+-    if (stored) {
+-      const parsed = normalizeApiBase(stored);
+-      if (parsed.ok) {
+-        apiBase = parsed.url;
+-      }
+-    }
+-  } catch {
+-    // SecureStore is unavailable in some test / web hosts.
++  // Four independent Keychain entries used to be read one after another — the server, its headers,
++  // the servers used before and the Space — and each read waited for the one before it. Read at
++  // once, the whole launch waits for the slowest read instead of their sum (`IMG_2997`).
++  const [endpoint, headers, , space, rollback] = await Promise.all([
++    readStoredValue(ENDPOINT_KEY),
++    readStoredServerHeaders(),
++    loadSavedServers(),
++    readStoredValue(SPACE_KEY),
++    readStoredValue(SPACE_ROLLBACK_KEY),
++  ]);
++  if (endpoint.ok && endpoint.value) {
++    const parsed = normalizeApiBase(endpoint.value);
++    if (parsed.ok) apiBase = parsed.url;
    }
-   await loadServerHeaders(apiBase);
-+  await loadSavedServers();
+-  await loadServerHeaders(apiBase);
++  // Headers belong to the server they were entered for; an unreadable entry sends nothing.
++  applyStoredServerHeaders(apiBase, headers);
    setCachedApiBase(apiBase);
+-  try {
+-    const storedSpace = (await SecureStore.getItemAsync(SPACE_KEY)) ?? "";
+-    setSelectedSpace(storedSpace);
+-    // A deletion fallback must override the now-invalid saved Space even when
+-    // the device failed to replace that value before the previous process exited.
+-    await recoverSpaceRollback(apiBase);
+-  } catch {
+-    // Keep any in-memory selection when SecureStore is temporarily unavailable.
++  if (space.ok) {
++    setSelectedSpace(space.value ?? "");
++    try {
++      // A deletion fallback must override the now-invalid saved Space even when the device failed to
++      // replace that value before the previous process exited.
++      await recoverSpaceRollback(apiBase, rollback);
++    } catch {
++      // Keep any in-memory selection when SecureStore is temporarily unavailable.
++    }
+   }
+   // A revocation left pending by an earlier sign-out or server switch retries on this launch.
+   void flushPendingSignOut(true);
+   return currentApiBase();
+ }
++/** One Keychain entry, or the fact that the device would not give it up on this launch. */
++async function readStoredValue(key: string): Promise<StoredValue> {
++  try {
++    return { ok: true, value: await SecureStore.getItemAsync(key) };
++  } catch {
++    // SecureStore is unavailable in some test / web hosts.
++    return { ok: false };
++  }
++}
+ export async function selectSpace(id: string) {
+   const requestGeneration = nextSpaceSelectionRequest();
+   if (!(await clearStoredValue(SPACE_ROLLBACK_KEY))) return false;
+@@ -381,12 +403,12 @@ async function saveSpaceRollback(spaceId: string): Promise<boolean> {
+     JSON.stringify({ apiBase: currentApiBase(), spaceId }),
+   );
+ }
+-async function recoverSpaceRollback(apiBase: string) {
+-  const stored = await SecureStore.getItemAsync(SPACE_ROLLBACK_KEY);
+-  if (!stored) return;
++async function recoverSpaceRollback(apiBase: string, stored: StoredValue) {
++  if (!stored.ok || !stored.value) return;
++  const raw = stored.value;
+   let parsed: unknown;
    try {
-     const storedSpace = (await SecureStore.getItemAsync(SPACE_KEY)) ?? "";
-@@ -439,15 +441,17 @@ export async function saveApiBase(
+-    parsed = JSON.parse(stored);
++    parsed = JSON.parse(raw);
+   } catch {
+     await clearStoredValue(SPACE_ROLLBACK_KEY);
+     return;
+@@ -439,15 +461,17 @@ export async function saveApiBase(
      await clearStoredValue(SPACE_ROLLBACK_KEY);
      if (cleared?.pendingSignOut) await promotePendingSignOut(cleared.pendingSignOut);
      if (cleared) await clearStoredValue(ORGANIZATION_SPACES_KEY);
@@ -140715,7 +140930,7 @@ index 74ecac53e..4186fb8bb 100644
        if (!result.ok) return result.result;
        cleared = result;
      }
-@@ -475,6 +479,21 @@ export async function resetApiBase(): Promise<EndpointResult> {
+@@ -475,6 +499,21 @@ export async function resetApiBase(): Promise<EndpointResult> {
      await clearStoredValue(SPACE_ROLLBACK_KEY);
      if (cleared?.pendingSignOut) await promotePendingSignOut(cleared.pendingSignOut);
      if (cleared) await clearStoredValue(ORGANIZATION_SPACES_KEY);
@@ -141303,6 +141518,29 @@ index bd85003f9..7e5caf4b1 100644
 -  expect(runCreateAction.mock.calls).toEqual([["bot"], ["group"], ["space"]]);
 +  expect(runCreateAction.mock.calls).toEqual([["bot"], ["group"], ["space"], ["activity"]]);
  });
+diff --git a/apps/mobile/lib/ask-action-label.test.ts b/apps/mobile/lib/ask-action-label.test.ts
+index 47b08dc60..74a0eeb22 100644
+--- a/apps/mobile/lib/ask-action-label.test.ts
++++ b/apps/mobile/lib/ask-action-label.test.ts
+@@ -1,6 +1,6 @@
+ import { afterEach, describe, expect, it } from "vitest";
+ import { askActionLabel } from "./ask-action-label";
+-import { resetI18nForTests } from "./i18n";
++import { resetI18nForTests, resetI18nForTestsAsync } from "./i18n";
+ 
+ describe("askActionLabel", () => {
+   afterEach(() => resetI18nForTests());
+@@ -50,8 +50,8 @@ describe("askActionLabel", () => {
+     },
+   );
+ 
+-  it("uses the real mobile translator with site interpolation", () => {
+-    resetI18nForTests("de");
++  it("uses the real mobile translator with site interpolation", async () => {
++    await resetI18nForTestsAsync("de");
+     expect(
+       askActionLabel(
+         { id: "always", label: "Server label" },
 diff --git a/apps/mobile/lib/ask-actions.test.tsx b/apps/mobile/lib/ask-actions.test.tsx
 index 4cd3d7325..27b0722ca 100644
 --- a/apps/mobile/lib/ask-actions.test.tsx
@@ -142891,6 +143129,41 @@ index 000000000..f60740c05
 +): boolean {
 +  return "soul" in soulEdits(bot, soul);
 +}
+diff --git a/apps/mobile/lib/bot-template-copy.test.ts b/apps/mobile/lib/bot-template-copy.test.ts
+index 8390a386a..02dd05c72 100644
+--- a/apps/mobile/lib/bot-template-copy.test.ts
++++ b/apps/mobile/lib/bot-template-copy.test.ts
+@@ -1,7 +1,7 @@
+ import { BOT_TEMPLATES } from "@rakazo/core";
+ import { afterEach, describe, expect, it } from "vitest";
+ import { botTemplateCopy } from "./bot-template-copy";
+-import { resetI18nForTests } from "./i18n";
++import { resetI18nForTests, resetI18nForTestsAsync } from "./i18n";
+ 
+ afterEach(() => resetI18nForTests());
+ 
+@@ -17,8 +17,8 @@ describe("botTemplateCopy", () => {
+     }
+   });
+ 
+-  it("translates every template", () => {
+-    resetI18nForTests("de");
++  it("translates every template", async () => {
++    await resetI18nForTestsAsync("de");
+     for (const template of BOT_TEMPLATES) {
+       const copy = botTemplateCopy(template);
+       expect(copy.summary).not.toBe(template.summary);
+@@ -26,8 +26,8 @@ describe("botTemplateCopy", () => {
+     }
+   });
+ 
+-  it("shows the server's English for a template it does not know", () => {
+-    resetI18nForTests("de");
++  it("shows the server's English for a template it does not know", async () => {
++    await resetI18nForTestsAsync("de");
+     const template = { ...BOT_TEMPLATES[0]!, id: "new-template", name: "New", summary: "S" };
+     expect(botTemplateCopy(template)).toMatchObject({ name: "New", summary: "S" });
+   });
 diff --git a/apps/mobile/lib/bot-template-share.ts b/apps/mobile/lib/bot-template-share.ts
 new file mode 100644
 index 000000000..0292bf886
@@ -143032,7 +143305,7 @@ index fdd254f89..37e3f38f7 100644
    });
  });
 diff --git a/apps/mobile/lib/call-session.test.ts b/apps/mobile/lib/call-session.test.ts
-index 2a5da46d9..bb1a40755 100644
+index 2a5da46d9..76cbc44e1 100644
 --- a/apps/mobile/lib/call-session.test.ts
 +++ b/apps/mobile/lib/call-session.test.ts
 @@ -11,7 +11,6 @@ vi.mock("./haptics", () => ({ hapticImpact: vi.fn(), hapticSuccess: vi.fn() }));
@@ -143043,6 +143316,15 @@ index 2a5da46d9..bb1a40755 100644
    ExpectedTurnFailure,
    endCall,
    endCallBeforeSessionEnd,
+@@ -26,7 +25,7 @@ import {
+ } from "./call-session";
+ import type { SpeechRecognizer } from "./dictation";
+ import { ENDPOINT_SILENCE_MS, setSpeechRecognizer, stop as stopDictation } from "./dictation";
+-import { activateUiLocale, getActiveUiLocale } from "./i18n";
++import { getActiveUiLocale, resetI18nForTestsAsync } from "./i18n";
+ import type { MobileSnapshot } from "./mobile-types";
+ import { reportMobileError } from "./monitoring";
+ import { saveServerHeaders } from "./server-headers";
 @@ -68,6 +67,8 @@ vi.mock("./voice", () => ({
    setCallAudio: vi.fn(async () => undefined),
    setDictationAudio: vi.fn(async () => undefined),
@@ -143063,6 +143345,29 @@ index 2a5da46d9..bb1a40755 100644
      watch: (botId, onReply, onCallEnded, onThread) => {
        reply = onReply;
        ended = onCallEnded;
+@@ -1453,11 +1458,11 @@ describe("mobile call speech locales", () => {
+     vi.useFakeTimers();
+   });
+ 
+-  afterEach(() => {
++  afterEach(async () => {
+     endCall();
+     stopDictation();
+     setSpeechRecognizer(null);
+-    activateUiLocale(previousLocale);
++    await resetI18nForTestsAsync(previousLocale);
+     device.languageTag = "en-US";
+     device.os = "ios";
+     vi.useRealTimers();
+@@ -1500,7 +1505,7 @@ describe("mobile call speech locales", () => {
+         },
+       };
+       setSpeechRecognizer(recognizer);
+-      activateUiLocale(locale);
++      await resetI18nForTestsAsync(locale);
+       const fake = fakes();
+       const { dictate: _dictate, ...deps } = fake.deps;
+       startCall({ botId: "bot-1", botName: "Ada", transcribe: false }, deps);
 @@ -1848,163 +1853,6 @@ describe("mobile call session on a timer", () => {
      expect(getSnapshot()).toBeNull();
    });
@@ -145131,11 +145436,14 @@ index 000000000..8cae3d870
 +  return count === 1 ? `1 message with ${peer}` : `${formatCount(count)} messages with ${peer}`;
 +}
 diff --git a/apps/mobile/lib/create-chooser.test.ts b/apps/mobile/lib/create-chooser.test.ts
-index 361df49e7..2ee24eead 100644
+index 361df49e7..ab4d0a052 100644
 --- a/apps/mobile/lib/create-chooser.test.ts
 +++ b/apps/mobile/lib/create-chooser.test.ts
-@@ -3,7 +3,7 @@ import { createMenuActions, isCreateAction } from "./create-chooser";
- import { resetI18nForTests } from "./i18n";
+@@ -1,20 +1,21 @@
+ import { afterEach, describe, expect, it, vi } from "vitest";
+ import { createMenuActions, isCreateAction } from "./create-chooser";
+-import { resetI18nForTests } from "./i18n";
++import { resetI18nForTests, resetI18nForTestsAsync } from "./i18n";
  
  vi.mock("./material-icons", () => ({
 -  materialIcons: { person_add: 101, group: 102, grid_view: 103 },
@@ -145143,7 +145451,13 @@ index 361df49e7..2ee24eead 100644
  }));
  
  afterEach(() => resetI18nForTests());
-@@ -15,6 +15,7 @@ describe("create menu", () => {
+ 
+ describe("create menu", () => {
+-  it("uses SF Symbols on iOS, in the app language", () => {
+-    resetI18nForTests("de");
++  it("uses SF Symbols on iOS, in the app language", async () => {
++    await resetI18nForTestsAsync("de");
+     expect(createMenuActions("ios")).toEqual([
        { id: "bot", title: "Neuer Bot", image: "person.crop.circle.badge.plus" },
        { id: "group", title: "Neuer Gruppenchat", image: "person.2" },
        { id: "space", title: "Neuer privater Space", image: "square.grid.2x2" },
@@ -145187,6 +145501,73 @@ index 4b4a350ad..5494bd6ea 100644
  ] as const;
  
  export function createMenuActions(platform: string): MenuAction[] {
+diff --git a/apps/mobile/lib/cron.test.ts b/apps/mobile/lib/cron.test.ts
+index 5592bb3df..81839a70f 100644
+--- a/apps/mobile/lib/cron.test.ts
++++ b/apps/mobile/lib/cron.test.ts
+@@ -1,7 +1,7 @@
+ import { formatCron } from "@rakazo/core";
+ import { afterEach, describe, expect, it } from "vitest";
+ import { cronLabels } from "./cron";
+-import { resetI18nForTests } from "./i18n";
++import { resetI18nForTests, resetI18nForTestsAsync } from "./i18n";
+ 
+ afterEach(() => resetI18nForTests());
+ 
+@@ -18,32 +18,32 @@ describe("cronLabels", () => {
+     expect(formatCron("0 8 * * 1-5", labels)).toBe("工作日 8:00");
+   });
+ 
+-  it("translates schedules into Traditional Chinese", () => {
+-    resetI18nForTests("zh-TW");
++  it("translates schedules into Traditional Chinese", async () => {
++    await resetI18nForTestsAsync("zh-TW");
+     const labels = cronLabels();
+     expect(formatCron("0 8 * * 1-5", labels)).toBe("工作日 上午8:00");
+     expect(formatCron("*/5 * * * *", labels)).toBe("每 5 分鐘");
+   });
+ 
+-  it("names a fixed minute every few hours in each language", () => {
++  it("names a fixed minute every few hours in each language", async () => {
+     expect(formatCron("43 */2 * * *", cronLabels("en"))).toBe("Every 2 hours at :43");
+-    resetI18nForTests("de");
++    await resetI18nForTestsAsync("de");
+     expect(formatCron("5 */6 * * *", cronLabels())).toBe("Alle 6 Stunden um :05");
+-    resetI18nForTests("zh-TW");
++    await resetI18nForTestsAsync("zh-TW");
+     expect(formatCron("43 */2 * * *", cronLabels())).toBe("每 2 小時 43 分");
+-    resetI18nForTests("ru");
++    await resetI18nForTestsAsync("ru");
+     expect(formatCron("43 */3 * * *", cronLabels())).toBe("Раз в 3 ч, на 43-й минуте");
+   });
+ 
+-  it("writes times the way the language does", () => {
+-    resetI18nForTests("de");
++  it("writes times the way the language does", async () => {
++    await resetI18nForTestsAsync("de");
+     const labels = cronLabels();
+     expect(formatCron("30 18 * * 2", labels)).toBe("Jeden Dienstag um 18:30");
+     expect(formatCron("0 21 1 * *", labels)).toBe("Monatlich am 1. um 21:00");
+   });
+ 
+-  it("uses Polish case forms for intervals and weekday lists", () => {
+-    resetI18nForTests("pl");
++  it("uses Polish case forms for intervals and weekday lists", async () => {
++    await resetI18nForTestsAsync("pl");
+     const labels = cronLabels();
+     expect(formatCron("*/1 * * * *", labels)).toBe("Co minutę");
+     expect(formatCron("*/2 * * * *", labels)).toBe("Co 2 minuty");
+@@ -55,8 +55,8 @@ describe("cronLabels", () => {
+     expect(formatCron("0 8 * * 2-4", labels)).toBe("wtorek-czwartek o 8:00");
+   });
+ 
+-  it("uses Russian case forms for intervals", () => {
+-    resetI18nForTests("ru");
++  it("uses Russian case forms for intervals", async () => {
++    await resetI18nForTestsAsync("ru");
+     const labels = cronLabels();
+     expect(formatCron("*/1 * * * *", labels)).toBe("Каждую минуту");
+     expect(formatCron("*/5 * * * *", labels)).toBe("Каждые 5 минут");
 diff --git a/apps/mobile/lib/dictation-level.test.ts b/apps/mobile/lib/dictation-level.test.ts
 new file mode 100644
 index 000000000..eea9c46e3
@@ -146582,9 +146963,18 @@ index 000000000..0ea33551f
 +  expect(button?.getAttribute("aria-label")).toContain("小猪包");
 +});
 diff --git a/apps/mobile/lib/home-route.test.tsx b/apps/mobile/lib/home-route.test.tsx
-index 5f41845c5..0c5213471 100644
+index 5f41845c5..57c2e7fdc 100644
 --- a/apps/mobile/lib/home-route.test.tsx
 +++ b/apps/mobile/lib/home-route.test.tsx
+@@ -6,7 +6,7 @@ import type { Root } from "react-dom/client";
+ import { createRoot } from "react-dom/client";
+ import { afterEach, beforeEach, expect, it, vi } from "vitest";
+ import { PickChatPane } from "../components/pick-chat-pane";
+-import { resetI18nForTests } from "./i18n";
++import { resetI18nForTests, resetI18nForTestsAsync } from "./i18n";
+ import { useHomeHeader } from "./use-home-header";
+ 
+ const home = vi.hoisted(() => ({
 @@ -40,7 +40,6 @@ vi.mock("./native", () => ({
    useThemedStyles: (factory: () => unknown) => factory(),
  }));
@@ -146624,7 +147014,7 @@ index 5f41845c5..0c5213471 100644
        }
      }
    },
-@@ -122,14 +122,11 @@ it("leaves the navigation bar alone from the embedded inbox", () => {
+@@ -122,18 +122,15 @@ it("leaves the navigation bar alone from the embedded inbox", () => {
  it("wires the compact header items to their actions", () => {
    act(() => root.render(<Inbox />));
    const [account] = home.options.unstable_headerLeftItems();
@@ -146642,7 +147032,281 @@ index 5f41845c5..0c5213471 100644
 +  expect(runCreateAction.mock.calls).toEqual([["bot"], ["group"], ["space"], ["activity"]]);
  });
  
- it("shows a translated, safe-area-centred placeholder only in the split pane", () => {
+-it("shows a translated, safe-area-centred placeholder only in the split pane", () => {
+-  resetI18nForTests("nl");
++it("shows a translated, safe-area-centred placeholder only in the split pane", async () => {
++  await resetI18nForTestsAsync("nl");
+   act(() => root.render(<PickChatPane />));
+   expect(container.textContent).toBe("Kies een chat");
+   resetI18nForTests();
+diff --git a/apps/mobile/lib/i18n-lazy.test.ts b/apps/mobile/lib/i18n-lazy.test.ts
+new file mode 100644
+index 000000000..9ecbe2bbc
+--- /dev/null
++++ b/apps/mobile/lib/i18n-lazy.test.ts
+@@ -0,0 +1,32 @@
++import { expect, it, vi } from "vitest";
++
++vi.mock("expo-secure-store", () => ({
++  getItemAsync: vi.fn(async () => "de"),
++  setItemAsync: vi.fn(),
++  deleteItemAsync: vi.fn(),
++}));
++vi.mock("expo-localization", () => ({ getLocales: () => [{ languageTag: "en-US" }] }));
++vi.mock("./ui-direction", () => ({ applyMobileUiDirection: vi.fn() }));
++// A German catalog that never arrives — the phone is offline, or its chunk is missing.
++vi.mock("@rakazo/i18n/locales/de/messages.po", () => {
++  throw new Error("catalog unavailable");
++});
++
++it("leaves the app in English when a language's catalog cannot be fetched", async () => {
++  const { bootstrapI18n, getActiveUiLocale } = await import("./i18n");
++
++  // The stored choice was German; its catalog is the one thing the launch had to fetch, and it did
++  // not arrive. The splash still comes down, in the language the app carries itself.
++  await expect(bootstrapI18n()).resolves.toBe("en");
++  expect(getActiveUiLocale()).toBe("en");
++});
++
++it("draws a language the app carries at launch without fetching it again", async () => {
++  const { activateUiLocale, getActiveUiLocale } = await import("./i18n");
++  const { i18n } = await import("@lingui/core");
++  const { generateMessageId } = await import("@lingui/message-utils/generateMessageId");
++
++  await expect(activateUiLocale("zh-CN")).resolves.toBe("zh-CN");
++  expect(getActiveUiLocale()).toBe("zh-CN");
++  expect(i18n._({ id: generateMessageId("Account"), message: "Account" })).toBe("账户");
++});
+diff --git a/apps/mobile/lib/i18n.test.ts b/apps/mobile/lib/i18n.test.ts
+index 57c38ecfa..398d31986 100644
+--- a/apps/mobile/lib/i18n.test.ts
++++ b/apps/mobile/lib/i18n.test.ts
+@@ -55,9 +55,9 @@ describe("mobile i18n", () => {
+   ] as const)(
+     "translates from the shared %s catalog and keeps interpolations",
+     async (locale, account, del) => {
+-      const { dateLocaleForUi, resetI18nForTests } = await import("./i18n");
++      const { dateLocaleForUi, resetI18nForTestsAsync } = await import("./i18n");
+       const t = await translator();
+-      resetI18nForTests(locale);
++      await resetI18nForTestsAsync(locale);
+       expect(t("Account")).toBe(account);
+       expect(t("Delete {name}?", { name: "Scout" })).toBe(del);
+       expect(dateLocaleForUi()).toBe(locale);
+@@ -74,9 +74,9 @@ describe("mobile i18n", () => {
+     async (count, label) => {
+       // Hermes: every Intl API but PluralRules.
+       vi.stubGlobal("Intl", Object.assign(Object.create(Intl), { PluralRules: undefined }));
+-      const { resetI18nForTests } = await import("./i18n");
++      const { resetI18nForTestsAsync } = await import("./i18n");
+       const t = await translator();
+-      resetI18nForTests("ru");
++      await resetI18nForTestsAsync("ru");
+       expect(
+         t("{count, plural, one {# message with {peer}} other {# messages with {peer}}}", {
+           count,
+diff --git a/apps/mobile/lib/i18n.ts b/apps/mobile/lib/i18n.ts
+index 60a91d049..7e7f25d14 100644
+--- a/apps/mobile/lib/i18n.ts
++++ b/apps/mobile/lib/i18n.ts
+@@ -1,47 +1,51 @@
+ import type { Messages } from "@lingui/core";
+ import { i18n } from "@lingui/core";
+-import { messages as de } from "@rakazo/i18n/locales/de/messages.po";
+ import { messages as en } from "@rakazo/i18n/locales/en/messages.po";
+-import { messages as es } from "@rakazo/i18n/locales/es/messages.po";
+-import { messages as fr } from "@rakazo/i18n/locales/fr/messages.po";
+-import { messages as he } from "@rakazo/i18n/locales/he/messages.po";
+-import { messages as hi } from "@rakazo/i18n/locales/hi/messages.po";
+-import { messages as ja } from "@rakazo/i18n/locales/ja/messages.po";
+-import { messages as ko } from "@rakazo/i18n/locales/ko/messages.po";
+-import { messages as nl } from "@rakazo/i18n/locales/nl/messages.po";
+-import { messages as pl } from "@rakazo/i18n/locales/pl/messages.po";
+-import { messages as ptBR } from "@rakazo/i18n/locales/pt-BR/messages.po";
+-import { messages as ru } from "@rakazo/i18n/locales/ru/messages.po";
+-import { messages as tr } from "@rakazo/i18n/locales/tr/messages.po";
+ import { messages as zhCN } from "@rakazo/i18n/locales/zh-CN/messages.po";
+-import { messages as zhTW } from "@rakazo/i18n/locales/zh-TW/messages.po";
+ import { useSyncExternalStore } from "react";
+ import { installPluralRules } from "./plural-rules";
+ import type { UiLocale } from "./ui-locale";
+ import { htmlLangForLocale, resolveUiLocale, UI_LOCALE_STORAGE_KEY } from "./ui-locale";
+ 
+-const catalogs: Record<UiLocale, Messages> = {
+-  en,
+-  "zh-CN": zhCN,
+-  "zh-TW": zhTW,
+-  ru,
+-  de,
+-  nl,
+-  ja,
+-  es,
+-  pl,
+-  fr,
+-  he,
+-  hi,
+-  ko,
+-  "pt-BR": ptBR,
+-  tr,
++/**
++ * The app carries English and Simplified Chinese from its first frame and fetches the rest.
++ *
++ * Every catalog is thousands of messages — 35,000 across the sixteen — and the phone used to build
++ * all of them as objects before it drew anything, on the splash's clock. English is the source every
++ * missing message falls back to, and Simplified Chinese is the language this build is read in, so
++ * those two stay; the other fourteen arrive the first time one is asked for (a stored choice, the
++ * device's language, or the picker) and never at all for someone who stays in either of the two.
++ */
++type CatalogModule = { messages: Messages };
++type LazyLocale = Exclude<UiLocale, "en" | "zh-CN">;
++
++const lazyCatalogs: Record<LazyLocale, () => Promise<CatalogModule>> = {
++  "zh-TW": () => import("@rakazo/i18n/locales/zh-TW/messages.po") as Promise<CatalogModule>,
++  ru: () => import("@rakazo/i18n/locales/ru/messages.po") as Promise<CatalogModule>,
++  de: () => import("@rakazo/i18n/locales/de/messages.po") as Promise<CatalogModule>,
++  nl: () => import("@rakazo/i18n/locales/nl/messages.po") as Promise<CatalogModule>,
++  ja: () => import("@rakazo/i18n/locales/ja/messages.po") as Promise<CatalogModule>,
++  es: () => import("@rakazo/i18n/locales/es/messages.po") as Promise<CatalogModule>,
++  pl: () => import("@rakazo/i18n/locales/pl/messages.po") as Promise<CatalogModule>,
++  fr: () => import("@rakazo/i18n/locales/fr/messages.po") as Promise<CatalogModule>,
++  he: () => import("@rakazo/i18n/locales/he/messages.po") as Promise<CatalogModule>,
++  hi: () => import("@rakazo/i18n/locales/hi/messages.po") as Promise<CatalogModule>,
++  ko: () => import("@rakazo/i18n/locales/ko/messages.po") as Promise<CatalogModule>,
++  "pt-BR": () => import("@rakazo/i18n/locales/pt-BR/messages.po") as Promise<CatalogModule>,
++  tr: () => import("@rakazo/i18n/locales/tr/messages.po") as Promise<CatalogModule>,
+ };
+ 
+ installPluralRules();
+-i18n.load(catalogs);
++const catalogs = new Map<UiLocale, Messages>([
++  ["en", en],
++  ["zh-CN", zhCN],
++]);
++for (const [locale, messages] of catalogs) i18n.load(locale, messages);
+ i18n.activate("en");
+ 
++/** Catalogs being fetched, so a language picked twice is fetched once. */
++const pendingCatalogs = new Map<UiLocale, Promise<Messages>>();
++
+ let activeLocale: UiLocale = "en";
+ const listeners = new Set<() => void>();
+ 
+@@ -49,6 +53,26 @@ function emit(): void {
+   for (const listener of listeners) listener();
+ }
+ 
++function catalogFor(locale: UiLocale): Promise<Messages> {
++  const ready = catalogs.get(locale);
++  if (ready) return Promise.resolve(ready);
++  const inFlight = pendingCatalogs.get(locale);
++  if (inFlight) return inFlight;
++  const load = (lazyCatalogs[locale as LazyLocale] as () => Promise<CatalogModule>)()
++    .then(({ messages }) => {
++      catalogs.set(locale, messages);
++      pendingCatalogs.delete(locale);
++      return messages;
++    })
++    .catch((cause: unknown) => {
++      // A failed fetch is not remembered: asking again may work, and until then English shows.
++      pendingCatalogs.delete(locale);
++      throw cause;
++    });
++  pendingCatalogs.set(locale, load);
++  return load;
++}
++
+ export function subscribeI18n(listener: () => void): () => void {
+   listeners.add(listener);
+   return () => {
+@@ -69,13 +93,40 @@ export function useUiLocale(): UiLocale {
+   return useSyncExternalStore(subscribeI18n, getActiveUiLocale, getActiveUiLocale);
+ }
+ 
+-export function activateUiLocale(locale: UiLocale): UiLocale {
+-  activeLocale = locale;
++/** Makes a loaded catalog the one every string is read from. */
++function applyLocale(locale: UiLocale, messages: Messages): UiLocale {
++  i18n.load(locale, messages);
+   i18n.activate(locale);
++  activeLocale = locale;
+   emit();
+   return locale;
+ }
+ 
++let activationGeneration = 0;
++
++/**
++ * Makes `locale` the language the app draws in, fetching its catalog first when it is not one of
++ * the two carried at launch. Two choices in quick succession: the later one wins and the earlier
++ * fetch cannot put its language back. A catalog that cannot be fetched leaves English in place.
++ */
++export async function activateUiLocale(locale: UiLocale): Promise<UiLocale> {
++  const generation = ++activationGeneration;
++  if (activeLocale === locale && i18n.locale === locale) return locale;
++  try {
++    const messages = await catalogFor(locale);
++    if (generation !== activationGeneration) return activeLocale;
++    applyLocale(locale, messages);
++  } catch {
++    if (generation !== activationGeneration) return activeLocale;
++    return applyLocale("en", catalogs.get("en") as Messages);
++  }
++  // Direction is applied after the strings, so the first frame in a new language is already the
++  // right way round.
++  await applyDirection(locale);
++  if (generation !== activationGeneration) return activeLocale;
++  return locale;
++}
++
+ async function applyDirection(locale: UiLocale): Promise<void> {
+   try {
+     // Direction follows the active UI locale only (all supported locales are LTR), never the
+@@ -119,9 +170,7 @@ export async function bootstrapI18n(): Promise<UiLocale> {
+       ? process.env.EXPO_PUBLIC_DEFAULT_UI_LOCALE
+       : null;
+   const locale = resolveUiLocale({ stored, envDefault, deviceLanguage: await deviceLanguage() });
+-  activateUiLocale(locale);
+-  await applyDirection(locale);
+-  return locale;
++  return activateUiLocale(locale);
+ }
+ 
+ export async function persistUiLocale(locale: UiLocale): Promise<void> {
+@@ -139,9 +188,7 @@ let uiLocaleWriteChain: Promise<void> = Promise.resolve();
+ export async function setUiLocale(locale: UiLocale): Promise<UiLocale> {
+   const write = uiLocaleWriteChain.then(async () => {
+     await persistUiLocale(locale);
+-    activateUiLocale(locale);
+-    await applyDirection(locale);
+-    return locale;
++    return activateUiLocale(locale);
+   });
+   uiLocaleWriteChain = write.then(
+     () => undefined,
+@@ -150,10 +197,22 @@ export async function setUiLocale(locale: UiLocale): Promise<UiLocale> {
+   return write;
+ }
+ 
+-/** Test-only: set the in-memory locale without I/O. */
++/**
++ * Test-only: set the in-memory locale without I/O. Only a catalog the app carries at launch (or
++ * one an earlier test loaded) is there to read, so a test in another language awaits
++ * `resetI18nForTestsAsync` first.
++ */
+ export function resetI18nForTests(locale: UiLocale = "en"): void {
++  const messages = catalogs.get(locale);
++  if (messages) i18n.load(locale, messages);
+   activeLocale = locale;
+   i18n.activate(locale);
+   uiLocaleWriteChain = Promise.resolve();
+   emit();
+ }
++
++/** Test-only: the same, for a language whose catalog has to be fetched first. */
++export async function resetI18nForTestsAsync(locale: UiLocale = "en"): Promise<void> {
++  await catalogFor(locale);
++  resetI18nForTests(locale);
++}
 diff --git a/apps/mobile/lib/image-actions.test.ts b/apps/mobile/lib/image-actions.test.ts
 new file mode 100644
 index 000000000..319b42652
@@ -147446,9 +148110,18 @@ index 831f98ea8..5c99793a5 100644
  
  it("says working only while the bot works, and shows nothing beside the time", () => {
 diff --git a/apps/mobile/lib/inbox-spaces.test.ts b/apps/mobile/lib/inbox-spaces.test.ts
-index 7e2249216..8efbb44fe 100644
+index 7e2249216..b3f1316c0 100644
 --- a/apps/mobile/lib/inbox-spaces.test.ts
 +++ b/apps/mobile/lib/inbox-spaces.test.ts
+@@ -1,7 +1,7 @@
+ import { beforeEach, describe, expect, it, vi } from "vitest";
+ import { rpc, selectedSpaceId } from "./api";
+ import { adoptDeletedSpaceFallback, selectSpace } from "./api-server";
+-import { activateUiLocale } from "./i18n";
++import { resetI18nForTestsAsync } from "./i18n";
+ import type { InboxSpace } from "./inbox-spaces";
+ import {
+   canDeleteInboxSpace,
 @@ -55,6 +55,7 @@ const bot: MobileBot = {
    pinned: false,
    status: "idle",
@@ -147457,6 +148130,41 @@ index 7e2249216..8efbb44fe 100644
    archivedAt: null,
    unread: false,
    updatedAt: "2026-01-01T00:00:00.000Z",
+@@ -66,7 +67,7 @@ const bot: MobileBot = {
+ };
+ 
+ describe("spaceInboxItems", () => {
+-  it("updates built-in headings with the locale without translating custom names", () => {
++  it("updates built-in headings with the locale without translating custom names", async () => {
+     const input = space({
+       isDefault: true,
+       name: "Unassigned",
+@@ -85,7 +86,7 @@ describe("spaceInboxItems", () => {
+       ],
+     });
+     try {
+-      activateUiLocale("de");
++      await resetI18nForTestsAsync("de");
+       expect(
+         spaceInboxItems([input])
+           .filter((item) => item.type === "heading")
+@@ -95,14 +96,14 @@ describe("spaceInboxItems", () => {
+         [`${input.id}:section:custom`, "Pinned"],
+         [`${input.id}:unassigned`, "Nicht zugewiesen"],
+       ]);
+-      activateUiLocale("en");
++      await resetI18nForTestsAsync("en");
+       expect(
+         spaceInboxItems([input])
+           .filter((item) => item.type === "heading")
+           .map((item) => item.title),
+       ).toEqual(["Pinned", "Pinned", "Unassigned"]);
+     } finally {
+-      activateUiLocale("en");
++      await resetI18nForTestsAsync("en");
+     }
+   });
+   it("moves snoozed chats under a folded Snoozed heading until they wake", () => {
 diff --git a/apps/mobile/lib/inbox-spaces.ts b/apps/mobile/lib/inbox-spaces.ts
 index bd89a5109..e9d5a0c88 100644
 --- a/apps/mobile/lib/inbox-spaces.ts
@@ -149111,6 +149819,192 @@ index 000000000..ff998cefa
 +  if (written && activityStep(written)?.specific) return written;
 +  return step ?? written;
 +}
+diff --git a/apps/mobile/lib/link-preview-card.test.tsx b/apps/mobile/lib/link-preview-card.test.tsx
+new file mode 100644
+index 000000000..10080d616
+--- /dev/null
++++ b/apps/mobile/lib/link-preview-card.test.tsx
+@@ -0,0 +1,180 @@
++// @vitest-environment jsdom
++
++import type { CSSProperties, ReactNode } from "react";
++import { act, createElement } from "react";
++import type { Root } from "react-dom/client";
++import { createRoot } from "react-dom/client";
++import { afterEach, beforeEach, expect, it, vi } from "vitest";
++import { LinkPreviewCard } from "../components/thread/link-preview-card";
++
++const state = vi.hoisted(() => ({
++  preview: null as { url: string; title?: string; description?: string; imageUrl?: string } | null,
++  tokens: {
++    foreground: "#111111",
++    mutedForeground: "#888888",
++    muted: "#eeeeee",
++    border: "#dddddd",
++    card: "#1c1c1c",
++    background: "#ffffff",
++  },
++}));
++
++vi.mock("react-native", () => {
++  type AnyProps = { children?: ReactNode; style?: unknown; testID?: string } & Record<
++    string,
++    unknown
++  >;
++  const flat = (style: unknown): CSSProperties => {
++    const parts = Array.isArray(style) ? style.flat(4) : [style];
++    return Object.assign({}, ...parts.filter(Boolean)) as CSSProperties;
++  };
++  const styled =
++    (tag: string) =>
++    ({ children, style, testID, ...rest }: AnyProps) =>
++      createElement(
++        tag,
++        {
++          "data-testid": testID,
++          style:
++            typeof style === "function"
++              ? flat((style as (s: unknown) => unknown)({ pressed: false }))
++              : flat(style),
++          ...rest,
++        },
++        children,
++      );
++  const pressable = ({ children, style, testID, onPress, ...rest }: AnyProps) =>
++    createElement(
++      "button",
++      {
++        type: "button",
++        "data-testid": testID,
++        style:
++          typeof style === "function"
++            ? flat((style as (s: unknown) => unknown)({ pressed: false }))
++            : flat(style),
++        onClick: onPress as () => void,
++        ...rest,
++      },
++      children,
++    );
++  const image = ({ style, testID, source, ...rest }: AnyProps) =>
++    createElement("img", {
++      "data-testid": testID,
++      src: (source as { uri?: string } | undefined)?.uri,
++      style: flat(style),
++      ...rest,
++    });
++  return {
++    StyleSheet: { create: <T,>(styles: T) => styles, hairlineWidth: 1 },
++    View: styled("div"),
++    Text: styled("span"),
++    Pressable: pressable,
++    Image: image,
++    Alert: { alert: vi.fn() },
++    Linking: { openURL: vi.fn(async () => undefined) },
++  };
++});
++vi.mock("expo-router", () => ({ useRouter: () => ({ push: vi.fn() }) }));
++vi.mock("../components/native-symbol", () => ({
++  NativeSymbol: () => createElement("span", { "data-testid": "globe" }, "globe"),
++}));
++vi.mock("../components/press-scale", () => ({
++  PressScale: ({ children }: { children: ReactNode }) =>
++    createElement("button", { type: "button" }, children),
++}));
++vi.mock("../lib/api", () => ({ rpc: vi.fn() }));
++vi.mock("../lib/native", () => ({
++  useMobileTokens: () => state.tokens,
++  useResolvedAppearance: () => "light",
++}));
++vi.mock("../lib/link-preview", async (importOriginal) => {
++  const actual = await importOriginal<typeof import("../lib/link-preview")>();
++  return { ...actual, useLinkPreview: () => state.preview };
++});
++
++let root: Root;
++let container: HTMLDivElement;
++
++beforeEach(() => {
++  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
++  container = document.createElement("div");
++  document.body.append(container);
++  root = createRoot(container);
++});
++
++afterEach(() => {
++  act(() => root.unmount());
++  container.remove();
++  state.preview = null;
++});
++
++function render(url: string) {
++  act(() => root.render(createElement(LinkPreviewCard, { url })));
++}
++
++const GITHUB = "https://github.com/ingnez/rakazo-ipa-build/actions/runs/44715011235";
++
++it("draws a page with a picture as a banner across the top, not a square beside the words", () => {
++  state.preview = {
++    url: GITHUB,
++    title: "ingnez/rakazo-ipa-build",
++    description: "Contribute to ingnez/rakazo-ipa-build development by creating an account.",
++    imageUrl: "https://opengraph.githubassets.com/1/ingnez/rakazo-ipa-build",
++  };
++  render(GITHUB);
++
++  const card = container.querySelector('[data-testid="link-card"]') as HTMLElement;
++  expect(card).not.toBeNull();
++  // The card takes the width the message column gives it, so the banner is a banner.
++  expect(card.style.width).toBe("100%");
++  expect(card.style.maxWidth).toBe("310px");
++  // Its corners are the card's, so the picture is cut by them rather than squared off inside.
++  expect(card.style.overflow).toBe("hidden");
++
++  const cover = container.querySelector('[data-testid="link-card-cover"]') as HTMLImageElement;
++  expect(cover).not.toBeNull();
++  expect(cover.getAttribute("src")).toBe(
++    "https://opengraph.githubassets.com/1/ingnez/rakazo-ipa-build",
++  );
++  expect(cover.style.width).toBe("100%");
++  // A 2:1 banner keeps the page's own shape instead of being cropped to a 96pt square.
++  expect(cover.style.aspectRatio).toBe("2 / 1");
++  expect(cover.style.height).toBe("");
++
++  // The title and the page it lives on are under the picture, in the card's own column.
++  expect(container.textContent).toContain("ingnez/rakazo-ipa-build");
++  expect(container.textContent).toContain("github.com");
++  expect(container.querySelector('[data-testid="globe"]')).not.toBeNull();
++  // Nothing anywhere is sized to the 96pt square the cover used to be.
++  for (const node of Array.from(container.querySelectorAll<HTMLElement>("*"))) {
++    expect(node.style.width).not.toBe("96px");
++    expect(node.style.height).not.toBe("96px");
++  }
++});
++
++it("keeps a page with no picture as the single quiet line it was", () => {
++  state.preview = { url: GITHUB, title: "ingnez/rakazo-ipa-build" };
++  render(GITHUB);
++
++  expect(container.querySelector('[data-testid="link-card"]')).toBeNull();
++  expect(container.querySelector('[data-testid="link-card-cover"]')).toBeNull();
++  const line = container.querySelector('[data-testid="link-line"]') as HTMLElement;
++  expect(line).not.toBeNull();
++  expect(container.textContent).toContain("github.com");
++});
++
++it("opens the page itself when the card is pressed", async () => {
++  state.preview = {
++    url: GITHUB,
++    title: "ingnez/rakazo-ipa-build",
++    imageUrl: "https://example.test/cover.png",
++  };
++  render(GITHUB);
++  const Linking = (await import("react-native")).Linking as unknown as {
++    openURL: (url: string) => Promise<void>;
++  };
++  const card = container.querySelector('[data-testid="link-card"]') as HTMLElement;
++  act(() => card.click());
++  expect(Linking.openURL).toHaveBeenCalledWith(GITHUB);
++});
 diff --git a/apps/mobile/lib/link-preview.test.ts b/apps/mobile/lib/link-preview.test.ts
 new file mode 100644
 index 000000000..b686e5667
@@ -153908,6 +154802,49 @@ index 000000000..0d5396c7c
 +  const timer = setTimeout(guarded, 0);
 +  return () => clearTimeout(timer);
 +}
+diff --git a/apps/mobile/lib/saved-chats.test.ts b/apps/mobile/lib/saved-chats.test.ts
+index 4a5a19c71..d10cd4141 100644
+--- a/apps/mobile/lib/saved-chats.test.ts
++++ b/apps/mobile/lib/saved-chats.test.ts
+@@ -1,6 +1,6 @@
+ import { displayIdentityResult, displayMessageBlock } from "@rakazo/core";
+ import { beforeEach, expect, it, vi } from "vitest";
+-import { resetI18nForTests } from "./i18n";
++import { resetI18nForTests, resetI18nForTestsAsync } from "./i18n";
+ import { identityLabels } from "./identity-display";
+ import type { MobileMe, MobileSnapshot, MobileSpaceNavigation } from "./mobile-types";
+ import type { SavedChatsScope } from "./saved-chats";
+@@ -299,8 +299,8 @@ it("guards legacy names restored while offline", () => {
+   expect(readSavedInbox(scope)?.groups[0]?.name).toBe("Group");
+ });
+ 
+-it("uses translated labels for legacy offline message metadata", () => {
+-  resetI18nForTests("ru");
++it("uses translated labels for legacy offline message metadata", async () => {
++  await resetI18nForTestsAsync("ru");
+   try {
+     const snapshot = thread(1);
+     snapshot.messages[0]!.blocks = [
+@@ -321,8 +321,8 @@ it("uses translated labels for legacy offline message metadata", () => {
+   }
+ });
+ 
+-it("stores source names and relocalizes inbox and thread fallbacks after an offline language switch", () => {
+-  resetI18nForTests("ru");
++it("stores source names and relocalizes inbox and thread fallbacks after an offline language switch", async () => {
++  await resetI18nForTestsAsync("ru");
+   try {
+     const legacy = structuredClone(navigation);
+     legacy.current.bots[0]!.name = "__TestTok1__";
+@@ -361,7 +361,7 @@ it("stores source names and relocalizes inbox and thread fallbacks after an offl
+     });
+     expect([...state.files.values()].join("\n")).not.toContain("Бот");
+     expect([...state.files.values()].join("\n")).not.toContain("Группа");
+-    resetI18nForTests("de");
++    await resetI18nForTestsAsync("de");
+     expect(readSavedInbox(scope)?.groups[0]?.name).toBe("Gruppe");
+     expect(readSavedThread(scope, "bot:bot-a")?.groupName).toBe("Gruppe");
+     // A genuine name equal to a translated noun stays literal.
 diff --git a/apps/mobile/lib/saved-chats.ts b/apps/mobile/lib/saved-chats.ts
 index b186afb60..10e0dc72b 100644
 --- a/apps/mobile/lib/saved-chats.ts
@@ -154615,6 +155552,74 @@ index 5d72f756e..b1c5203e1 100644
    });
  });
  
+diff --git a/apps/mobile/lib/secret-ask-sheet.test.tsx b/apps/mobile/lib/secret-ask-sheet.test.tsx
+index 44c0c2a6d..50063e03f 100644
+--- a/apps/mobile/lib/secret-ask-sheet.test.tsx
++++ b/apps/mobile/lib/secret-ask-sheet.test.tsx
+@@ -132,7 +132,7 @@ vi.mock("../components/native-switch", () => ({
+ 
+ import type { LoginFieldInput } from "@rakazo/contracts";
+ import { SecretAskSheet } from "../components/secret-ask-sheet";
+-import { resetI18nForTests } from "./i18n";
++import { resetI18nForTests, resetI18nForTestsAsync } from "./i18n";
+ 
+ const onClose = vi.fn();
+ const onSave = vi.fn<(fields: LoginFieldInput[], remember: boolean) => Promise<void>>();
+@@ -224,7 +224,7 @@ it("opens as a page sheet with the title, the default fields and the destination
+ });
+ 
+ it("shows the default labels translated but saves them in English", async () => {
+-  resetI18nForTests("de");
++  await resetI18nForTestsAsync("de");
+   onSave.mockResolvedValue();
+   await render();
+   expect(valueFields().map((input) => input.getAttribute("aria-label"))).toEqual([
+diff --git a/apps/mobile/lib/server-headers.ts b/apps/mobile/lib/server-headers.ts
+index ef819643d..5545609ac 100644
+--- a/apps/mobile/lib/server-headers.ts
++++ b/apps/mobile/lib/server-headers.ts
+@@ -19,17 +19,25 @@ export function serverHeadersForUrl(url: string, apiBase: string): Record<string
+   }
+ }
+ 
+-export async function loadServerHeaders(apiBase: string): Promise<void> {
+-  let stored: string | null = null;
++/** A stored header blob, or the fact that the device would not give it up this launch. */
++export type StoredServerHeaders = { ok: true; raw: string | null } | { ok: false };
++
++/** Reads the one Keychain entry the server's headers live in, so callers can read it alongside others. */
++export async function readStoredServerHeaders(): Promise<StoredServerHeaders> {
+   try {
+-    stored = await SecureStore.getItemAsync(SERVER_HEADERS_KEY);
++    return { ok: true, raw: await SecureStore.getItemAsync(SERVER_HEADERS_KEY) };
+   } catch {
+     // SecureStore is unavailable in some test / web hosts.
++    return { ok: false };
+   }
++}
++
++/** Uses an already-read blob for `apiBase`; an unreadable or damaged one sends nothing. */
++export function applyStoredServerHeaders(apiBase: string, stored: StoredServerHeaders): void {
+   saved = null;
+-  if (!stored) return;
++  if (!stored.ok || !stored.raw) return;
+   try {
+-    const value = JSON.parse(stored) as { apiBase?: unknown; headers?: unknown };
++    const value = JSON.parse(stored.raw) as { apiBase?: unknown; headers?: unknown };
+     const headers = parseServerHeaders(value.headers);
+     if (value.apiBase === apiBase && headers) saved = { apiBase, headers };
+   } catch {
+@@ -37,6 +45,10 @@ export async function loadServerHeaders(apiBase: string): Promise<void> {
+   }
+ }
+ 
++export async function loadServerHeaders(apiBase: string): Promise<void> {
++  applyStoredServerHeaders(apiBase, await readStoredServerHeaders());
++}
++
+ /** Replaces the headers for `apiBase`; an empty set removes them. */
+ export async function saveServerHeaders(
+   apiBase: string,
 diff --git a/apps/mobile/lib/server-screen.test.tsx b/apps/mobile/lib/server-screen.test.tsx
 index 48ae0ca43..74e01d4bb 100644
 --- a/apps/mobile/lib/server-screen.test.tsx

@@ -232,6 +232,47 @@ fi
 grep -q 'export function linkPreviewCover' apps/mobile/lib/link-preview.ts
 grep -q 'testID="link-card"' apps/mobile/components/thread/link-preview-card.tsx
 grep -q 'cardCover' apps/mobile/components/thread/link-preview-card.tsx
+# v31: that picture is the page's own banner across the top of a card wide as the message column,
+# not a 96pt square cutting a 1280x640 banner down to its middle (`IMG_2989`).
+grep -q 'aspectRatio: 2' apps/mobile/components/thread/link-preview-card.tsx
+grep -q 'maxWidth: 310' apps/mobile/components/thread/link-preview-card.tsx
+grep -q 'testID="link-card-cover"' apps/mobile/components/thread/link-preview-card.tsx
+if grep -nE 'width: 96|height: 96' apps/mobile/components/thread/link-preview-card.tsx; then
+  echo "::error::the link card squares the page's banner off again"
+  exit 1
+fi
+# v31: the launch carries English and Simplified Chinese; the other fourteen catalogs are fetched
+# the first time one is chosen, not built as objects before the first frame (`IMG_2997`).
+grep -q 'import { messages as en } from "@rakazo/i18n/locales/en/messages.po"' apps/mobile/lib/i18n.ts
+grep -q 'import { messages as zhCN } from "@rakazo/i18n/locales/zh-CN/messages.po"' apps/mobile/lib/i18n.ts
+grep -q 'const lazyCatalogs' apps/mobile/lib/i18n.ts
+if grep -nE '^import \{ messages as (de|es|fr|he|hi|ja|ko|nl|pl|ptBR|ru|tr|zhTW) \}' \
+  apps/mobile/lib/i18n.ts; then
+  echo "::error::i18n.ts imports a catalog the launch does not need again"
+  exit 1
+fi
+# v31: the native splash waits for the server, the appearance and the language only. A preference
+# that merely shapes a screen already up (streaming, the text weight, images, the inbox width) must
+# not be back inside the awaited list, and the launch's Keychain reads are one round trip, not four.
+grep -q 'const firstFrame = Promise.all' apps/mobile/app/_layout.tsx
+if sed -n '/const firstFrame = Promise.all(/,/setReady(true)/p' apps/mobile/app/_layout.tsx \
+  | grep -nE '"(streaming|font-weight|images|inbox)"'; then
+  echo "::error::the native splash waits on preferences the first frame is not drawn with"
+  exit 1
+fi
+if sed -n '/const firstFrame = Promise.all(/,/setReady(true)/p' apps/mobile/app/_layout.tsx \
+  | grep -n "loadInboxWidth()}"; then
+  echo "::error::a detail preference is awaited before the first frame again"
+  exit 1
+fi
+grep -q 'trackMobileStartup("inbox", loadInboxWidth())' apps/mobile/app/_layout.tsx
+grep -q 'applyStoredServerHeaders(apiBase, headers)' apps/mobile/lib/api-server.ts
+grep -q 'readStoredServerHeaders(),' apps/mobile/lib/api-server.ts
+if grep -n 'await loadServerHeaders(' apps/mobile/lib/api-server.ts; then
+  echo "::error::the launch reads its Keychain entries one after another again"
+  exit 1
+fi
+grep -q 'applyStoredServerHeaders' apps/mobile/lib/server-headers.ts
 test -f apps/mobile/modules/message-image-actions/ios/MessageImageActionsModule.swift
 test -f apps/mobile/modules/message-image-actions/ios/MessageImageActions.podspec
 test -f apps/mobile/modules/message-image-actions/expo-module.config.json

@@ -128131,10 +128131,10 @@ index ed4520542..ee388ca56 100644
  });
 diff --git a/apps/mobile/components/image-card-stack.tsx b/apps/mobile/components/image-card-stack.tsx
 new file mode 100644
-index 000000000..b625fc027
+index 000000000..cb1ffd3bb
 --- /dev/null
 +++ b/apps/mobile/components/image-card-stack.tsx
-@@ -0,0 +1,387 @@
+@@ -0,0 +1,402 @@
 +import { useEffect, useMemo, useState } from "react";
 +import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 +import { Gesture, GestureDetector } from "react-native-gesture-handler";
@@ -128150,10 +128150,30 @@ index 000000000..b625fc027
 +import type { MobileArtifactTarget } from "../lib/artifact-open";
 +import { imageArtifactPreview } from "../lib/artifact-open";
 +import { hapticImpact, hapticSelection } from "../lib/haptics";
++import type { ImageStackCard } from "../lib/image-stack-layout";
++import {
++  CAPTION_HEIGHT,
++  CAPTION_SPACING,
++  CARD_SIZE,
++  CORNER_RADIUS,
++  HIGHLIGHT_SCALE,
++  imageStackCaption,
++  imageStackCards,
++  imageStackFocusedIndex,
++  imageStackHitIndex,
++  imageStackShouldOpenOnRelease,
++  imageStackSize,
++  LONG_PRESS_MS,
++  MAX_FANNED,
++  REST_SCALE,
++  SINGLE_SIZE,
++} from "../lib/image-stack-layout";
 +import type { ImageArtifactPreviewTarget } from "./image-artifact-viewer";
-+import { ImageStackLayout, type ImageStackCard } from "../lib/image-stack-layout";
 +
-+export type ImageCardUpload = { kind: "done" } | { kind: "uploading"; progress?: number } | { kind: "failed" };
++export type ImageCardUpload =
++  | { kind: "done" }
++  | { kind: "uploading"; progress?: number }
++  | { kind: "failed" };
 +
 +export type ImageCardSource = {
 +  id: string;
@@ -128208,7 +128228,7 @@ index 000000000..b625fc027
 +    const x = rest.x + (fan.x - rest.x) * t;
 +    const y = rest.y + (fan.y - rest.y) * t;
 +    const rotation = rest.rotation + (fan.rotation - rest.rotation) * t;
-+    const highlight = index === focused.value ? ImageStackLayout.highlightScale : ImageStackLayout.restScale;
++    const highlight = index === focused.value ? HIGHLIGHT_SCALE : REST_SCALE;
 +    const scale = 1 + (highlight - 1) * t;
 +    const restOpacity = rest.visible ? 1 : 0;
 +    const fanOpacity = fan.visible ? 1 : 0;
@@ -128229,11 +128249,7 @@ index 000000000..b625fc027
 +  return (
 +    <Animated.View
 +      pointerEvents="none"
-+      style={[
-+        styles.card,
-+        { width, height, borderRadius: ImageStackLayout.cornerRadius },
-+        style,
-+      ]}
++      style={[styles.card, { width, height, borderRadius: CORNER_RADIUS }, style]}
 +    >
 +      {source.uri ? (
 +        <Image source={{ uri: source.uri }} style={styles.fill} accessibilityIgnoresInvertColors />
@@ -128289,12 +128305,12 @@ index 000000000..b625fc027
 +}) {
 +  const tokens = mobileTokens();
 +  const count = sources.length;
-+  const box = ImageStackLayout.stackSize(count);
-+  const size = count === 1 ? ImageStackLayout.singleSize : ImageStackLayout.cardSize;
-+  const caption = ImageStackLayout.caption(count);
-+  const visible = Math.min(count, ImageStackLayout.maxFanned);
-+  const restCards = useMemo(() => ImageStackLayout.cards(count, false), [count]);
-+  const fanCards = useMemo(() => ImageStackLayout.cards(count, true), [count]);
++  const box = imageStackSize(count);
++  const size = count === 1 ? SINGLE_SIZE : CARD_SIZE;
++  const caption = imageStackCaption(count);
++  const visible = Math.min(count, MAX_FANNED);
++  const restCards = useMemo(() => imageStackCards(count, false), [count]);
++  const fanCards = useMemo(() => imageStackCards(count, true), [count]);
 +  const fanned = useSharedValue(0);
 +  const focused = useSharedValue(0);
 +  const startX = useSharedValue(0);
@@ -128321,14 +128337,14 @@ index 000000000..b625fc027
 +
 +  const scrub = Gesture.Pan()
 +    .enabled(count > 1)
-+    .activateAfterLongPress(ImageStackLayout.longPressMs)
++    .activateAfterLongPress(LONG_PRESS_MS)
 +    .maxPointers(1)
 +    .onStart((event) => {
 +      startedFanned.value = fanned.value;
 +      startX.value = event.x;
 +      startY.value = event.y;
 +      opened.value = 0;
-+      const next = ImageStackLayout.focusedIndex(event.x, count);
++      const next = imageStackFocusedIndex(event.x, count);
 +      focused.value = next;
 +      if (fanned.value < 0.5) {
 +        fanned.value = withSpring(1, { damping: 16, stiffness: 220, mass: 0.7 });
@@ -128336,7 +128352,7 @@ index 000000000..b625fc027
 +      }
 +    })
 +    .onUpdate((event) => {
-+      const next = ImageStackLayout.focusedIndex(event.x, count);
++      const next = imageStackFocusedIndex(event.x, count);
 +      if (next !== focused.value) {
 +        focused.value = next;
 +        runOnJS(hapticSelection)();
@@ -128346,7 +128362,7 @@ index 000000000..b625fc027
 +      const dx = event.x - startX.value;
 +      const dy = event.y - startY.value;
 +      const translation = Math.hypot(dx, dy);
-+      if (ImageStackLayout.shouldOpenOnRelease(translation)) {
++      if (imageStackShouldOpenOnRelease(translation)) {
 +        const index = Math.round(focused.value);
 +        opened.value = 1;
 +        runOnJS(openAt)(index);
@@ -128358,7 +128374,7 @@ index 000000000..b625fc027
 +  const tap = Gesture.Tap()
 +    .maxDuration(400)
 +    .onEnd((event) => {
-+      const index = ImageStackLayout.hitIndex({ x: event.x, y: event.y }, count, fanned.value > 0.5);
++      const index = imageStackHitIndex({ x: event.x, y: event.y }, count, fanned.value > 0.5);
 +      runOnJS(openAt)(index);
 +    });
 +
@@ -128429,8 +128445,7 @@ index 000000000..b625fc027
 +
 +  useEffect(() => {
 +    let cancelled = false;
-+    const target: MobileArtifactTarget =
-+      botId !== undefined ? { botId } : { groupId: groupId! };
++    const target: MobileArtifactTarget = botId !== undefined ? { botId } : { groupId: groupId! };
 +    void Promise.all(
 +      items.map(async (item) => {
 +        try {
@@ -128480,8 +128495,8 @@ index 000000000..b625fc027
 +  fill: { width: "100%", height: "100%" },
 +  placeholder: { backgroundColor: "rgba(127,127,127,0.25)" },
 +  captionRow: {
-+    marginTop: ImageStackLayout.captionSpacing,
-+    height: ImageStackLayout.captionHeight,
++    marginTop: CAPTION_SPACING,
++    height: CAPTION_HEIGHT,
 +    flexDirection: "row",
 +    alignItems: "center",
 +    justifyContent: "flex-end",
@@ -135300,18 +135315,23 @@ index 000000000..76bdd981e
 +});
 diff --git a/apps/mobile/components/thread/link-preview-card.tsx b/apps/mobile/components/thread/link-preview-card.tsx
 new file mode 100644
-index 000000000..8ea006a6c
+index 000000000..261b18094
 --- /dev/null
 +++ b/apps/mobile/components/thread/link-preview-card.tsx
-@@ -0,0 +1,207 @@
+@@ -0,0 +1,306 @@
 +import { ph } from "@lingui/core/macro";
 +import { useLingui } from "@lingui/react/macro";
 +import type { Bot } from "@rakazo/contracts";
 +import { useRouter } from "expo-router";
 +import { memo, useState } from "react";
-+import { Alert, Linking, Pressable, StyleSheet, Text, View } from "react-native";
++import { Alert, Image, Linking, Pressable, StyleSheet, Text, View } from "react-native";
 +import { rpc } from "../../lib/api";
-+import { isFormLink, linkSiteLabel, useLinkPreview } from "../../lib/link-preview";
++import {
++  isFormLink,
++  linkPreviewCover,
++  linkSiteLabel,
++  useLinkPreview,
++} from "../../lib/link-preview";
 +import { useMobileTokens, useResolvedAppearance } from "../../lib/native";
 +import { errorText } from "../../lib/user-error";
 +import { NativeSymbol } from "../native-symbol";
@@ -135320,11 +135340,16 @@ index 000000000..8ea006a6c
 +/**
 + * The card a pasted link becomes — kept small so it never takes the chat's screen.
 + *
++ * A page the server could read a picture from draws as a compact card: the cover as a small
++ * square on the right, the page's title beside it, and the domain at the foot. The cover is a
++ * thumbnail, never the half-screen banner it once was, so a chat can hold several of these cards
++ * and still read.
++ *
 + * A link whose page is a form to fill in or an authorization to confirm (a sign-in, a device code,
 + * a page that asks the person to continue) is the one thing here a person must act on, so it is
 + * drawn the way the reference app draws it: a `🌐 表单` line, the page's title, and one `继续`
-+ * button. Every other link is a single quiet line with its title and site: it is a reference, not
-+ * a page to read in the chat, and the half-screen cover it used to draw is gone.
++ * button. A link with no picture to show stays the single quiet line it is now: it is a
++ * reference, not a page to read in the chat, and an empty frame would be worse than a line.
 + *
 + * It sits outside the bubble, so it reads as the page rather than as something the speaker said.
 + * A link with nothing to show draws no card at all: the text already carries it.
@@ -135340,12 +135365,82 @@ index 000000000..8ea006a6c
 +  const title = preview.title?.trim() || linkSiteLabel(preview.url);
 +  if (isGrokShare(preview.url)) return <BotShare url={preview.url} title={title} />;
 +  const site = preview.siteName?.trim() || linkSiteLabel(preview.url);
-+  return isFormLink(preview.url) ? (
-+    <FormCard url={preview.url} title={title} site={site} />
-+  ) : (
-+    <LinkLine url={preview.url} title={title} site={site} />
++  if (isFormLink(preview.url)) return <FormCard url={preview.url} title={title} site={site} />;
++  const cover = linkPreviewCover(preview);
++  if (!cover) return <LinkLine url={preview.url} title={title} site={site} />;
++  return (
++    <LinkCard
++      url={preview.url}
++      title={title}
++      site={site}
++      cover={cover}
++      description={preview.description?.trim() || undefined}
++    />
 +  );
 +});
++
++/** A page with a picture: the cover as a small square, its title and domain beside it. */
++function LinkCard({
++  url,
++  title,
++  site,
++  cover,
++  description,
++}: {
++  url: string;
++  title: string;
++  site: string;
++  cover: string;
++  description?: string;
++}) {
++  const { t } = useLingui();
++  const tokens = useMobileTokens();
++  const theme = useResolvedAppearance();
++  const card = theme === "dark" ? tokens.card : "#FFFFFF";
++  return (
++    <Pressable
++      accessibilityRole="link"
++      accessibilityLabel={t`Open ${ph({ title })}`}
++      testID="link-card"
++      onPress={() => void Linking.openURL(url).catch(() => undefined)}
++      style={({ pressed }) => [
++        styles.card,
++        { backgroundColor: card, borderColor: tokens.border, opacity: pressed ? 0.85 : 1 },
++      ]}
++    >
++      <View style={styles.cardText}>
++        <Text numberOfLines={2} style={[styles.cardTitle, { color: tokens.foreground }]}>
++          {title}
++        </Text>
++        {description ? (
++          <Text
++            numberOfLines={2}
++            style={[styles.cardDescription, { color: tokens.mutedForeground }]}
++          >
++            {description}
++          </Text>
++        ) : null}
++        <View style={styles.cardSiteRow}>
++          <NativeSymbol
++            ios="globe"
++            android="globe-outline"
++            size={11}
++            color={tokens.mutedForeground}
++          />
++          <Text numberOfLines={1} style={[styles.cardSite, { color: tokens.mutedForeground }]}>
++            {site}
++          </Text>
++        </View>
++      </View>
++      <Image
++        accessibilityIgnoresInvertColors
++        source={{ uri: cover }}
++        resizeMode="cover"
++        style={[styles.cardCover, { backgroundColor: tokens.muted }]}
++      />
++    </Pressable>
++  );
++}
 +
 +/** An external form or an authorization waiting on the person: one title, one button. */
 +function FormCard({ url, title, site }: { url: string; title: string; site: string }) {
@@ -135499,6 +135594,25 @@ index 000000000..8ea006a6c
 +  continueContainer: { alignSelf: "flex-end" },
 +  continue: { borderRadius: 999, paddingHorizontal: 16, paddingVertical: 7 },
 +  continueLabel: { fontSize: 13.5, fontWeight: "600" },
++  // The page card: a small square of cover, then the words. 96pt keeps it a card, not a banner.
++  card: {
++    alignSelf: "flex-start",
++    flexDirection: "row",
++    alignItems: "stretch",
++    gap: 10,
++    minWidth: 208,
++    maxWidth: 292,
++    borderRadius: 16,
++    borderCurve: "continuous",
++    borderWidth: StyleSheet.hairlineWidth,
++    padding: 10,
++  },
++  cardText: { flex: 1, flexShrink: 1, justifyContent: "flex-start", gap: 3 },
++  cardTitle: { fontSize: 15, fontWeight: "600", lineHeight: 20 },
++  cardDescription: { fontSize: 12.5, lineHeight: 17 },
++  cardSiteRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: "auto" },
++  cardSite: { fontSize: 11.5, flexShrink: 1 },
++  cardCover: { width: 96, height: 96, borderRadius: 12, borderCurve: "continuous" },
 +  line: {
 +    flexDirection: "row",
 +    alignItems: "center",
@@ -146850,16 +146964,26 @@ index 000000000..d7f0be54f
 +}
 diff --git a/apps/mobile/lib/image-stack-layout.test.ts b/apps/mobile/lib/image-stack-layout.test.ts
 new file mode 100644
-index 000000000..40a73bee1
+index 000000000..7fd59cffe
 --- /dev/null
 +++ b/apps/mobile/lib/image-stack-layout.test.ts
-@@ -0,0 +1,149 @@
+@@ -0,0 +1,198 @@
++import { readFileSync } from "node:fs";
 +import { describe, expect, it } from "vitest";
 +import {
 +  ComposerAttachLayout,
 +  ImageSendPolicy,
 +  ImageStackLayout,
 +  ImageViewerIndex,
++  imageStackCaption,
++  imageStackCardSize,
++  imageStackCards,
++  imageStackFocusedIndex,
++  imageStackHeight,
++  imageStackHitIndex,
++  imageStackScale,
++  imageStackShouldOpenOnRelease,
++  imageStackSize,
 +} from "./image-stack-layout.js";
 +
 +describe("ImageStackLayout", () => {
@@ -146915,9 +147039,7 @@ index 000000000..40a73bee1
 +
 +  it("hit-tests the top card when fanned and always the first card when stacked", () => {
 +    const box = ImageStackLayout.stackSize(3);
-+    expect(
-+      ImageStackLayout.hitIndex({ x: box.width / 2, y: box.height / 2 }, 3, false),
-+    ).toBe(0);
++    expect(ImageStackLayout.hitIndex({ x: box.width / 2, y: box.height / 2 }, 3, false)).toBe(0);
 +    const fan3 = ImageStackLayout.cards(3, true);
 +    const cx = box.width / 2;
 +    const cy = box.height / 2;
@@ -146929,9 +147051,7 @@ index 000000000..40a73bee1
 +        true,
 +      ),
 +    ).toBe(topCard.index);
-+    const left = fan3.reduce((best, card) =>
-+      card.offset.width < best.offset.width ? card : best,
-+    );
++    const left = fan3.reduce((best, card) => (card.offset.width < best.offset.width ? card : best));
 +    const half = ImageStackLayout.cardSize.width / 2;
 +    expect(
 +      ImageStackLayout.hitIndex(
@@ -146956,6 +147076,49 @@ index 000000000..40a73bee1
 +    expect(ImageStackLayout.shouldOpenOnRelease(ImageStackLayout.scrubThreshold + 30)).toBe(true);
 +    expect(ImageStackLayout.shouldOpenOnRelease(4)).toBe(false);
 +    expect(ImageStackLayout.shouldOpenOnRelease(-4)).toBe(false);
++  });
++});
++
++describe("ImageStackLayout's own source", () => {
++  // The shipped build rewrites these functions to run on the UI thread, and a method written
++  // inside the object literal could not see the object it belongs to: v27 crashed on its first
++  // image card with "Cannot read property 'singleSize' of undefined". The literal must stay a
++  // plain table of constants and module-level functions.
++  const source = readFileSync(new URL("./image-stack-layout.ts", import.meta.url), "utf8");
++  const start = source.indexOf("export const ImageStackLayout = {");
++  const end = source.indexOf("} as const;", start);
++  const literal = source.slice(start, end);
++
++  it("keeps the object literal a table, not a place where functions live", () => {
++    expect(start).toBeGreaterThan(-1);
++    expect(end).toBeGreaterThan(start);
++    expect(literal).not.toContain("'worklet'");
++    expect(literal).not.toContain("ImageStackLayout.");
++  });
++
++  it("reads its geometry from module-level constants", () => {
++    expect(ImageStackLayout.singleSize.width).toBe(210);
++    expect(ImageStackLayout.cardSize.height).toBe(210);
++    expect(ImageStackLayout.stackInset.width).toBe(28);
++    expect(ImageStackLayout.cornerRadius).toBe(18);
++    expect(ImageStackLayout.longPressMs).toBe(350);
++    expect(ImageStackLayout.maxStacked).toBe(3);
++    expect(ImageStackLayout.maxFanned).toBe(5);
++  });
++
++  it("answers the same numbers through the functions and through the table", () => {
++    for (const count of [0, 1, 2, 3, 5, 20]) {
++      expect(ImageStackLayout.stackSize(count)).toEqual(imageStackSize(count));
++      expect(ImageStackLayout.height(count)).toEqual(imageStackHeight(count));
++      expect(ImageStackLayout.cards(count, true)).toEqual(imageStackCards(count, true));
++      expect(ImageStackLayout.caption(count)).toEqual(imageStackCaption(count));
++    }
++    expect(imageStackCardSize(1)).toEqual({ width: 210, height: 210 });
++    expect(imageStackCardSize(4)).toEqual({ width: 168, height: 210 });
++    expect(imageStackFocusedIndex(0, 1)).toBe(0);
++    expect(imageStackHitIndex({ x: 0, y: 0 }, 1, false)).toBe(0);
++    expect(imageStackScale(0, 0, false)).toBe(1);
++    expect(imageStackShouldOpenOnRelease(0)).toBe(false);
 +  });
 +});
 +
@@ -147005,12 +147168,20 @@ index 000000000..40a73bee1
 +});
 diff --git a/apps/mobile/lib/image-stack-layout.ts b/apps/mobile/lib/image-stack-layout.ts
 new file mode 100644
-index 000000000..f1be9ccc2
+index 000000000..0e59e7a36
 --- /dev/null
 +++ b/apps/mobile/lib/image-stack-layout.ts
-@@ -0,0 +1,201 @@
+@@ -0,0 +1,250 @@
 +/** Geometry for a message's image cards, the composer attach tray, the viewer, and send policy.
-+ * Shared by the UI and by layout tests so both read the same numbers. */
++ * Shared by the UI and by layout tests so both read the same numbers.
++ *
++ * Every number lives at the top of this module as its own constant, and the functions that read
++ * them are rewritten by Reanimated's build into functions that run on the UI thread. A method
++ * written inside `ImageStackLayout`'s own object literal could not do that: the worklet plugin
++ * lifts it out of the literal, so the name it uses to reach its siblings is still undefined when
++ * the method runs, and the first image card crashed the app with "Cannot read property
++ * of undefined". So the object below only gathers the constants and references the functions;
++ * nothing inside a function reaches back through `ImageStackLayout`.*/
 +
 +export type ImageStackCard = {
 +  /** 0 = the front card (the first image). */
@@ -147023,137 +147194,178 @@ index 000000000..f1be9ccc2
 +export type Size = { width: number; height: number };
 +export type Point = { x: number; y: number };
 +
++/** One image draws as a square card; two or more draw the taller card. */
++const SINGLE_EDGE = 210;
++const CARD_WIDTH = 168;
++const CARD_HEIGHT = 210;
++const STACK_INSET_WIDTH = 28;
++const STACK_INSET_HEIGHT = 8;
++
++export const SINGLE_SIZE: Size = { width: SINGLE_EDGE, height: SINGLE_EDGE };
++export const CARD_SIZE: Size = { width: CARD_WIDTH, height: CARD_HEIGHT };
++export const STACK_INSET: Size = { width: STACK_INSET_WIDTH, height: STACK_INSET_HEIGHT };
++export const CORNER_RADIUS = 18;
++/** Stacked rest pose draws at most this many cards; the caption still uses the real count. */
++export const MAX_STACKED = 3;
++/** Long-press fan-out shows at most this many cards. */
++export const MAX_FANNED = 5;
++export const CAPTION_HEIGHT = 18;
++export const CAPTION_SPACING = 6;
++export const FAN_SPACING = 46;
++/** Finger must travel at least this far, or release only keeps the fan / collapses it. */
++export const SCRUB_THRESHOLD = 12;
++export const HIGHLIGHT_SCALE = 1.14;
++export const REST_SCALE = 0.94;
++export const LONG_PRESS_MS = 350;
++
++/** Whether more than one image draws as a stack. */
++export function imageStackIsStack(count: number): boolean {
++  "worklet";
++  return count > 1;
++}
++
++/** "N 张图片"; a single image has no caption. */
++export function imageStackCaption(count: number): string | null {
++  "worklet";
++  return count > 1 ? `${count} 张图片` : null;
++}
++
++/** The box every card of a count is laid out in. */
++export function imageStackSize(count: number): Size {
++  "worklet";
++  if (count <= 0) return { width: 0, height: 0 };
++  if (count === 1) return { width: SINGLE_EDGE, height: SINGLE_EDGE };
++  return {
++    width: CARD_WIDTH + STACK_INSET_WIDTH * 2,
++    height: CARD_HEIGHT + STACK_INSET_HEIGHT * 2,
++  };
++}
++
++/** One card's own size: a lone image is square, a stack draws the taller card. */
++export function imageStackCardSize(count: number): Size {
++  "worklet";
++  return count === 1
++    ? { width: SINGLE_EDGE, height: SINGLE_EDGE }
++    : { width: CARD_WIDTH, height: CARD_HEIGHT };
++}
++
++/** The stack's height plus, for two or more images, the caption line under it. */
++export function imageStackHeight(count: number): number {
++  "worklet";
++  if (count <= 0) return 0;
++  const box = imageStackSize(count);
++  return box.height + (count > 1 ? CAPTION_SPACING + CAPTION_HEIGHT : 0);
++}
++
++/** Cards in back-to-front paint order (last entry is on top). */
++export function imageStackCards(count: number, fanned = false): ImageStackCard[] {
++  "worklet";
++  if (count <= 0) return [];
++  if (count === 1) return [{ index: 0, rotation: 0, offset: { width: 0, height: 0 }, zIndex: 0 }];
++  if (fanned) {
++    const n = Math.min(count, MAX_FANNED);
++    const mid = (n - 1) / 2;
++    return Array.from({ length: n }, (_, i) => n - 1 - i).map((i) => {
++      const d = i - mid;
++      return {
++        index: i,
++        rotation: d * 8,
++        offset: { width: d * FAN_SPACING, height: Math.abs(d) * 6 },
++        zIndex: n - i,
++      };
++    });
++  }
++  const n = Math.min(count, MAX_STACKED);
++  const rotations = [0, 7, -6];
++  const offsets = [
++    { width: 0, height: 0 },
++    { width: 14, height: 2 },
++    { width: -14, height: 4 },
++  ];
++  return Array.from({ length: n }, (_, i) => n - 1 - i).map((i) => ({
++    index: i,
++    rotation: rotations[i]!,
++    offset: offsets[i]!,
++    zIndex: n - i,
++  }));
++}
++
++/** Hit-test in the stack's box (origin at the top-left). Stacked rest always returns 0. */
++export function imageStackHitIndex(at: Point, count: number, fanned: boolean): number {
++  "worklet";
++  if (!fanned || count <= 1) return 0;
++  const box = imageStackSize(count);
++  const cards = imageStackCards(count, true)
++    .slice()
++    .sort((a, b) => b.zIndex - a.zIndex);
++  for (const card of cards) {
++    const cx = box.width / 2 + card.offset.width;
++    const cy = box.height / 2 + card.offset.height;
++    if (Math.abs(at.x - cx) <= CARD_WIDTH / 2 && Math.abs(at.y - cy) <= CARD_HEIGHT / 2) {
++      return card.index;
++    }
++  }
++  return 0;
++}
++
++/** Finger x (origin at the top-left of the box) maps to the nearest visible fanned card. */
++export function imageStackFocusedIndex(atX: number, count: number): number {
++  "worklet";
++  const n = Math.min(Math.max(count, 1), MAX_FANNED);
++  if (n <= 1) return 0;
++  const mid = imageStackSize(count).width / 2;
++  let best = 0;
++  let bestDist = Number.POSITIVE_INFINITY;
++  for (let i = 0; i < n; i++) {
++    const d = i - (n - 1) / 2;
++    const cx = mid + d * FAN_SPACING;
++    const dist = Math.abs(atX - cx);
++    if (dist < bestDist) {
++      bestDist = dist;
++      best = i;
++    }
++  }
++  return best;
++}
++
++/** The card under the finger grows; its neighbours rest a little smaller. */
++export function imageStackScale(index: number, focused: number, fanned: boolean): number {
++  "worklet";
++  if (!fanned) return 1;
++  return index === focused ? HIGHLIGHT_SCALE : REST_SCALE;
++}
++
++/** Whether a release opens the focused image, or only settles the fan. */
++export function imageStackShouldOpenOnRelease(translation: number): boolean {
++  "worklet";
++  return Math.abs(translation) >= SCRUB_THRESHOLD;
++}
++
 +export const ImageStackLayout = {
-+  singleSize: { width: 210, height: 210 } as Size,
-+  cardSize: { width: 168, height: 210 } as Size,
-+  cornerRadius: 18,
-+  /** Stacked rest pose draws at most this many cards; the caption still uses the real count. */
-+  maxStacked: 3,
-+  /** Long-press fan-out shows at most this many cards. */
-+  maxFanned: 5,
-+  captionHeight: 18,
-+  captionSpacing: 6,
-+  stackInset: { width: 28, height: 8 } as Size,
-+  fanSpacing: 46,
-+  /** Finger must travel at least this far, or release only keeps the fan / collapses it. */
-+  scrubThreshold: 12,
-+  highlightScale: 1.14,
-+  restScale: 0.94,
-+  longPressMs: 350,
++  singleSize: SINGLE_SIZE,
++  cardSize: CARD_SIZE,
++  cornerRadius: CORNER_RADIUS,
++  maxStacked: MAX_STACKED,
++  maxFanned: MAX_FANNED,
++  captionHeight: CAPTION_HEIGHT,
++  captionSpacing: CAPTION_SPACING,
++  stackInset: STACK_INSET,
++  fanSpacing: FAN_SPACING,
++  scrubThreshold: SCRUB_THRESHOLD,
++  highlightScale: HIGHLIGHT_SCALE,
++  restScale: REST_SCALE,
++  longPressMs: LONG_PRESS_MS,
 +
-+  isStack(count: number): boolean {
-+    'worklet';
-+    return count > 1;
-+  },
-+
-+  /** "N 张图片"; a single image has no caption. */
-+  caption(count: number): string | null {
-+    'worklet';
-+    return count > 1 ? `${count} 张图片` : null;
-+  },
-+
-+  stackSize(count: number): Size {
-+    'worklet';
-+    if (count <= 0) return { width: 0, height: 0 };
-+    if (count === 1) return { ...ImageStackLayout.singleSize };
-+    return {
-+      width: ImageStackLayout.cardSize.width + ImageStackLayout.stackInset.width * 2,
-+      height: ImageStackLayout.cardSize.height + ImageStackLayout.stackInset.height * 2,
-+    };
-+  },
-+
-+  height(count: number): number {
-+    'worklet';
-+    if (count <= 0) return 0;
-+    const stack = ImageStackLayout.stackSize(count);
-+    return (
-+      stack.height +
-+      (count > 1 ? ImageStackLayout.captionSpacing + ImageStackLayout.captionHeight : 0)
-+    );
-+  },
-+
-+  /** Cards in back-to-front paint order (last entry is on top). */
-+  cards(count: number, fanned = false): ImageStackCard[] {
-+    'worklet';
-+    if (count <= 0) return [];
-+    if (count === 1) return [{ index: 0, rotation: 0, offset: { width: 0, height: 0 }, zIndex: 0 }];
-+    if (fanned) {
-+      const n = Math.min(count, ImageStackLayout.maxFanned);
-+      const mid = (n - 1) / 2;
-+      return Array.from({ length: n }, (_, i) => n - 1 - i).map((i) => {
-+        const d = i - mid;
-+        return {
-+          index: i,
-+          rotation: d * 8,
-+          offset: { width: d * ImageStackLayout.fanSpacing, height: Math.abs(d) * 6 },
-+          zIndex: n - i,
-+        };
-+      });
-+    }
-+    const n = Math.min(count, ImageStackLayout.maxStacked);
-+    const rotations = [0, 7, -6];
-+    const offsets = [
-+      { width: 0, height: 0 },
-+      { width: 14, height: 2 },
-+      { width: -14, height: 4 },
-+    ];
-+    return Array.from({ length: n }, (_, i) => n - 1 - i).map((i) => ({
-+      index: i,
-+      rotation: rotations[i]!,
-+      offset: offsets[i]!,
-+      zIndex: n - i,
-+    }));
-+  },
-+
-+  /** Hit-test in the stack's box (origin at the top-left). Stacked rest always returns 0. */
-+  hitIndex(at: Point, count: number, fanned: boolean): number {
-+    'worklet';
-+    if (!fanned || count <= 1) return 0;
-+    const box = ImageStackLayout.stackSize(count);
-+    const cards = ImageStackLayout.cards(count, true).slice().sort((a, b) => b.zIndex - a.zIndex);
-+    for (const card of cards) {
-+      const cx = box.width / 2 + card.offset.width;
-+      const cy = box.height / 2 + card.offset.height;
-+      if (
-+        Math.abs(at.x - cx) <= ImageStackLayout.cardSize.width / 2 &&
-+        Math.abs(at.y - cy) <= ImageStackLayout.cardSize.height / 2
-+      ) {
-+        return card.index;
-+      }
-+    }
-+    return 0;
-+  },
-+
-+  /** Finger x (origin at the top-left of the box) maps to the nearest visible fanned card. */
-+  focusedIndex(atX: number, count: number): number {
-+    'worklet';
-+    const n = Math.min(Math.max(count, 1), ImageStackLayout.maxFanned);
-+    if (n <= 1) return 0;
-+    const mid = ImageStackLayout.stackSize(count).width / 2;
-+    let best = 0;
-+    let bestDist = Number.POSITIVE_INFINITY;
-+    for (let i = 0; i < n; i++) {
-+      const d = i - (n - 1) / 2;
-+      const cx = mid + d * ImageStackLayout.fanSpacing;
-+      const dist = Math.abs(atX - cx);
-+      if (dist < bestDist) {
-+        bestDist = dist;
-+        best = i;
-+      }
-+    }
-+    return best;
-+  },
-+
-+  scale(index: number, focused: number, fanned: boolean): number {
-+    'worklet';
-+    if (!fanned) return 1;
-+    return index === focused ? ImageStackLayout.highlightScale : ImageStackLayout.restScale;
-+  },
-+
-+  shouldOpenOnRelease(translation: number): boolean {
-+    'worklet';
-+    return Math.abs(translation) >= ImageStackLayout.scrubThreshold;
-+  },
++  isStack: imageStackIsStack,
++  caption: imageStackCaption,
++  stackSize: imageStackSize,
++  cardSizeFor: imageStackCardSize,
++  height: imageStackHeight,
++  cards: imageStackCards,
++  hitIndex: imageStackHitIndex,
++  focusedIndex: imageStackFocusedIndex,
++  scale: imageStackScale,
++  shouldOpenOnRelease: imageStackShouldOpenOnRelease,
 +} as const;
 +
 +export const ComposerAttachLayout = {
@@ -148899,12 +149111,125 @@ index 000000000..ff998cefa
 +  if (written && activityStep(written)?.specific) return written;
 +  return step ?? written;
 +}
+diff --git a/apps/mobile/lib/link-preview.test.ts b/apps/mobile/lib/link-preview.test.ts
+new file mode 100644
+index 000000000..b686e5667
+--- /dev/null
++++ b/apps/mobile/lib/link-preview.test.ts
+@@ -0,0 +1,107 @@
++import { beforeEach, describe, expect, it, vi } from "vitest";
++
++// The preview module reaches the server through `rpc`; these tests only read its own rules.
++vi.mock("./api", () => ({ rpc: vi.fn(async () => null) }));
++
++import {
++  firstMessageLink,
++  forgetLinkPreviews,
++  isFormLink,
++  isGrokBotLink,
++  linkPreviewCover,
++  linkSiteLabel,
++} from "./link-preview";
++
++beforeEach(() => {
++  forgetLinkPreviews();
++});
++
++describe("firstMessageLink", () => {
++  it("takes the first address in what someone wrote", () => {
++    expect(
++      firstMessageLink(
++        "编译链接在这： https://github.com/ingnez/rakazo-ipa-build （大约 19 分钟）",
++      ),
++    ).toBe("https://github.com/ingnez/rakazo-ipa-build");
++    expect(firstMessageLink("https://a.example.com/x https://b.example.com/y")).toBe(
++      "https://a.example.com/x",
++    );
++  });
++
++  it("leaves the prose's own punctuation out of the address", () => {
++    expect(firstMessageLink("看这个 https://example.com/a。")).toBe("https://example.com/a");
++    expect(firstMessageLink("(see https://example.com/b)")).toBe("https://example.com/b");
++    expect(firstMessageLink("https://en.wikipedia.org/wiki/Foo_(bar)")).toBe(
++      "https://en.wikipedia.org/wiki/Foo_(bar)",
++    );
++  });
++
++  it("ignores a command in code and a bare word that is not an address", () => {
++    expect(firstMessageLink("```\ncurl https://example.com\n```\nnothing here")).toBeUndefined();
++    expect(firstMessageLink("run `https://example.com` later")).toBeUndefined();
++    expect(firstMessageLink("https://localhost:3000")).toBeUndefined();
++    expect(firstMessageLink(undefined)).toBeUndefined();
++  });
++});
++
++describe("linkSiteLabel", () => {
++  it("names the site without www", () => {
++    expect(linkSiteLabel("https://www.github.com/ingnez")).toBe("github.com");
++    expect(linkSiteLabel("https://x.ai/bot/abc")).toBe("x.ai");
++    expect(linkSiteLabel("not a url")).toBe("not a url");
++  });
++});
++
++describe("isFormLink", () => {
++  it("recognizes a page that waits on the person", () => {
++    expect(isFormLink("https://accounts.google.com/o/oauth2/v2/auth?client_id=x")).toBe(true);
++    expect(isFormLink("https://example.com/oauth/authorize")).toBe(true);
++    expect(isFormLink("https://example.com/device")).toBe(true);
++    expect(isFormLink("https://example.com/start?code=ABC123")).toBe(true);
++  });
++
++  it("leaves an ordinary page a page", () => {
++    expect(isFormLink("https://github.com/ingnez/rakazo-ipa-build")).toBe(false);
++    expect(isFormLink("https://news.example.com/2026/11/20/story")).toBe(false);
++    expect(isFormLink("garbage")).toBe(false);
++  });
++});
++
++describe("isGrokBotLink", () => {
++  it("only treats a public bot share as importable", () => {
++    expect(isGrokBotLink("https://x.ai/bot/abc123")).toBe(true);
++    expect(isGrokBotLink("https://www.x.ai/bot/abc123")).toBe(true);
++    expect(isGrokBotLink("https://x.ai/pricing")).toBe(false);
++    expect(isGrokBotLink("https://github.com/x.ai/bot/1")).toBe(false);
++  });
++});
++
++describe("linkPreviewCover", () => {
++  it("prefers the server's inlined copy, then the page's own address", () => {
++    expect(
++      linkPreviewCover({
++        url: "https://example.com",
++        imageDataUrl: "data:image/jpeg;base64,AAAA",
++        imageUrl: "https://example.com/cover.png",
++      }),
++    ).toBe("data:image/jpeg;base64,AAAA");
++    expect(
++      linkPreviewCover({
++        url: "https://example.com",
++        imageUrl: "https://example.com/cover.png",
++      }),
++    ).toBe("https://example.com/cover.png");
++  });
++
++  it("draws no cover when there is nothing a card could show", () => {
++    expect(linkPreviewCover(null)).toBeUndefined();
++    expect(linkPreviewCover({ url: "https://example.com" })).toBeUndefined();
++    expect(linkPreviewCover({ url: "https://example.com", imageUrl: "   " })).toBeUndefined();
++    expect(
++      linkPreviewCover({ url: "https://example.com", imageUrl: "javascript:alert(1)" }),
++    ).toBeUndefined();
++    expect(
++      linkPreviewCover({ url: "https://example.com", imageDataUrl: "data:text/html,x" }),
++    ).toBeUndefined();
++  });
++});
 diff --git a/apps/mobile/lib/link-preview.ts b/apps/mobile/lib/link-preview.ts
 new file mode 100644
-index 000000000..d1627811e
+index 000000000..3e5d3ac25
 --- /dev/null
 +++ b/apps/mobile/lib/link-preview.ts
-@@ -0,0 +1,175 @@
+@@ -0,0 +1,188 @@
 +import type { LinkPreview } from "@rakazo/contracts";
 +import { useEffect, useState } from "react";
 +import { rpc } from "./api";
@@ -148978,6 +149303,19 @@ index 000000000..d1627811e
 +  } catch {
 +    return false;
 +  }
++}
++
++/**
++ * The picture a link's card can draw: the copy the server inlined first (a phone that cannot reach
++ * the site still shows it), then the page's own address. Nothing else counts — a card with an
++ * empty or unknown-scheme source would be a blank box, so it stays a plain line instead.
++ */
++export function linkPreviewCover(preview: LinkPreview | null | undefined): string | undefined {
++  const inline = preview?.imageDataUrl?.trim();
++  if (inline?.startsWith("data:image/")) return inline;
++  const remote = preview?.imageUrl?.trim();
++  if (remote && /^https?:\/\//i.test(remote)) return remote;
++  return undefined;
 +}
 +
 +/** The host a card names at its foot, without `www.`. */
@@ -158154,10 +158492,10 @@ index 000000000..38e2d6e14
 +end
 diff --git a/apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift b/apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
 new file mode 100644
-index 000000000..2712fb5eb
+index 000000000..a4fe50e3b
 --- /dev/null
 +++ b/apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
-@@ -0,0 +1,511 @@
+@@ -0,0 +1,715 @@
 +import ExpoModulesCore
 +import ImageIO
 +import Photos
@@ -158178,11 +158516,13 @@ index 000000000..2712fb5eb
 +/// the one representation every model reads, and copies each photo out of the picker's temporary
 +/// file before that file is taken away.
 +///
-+/// Every wait here ends. A screen that is still dismissing takes the sheet a moment later; a
-+/// sheet UIKit drops without saying so is reported as a failure instead of leaving the composer
-+/// on "reading photos" forever; and each photo's bytes may take a bounded time to arrive before
-+/// that photo is reported unreadable. A promise that is never resolved, or resolved twice, is
-+/// what made v26 look dead, so this module resolves exactly once on every path.
++/// Every wait here ends, and soon. A local photo is decoded straight from the item provider, so
++/// it is handed back in a fraction of a second; the routes that can stall (a file the provider
++/// still has in iCloud, the photo library's own fetch) run beside it and are given three seconds.
++/// The whole pick then has a six-second deadline of its own, so no system callback can leave the
++/// composer on "reading photos" for longer than that, whatever it does. A promise that is never
++/// resolved, or resolved twice, is what made v26 look dead, so this module resolves exactly once
++/// on every path, and a failure names the steps that were tried.
 +public class PhotoPickerModule: Module {
 +  /// One sheet at a time, set and cleared on whichever thread the previous ran out on.
 +  private let lock = NSLock()
@@ -158329,20 +158669,24 @@ index 000000000..2712fb5eb
 +
 +final class PickerSession: NSObject, PHPickerViewControllerDelegate,
 +  UIAdaptivePresentationControllerDelegate {
-+  /// How long one photo's bytes may take to arrive from the item provider before that photo is
-+  /// reported unreadable. Long enough for a large photo or a slow iCloud download, short enough
-+  /// that the composer is never left waiting on a callback that will not come.
-+  private static let readTimeout: TimeInterval = 15
++  /// How long one handover from the item provider may take. A local photo is decoded in a
++  /// fraction of a second, so this is only ever reached by a photo that is not coming.
++  private static let handoverTimeout: TimeInterval = 3
 +  /// How long the photo library may take to hand over a photo the item provider would not.
-+  private static let libraryTimeout: TimeInterval = 20
++  private static let libraryTimeout: TimeInterval = 4
 +  /// How long a photo library permission prompt may take to be answered.
-+  private static let permissionTimeout: TimeInterval = 10
++  private static let permissionTimeout: TimeInterval = 2
++  /// The whole read: past this the person is told, whatever any callback is doing. Short enough
++  /// that a failure is a hiccup rather than a hang — a local photo never comes near it.
++  static let totalDeadline: TimeInterval = 6
 +
 +  private let promise: Promise
 +  private let release: () -> Void
 +  private let lock = NSLock()
 +  private var delivered = false
 +  private var settled = false
++  /// What each read step answered, so a failure says which system call refused or timed out.
++  private let trace = ReadTrace()
 +
 +  init(promise: Promise, release: @escaping () -> Void) {
 +    self.promise = promise
@@ -158394,12 +158738,22 @@ index 000000000..2712fb5eb
 +      settle(Self.canceled())
 +      return
 +    }
++    // The deadline that does not depend on any callback: a photo whose bytes never arrive, a
++    // file hanging on iCloud, a library fetch that stops answering — all of it ends here.
++    DispatchQueue.global().asyncAfter(deadline: .now() + Self.totalDeadline) { [weak self] in
++      guard let self else { return }
++      self.settle(
++        Self.canceled(
++          error: "读图超过 \(Int(Self.totalDeadline)) 秒（\(self.trace.text)）"
++        )
++      )
++    }
 +    Task {
 +      var assets: [[String: Any]] = []
 +      var failure: String?
 +      for result in results {
 +        do {
-+          assets.append(try await Self.copy(result))
++          assets.append(try await Self.copy(result, trace: trace))
 +        } catch {
 +          // One photo that cannot be read costs that photo, not the whole selection.
 +          failure = error.localizedDescription
@@ -158426,94 +158780,178 @@ index 000000000..2712fb5eb
 +    }
 +  }
 +
-+  // MARK: - Copying a chosen photo out of the picker
++  // MARK: - Reading a chosen photo
 +
-+  private static func copy(_ result: PHPickerResult) async throws -> [String: Any] {
++  /// The photo as a file the chat can upload, from the fastest route that has it.
++  ///
++  /// The item provider can hand a photo over two ways: decoded as a `UIImage`, and as the file it
++  /// keeps on disk. They run at the same time, because the first is what a photo already on the
++  /// phone answers in a fraction of a second while the second can sit on an iCloud download. Only
++  /// when neither produces a file does the photo library get asked for the asset the picker named.
++  private static func copy(_ result: PHPickerResult, trace: ReadTrace) async throws -> [String: Any] {
 +    let provider = result.itemProvider
-+    // The type the provider actually holds. Asking a file representation for the abstract
-+    // `public.image` gives no file at all for a HEIC photo.
-+    let type = provider.registeredTypeIdentifiers
-+      .compactMap { UTType($0) }
-+      .first { $0.conforms(to: .image) }
-+    let identifier = type?.identifier ?? UTType.image.identifier
 +    let directory = FileManager.default.temporaryDirectory
 +      .appendingPathComponent("picked-photos", isDirectory: true)
 +    try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 +
-+    if let file = await copyFile(from: provider, type: identifier, into: directory) {
++    if let file = await readFromProvider(provider, trace: trace, into: directory) {
 +      return describe(file)
 +    }
-+    // A photo the picker cannot hand over as a file still arrives as data (an item still in
-+    // iCloud, a format the provider keeps as memory).
-+    if let file = await writeData(from: provider, type: identifier, into: directory) {
++    if let file = await fromPhotoLibrary(result, trace: trace, into: directory) {
 +      return describe(file)
 +    }
-+    // Neither representation came back in time: the library the sheet came from still knows the
-+    // photo, and can fetch it from iCloud where the provider would not.
-+    if let file = await fromPhotoLibrary(result, into: directory) {
-+      return describe(file)
++    throw PhotoPickError.unreadable(trace.text)
++  }
++
++  /// Every handover the provider offers, started together; the first file wins and the rest are
++  /// left to finish unnoticed. Each is bounded, and the read ends when the last one has said no.
++  private static func readFromProvider(
++    _ provider: NSItemProvider,
++    trace: ReadTrace,
++    into directory: URL
++  ) async -> URL? {
++    let canDecode = provider.canLoadObject(ofClass: UIImage.self)
++    let fileTypes = fileIdentifiers(for: provider)
++    let routes = fileTypes.count + (canDecode ? 1 : 0)
++    guard routes > 0 else {
++      trace.add("provider=no-routes")
++      return nil
 +    }
-+    throw PhotoPickError.unreadable
++    return await withCheckedContinuation { (continuation: CheckedContinuation<URL?, Never>) in
++      let read = PhotoRead(routes: routes) { url in continuation.resume(returning: url) }
++      // The read's own bound, in case a route neither answers nor is told it timed out.
++      DispatchQueue.global().asyncAfter(deadline: .now() + handoverTimeout) {
++        trace.add("provider=timeout")
++        read.deadline()
++      }
++      if canDecode {
++        decodeObject(provider, trace: trace, into: directory, read: read)
++      }
++      for type in fileTypes {
++        copyFile(provider, type: type, trace: trace, into: directory, read: read)
++      }
++    }
++  }
++
++  /// The types the file route asks for: the two standards, then the concrete type the provider
++  /// says it holds (a HEIC photo answers only to its own). Three at most — each is a system call
++  /// and they are all bounded by the same three seconds.
++  private static func fileIdentifiers(for provider: NSItemProvider) -> [String] {
++    var identifiers = [UTType.jpeg.identifier, UTType.image.identifier]
++    for registered in provider.registeredTypeIdentifiers {
++      let isImage = UTType(registered)?.conforms(to: .image) ?? false
++      guard isImage, !identifiers.contains(registered) else { continue }
++      identifiers.append(registered)
++    }
++    return Array(identifiers.prefix(3))
++  }
++
++  /// `loadObject` decodes the photo itself: for a photo on the phone this answers at once, and it
++  /// is the one route `loadFileRepresentation` cannot serve — a HEIC the provider keeps only as
++  /// data. The image arrives already turned the right way up, so only the JPEG write is left.
++  private static func decodeObject(
++    _ provider: NSItemProvider,
++    trace: ReadTrace,
++    into directory: URL,
++    read: PhotoRead
++  ) {
++    let answered = Answer<RouteOutcome> { outcome in
++      switch outcome {
++      case .got(let url):
++        trace.add("obj=ok")
++        read.won(url)
++      case .timeout:
++        trace.add("obj=timeout")
++        read.lost()
++      case .refused:
++        trace.add("obj=err")
++        read.lost()
++      case .missing:
++        trace.add("obj=no")
++        read.lost()
++      }
++    }
++    DispatchQueue.global().asyncAfter(deadline: .now() + handoverTimeout) {
++      answered.answer(.timeout)
++    }
++    _ = provider.loadObject(ofClass: UIImage.self) { object, error in
++      guard let image = object as? UIImage else {
++        answered.answer(error == nil ? .missing : .refused)
++        return
++      }
++      guard let file = writeImage(image, into: directory, name: provider.suggestedName) else {
++        answered.answer(.refused)
++        return
++      }
++      answered.answer(.got(file))
++    }
 +  }
 +
 +  /// `loadFileRepresentation` lends the file only until its callback returns, so the copy is made
-+  /// inside it.
-+  private static func copyFile(from provider: NSItemProvider, type: String, into directory: URL)
-+    async -> URL? {
-+    await withCheckedContinuation { (continuation: CheckedContinuation<URL?, Never>) in
-+      let answer = Answer<URL?> { continuation.resume(returning: $0) }
-+      DispatchQueue.global().asyncAfter(deadline: .now() + readTimeout) { answer.answer(nil) }
-+      _ = provider.loadFileRepresentation(forTypeIdentifier: type) { url, _ in
-+        guard let url else {
-+          answer.answer(nil)
-+          return
-+        }
-+        let target = destination(
-+          in: directory,
-+          name: provider.suggestedName ?? url.deletingPathExtension().lastPathComponent,
-+          fileExtension: url.pathExtension)
-+        do {
-+          try FileManager.default.copyItem(at: url, to: target)
-+          answer.answer(target)
-+        } catch {
-+          answer.answer(nil)
-+        }
++  /// inside it. A provider that refuses, or a file that never arrives, is reported and the other
++  /// routes carry on.
++  private static func copyFile(
++    _ provider: NSItemProvider,
++    type: String,
++    trace: ReadTrace,
++    into directory: URL,
++    read: PhotoRead
++  ) {
++    let label = "file:\(UTType(type)?.preferredFilenameExtension ?? type)"
++    let answered = Answer<RouteOutcome> { outcome in
++      switch outcome {
++      case .got(let url):
++        trace.add("\(label)=ok")
++        read.won(url)
++      case .timeout:
++        trace.add("\(label)=timeout")
++        read.lost()
++      case .refused:
++        trace.add("\(label)=err")
++        read.lost()
++      case .missing:
++        trace.add("\(label)=no")
++        read.lost()
 +      }
 +    }
-+  }
-+
-+  private static func writeData(from provider: NSItemProvider, type: String, into directory: URL)
-+    async -> URL? {
-+    let data: Data? = await withCheckedContinuation {
-+      (continuation: CheckedContinuation<Data?, Never>) in
-+      let answer = Answer<Data?> { continuation.resume(returning: $0) }
-+      DispatchQueue.global().asyncAfter(deadline: .now() + readTimeout) { answer.answer(nil) }
-+      _ = provider.loadDataRepresentation(forTypeIdentifier: type) { data, _ in
-+        answer.answer(data)
++    DispatchQueue.global().asyncAfter(deadline: .now() + handoverTimeout) {
++      answered.answer(.timeout)
++    }
++    _ = provider.loadFileRepresentation(forTypeIdentifier: type) { url, error in
++      guard let url else {
++        answered.answer(error == nil ? .missing : .refused)
++        return
 +      }
-+    }
-+    guard let data, !data.isEmpty else {
-+      return nil
-+    }
-+    let target = destination(
-+      in: directory,
-+      name: provider.suggestedName ?? UUID().uuidString,
-+      fileExtension: UTType(type)?.preferredFilenameExtension ?? "jpg")
-+    do {
-+      try data.write(to: target, options: .atomic)
-+      return target
-+    } catch {
-+      return nil
++      let target = destination(
++        in: directory,
++        name: provider.suggestedName ?? url.deletingPathExtension().lastPathComponent,
++        fileExtension: url.pathExtension)
++      do {
++        try FileManager.default.copyItem(at: url, to: target)
++        answered.answer(.got(target))
++      } catch {
++        answered.answer(.refused)
++      }
 +    }
 +  }
 +
 +  /// The photo the item provider would not give up, read from the photo library by the asset the
 +  /// picker named. A format no model reads is handed over as a JPEG.
-+  private static func fromPhotoLibrary(_ result: PHPickerResult, into directory: URL) async -> URL? {
-+    guard let identifier = result.assetIdentifier else { return nil }
-+    guard await canReadPhotoLibrary() else { return nil }
++  private static func fromPhotoLibrary(
++    _ result: PHPickerResult,
++    trace: ReadTrace,
++    into directory: URL
++  ) async -> URL? {
++    guard let identifier = result.assetIdentifier else {
++      trace.add("lib=no-id")
++      return nil
++    }
++    guard await canReadPhotoLibrary(trace: trace) else { return nil }
 +    let assets = PHAsset.fetchAssets(withLocalIdentifiers: [identifier], options: nil)
-+    guard let asset = assets.firstObject else { return nil }
++    guard let asset = assets.firstObject else {
++      trace.add("lib=no-asset")
++      return nil
++    }
 +
 +    let options = PHImageRequestOptions()
 +    // A photo that lives only in iCloud is still the person's photo.
@@ -158526,24 +158964,30 @@ index 000000000..2712fb5eb
 +    let data: Data? = await withCheckedContinuation {
 +      (continuation: CheckedContinuation<Data?, Never>) in
 +      let answer = Answer<Data?> { continuation.resume(returning: $0) }
-+      DispatchQueue.global().asyncAfter(deadline: .now() + libraryTimeout) { answer.answer(nil) }
++      DispatchQueue.global().asyncAfter(deadline: .now() + libraryTimeout) {
++        trace.add("lib=timeout")
++        answer.answer(nil)
++      }
 +      PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) {
 +        data, _, _, _ in
 +        answer.answer(data)
 +      }
 +    }
 +    guard let data, !data.isEmpty else { return nil }
-+    return writeImage(data, name: name, into: directory)
++    let file = writeImage(data, name: name, into: directory)
++    trace.add(file == nil ? "lib=err" : "lib=ok")
++    return file
 +  }
 +
 +  /// Photo library access, asked for the first time only when a photo actually needs it: the
 +  /// picker itself never does, so most people never see the prompt.
-+  private static func canReadPhotoLibrary() async -> Bool {
++  private static func canReadPhotoLibrary(trace: ReadTrace) async -> Bool {
 +    switch PHPhotoLibrary.authorizationStatus(for: .readWrite) {
 +    case .authorized, .limited:
 +      return true
 +    case .notDetermined:
-+      return await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
++      let granted = await withCheckedContinuation {
++        (continuation: CheckedContinuation<Bool, Never>) in
 +        let answer = Answer<Bool> { continuation.resume(returning: $0) }
 +        DispatchQueue.global().asyncAfter(deadline: .now() + permissionTimeout) {
 +          answer.answer(false)
@@ -158552,9 +158996,19 @@ index 000000000..2712fb5eb
 +          answer.answer(status == .authorized || status == .limited)
 +        }
 +      }
++      trace.add(granted ? "perm=granted" : "perm=denied")
++      return granted
 +    default:
++      trace.add("perm=denied")
 +      return false
 +    }
++  }
++
++  /// A decoded image as a JPEG on disk, the one representation every model reads.
++  private static func writeImage(_ image: UIImage, into directory: URL, name: String?) -> URL? {
++    guard let jpeg = uprightJpegData(image) else { return nil }
++    let stem = name.map { ($0 as NSString).deletingPathExtension } ?? "photo"
++    return write(jpeg, into: directory, name: stem, fileExtension: "jpg")
 +  }
 +
 +  /// JPEG and PNG are written as they arrived; anything else is re-encoded as a JPEG, the one
@@ -158567,7 +159021,7 @@ index 000000000..2712fb5eb
 +    if let type = imageType(of: data), type.conforms(to: .png) {
 +      return write(data, into: directory, name: stem, fileExtension: "png")
 +    }
-+    guard let jpeg = jpegData(from: data) else { return nil }
++    guard let image = UIImage(data: data), let jpeg = uprightJpegData(image) else { return nil }
 +    return write(jpeg, into: directory, name: stem, fileExtension: "jpg")
 +  }
 +
@@ -158591,12 +159045,12 @@ index 000000000..2712fb5eb
 +    return UTType(identifier as String)
 +  }
 +
-+  private static func jpegData(from data: Data) -> Data? {
-+    guard let image = UIImage(data: data) else { return nil }
++  /// The pixels turned the way the photo was taken: re-encoding drops EXIF orientation, so a
++  /// portrait photo would otherwise arrive on its side.
++  private static func uprightJpegData(_ image: UIImage) -> Data? {
 +    if image.imageOrientation == .up {
 +      return image.jpegData(compressionQuality: 0.9)
 +    }
-+    // Re-encoding drops EXIF orientation, so the pixels are turned the right way up first.
 +    let format = UIGraphicsImageRendererFormat.default()
 +    format.scale = 1
 +    let size = image.size
@@ -158639,6 +159093,90 @@ index 000000000..2712fb5eb
 +  }
 +}
 +
++/// What every step of a read said, in the order it was tried. It is what the person sees in the
++/// failure line — `provider=timeout; obj=no; lib=no-id` — so a photo that still will not read on
++/// a real phone names the system call that refused instead of asking for another guess.
++final class ReadTrace: @unchecked Sendable {
++  private let lock = NSLock()
++  private var steps: [String] = []
++
++  func add(_ step: String) {
++    lock.lock()
++    steps.append(step)
++    lock.unlock()
++  }
++
++  var text: String {
++    lock.lock()
++    defer { lock.unlock() }
++    return steps.isEmpty ? "no step answered" : steps.joined(separator: "; ")
++  }
++}
++
++/// How one handover of a photo ended.
++enum RouteOutcome {
++  /// It produced the file the chat can upload.
++  case got(URL)
++  /// Its deadline passed with nothing.
++  case timeout
++  /// It answered with an error, or with something that could not be written.
++  case refused
++  /// It answered, and had nothing to hand over.
++  case missing
++}
++
++/// One photo's read across its routes: the first file wins and ends it, and it ends empty only
++/// when every route has said no or the read's own deadline passes. Answers that arrive after that
++/// are ignored, so the promise behind it is never resolved twice.
++final class PhotoRead: @unchecked Sendable {
++  private let lock = NSLock()
++  private var waiting: Int
++  private var finished = false
++  private let finish: (URL?) -> Void
++
++  init(routes: Int, finish: @escaping (URL?) -> Void) {
++    self.waiting = routes
++    self.finish = finish
++  }
++
++  func won(_ url: URL) {
++    lock.lock()
++    guard !finished else {
++      lock.unlock()
++      return
++    }
++    finished = true
++    lock.unlock()
++    finish(url)
++  }
++
++  /// One route with nothing to add; the read ends only when the last one says so.
++  func lost() {
++    lock.lock()
++    guard !finished else {
++      lock.unlock()
++      return
++    }
++    waiting -= 1
++    let done = waiting <= 0
++    if done { finished = true }
++    lock.unlock()
++    if done { finish(nil) }
++  }
++
++  /// The read's own bound: nothing more is coming.
++  func deadline() {
++    lock.lock()
++    guard !finished else {
++      lock.unlock()
++      return
++    }
++    finished = true
++    lock.unlock()
++    finish(nil)
++  }
++}
++
 +/// One system call's answer, delivered exactly once: a callback that never arrives, or one that
 +/// arrives after the deadline, must not leave the pick waiting or resolve it twice.
 +private final class Answer<Value>: @unchecked Sendable {
@@ -158663,10 +159201,14 @@ index 000000000..2712fb5eb
 +}
 +
 +enum PhotoPickError: LocalizedError {
-+  case unreadable
++  /// The read that failed, with the steps it tried: `file:heic=timeout; obj=err; lib=no-id`.
++  case unreadable(String)
 +
 +  var errorDescription: String? {
-+    "the photo could not be read"
++    switch self {
++    case .unreadable(let steps):
++      return "the photo could not be read (\(steps))"
++    }
 +  }
 +}
 diff --git a/apps/mobile/modules/photo-picker/package.json b/apps/mobile/modules/photo-picker/package.json

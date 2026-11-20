@@ -73,7 +73,7 @@ test -f apps/mobile/modules/rakazo-connectors/ios/RakazoConnectorsModule.swift
 test -f apps/mobile/modules/rakazo-connectors/ios/PhoneAlarmKit.swift
 test -f apps/mobile/modules/rakazo-connectors/ios/PhoneCalendarConnector.swift
 test -f apps/mobile/lib/phone-connectors.ts
-node -e 'const p=require("./apps/mobile/app.json");const ip=p.expo.ios.infoPlist;for(const k of ["NSAlarmKitUsageDescription","NSCalendarsFullAccessUsageDescription","NSRemindersFullAccessUsageDescription","NSContactsUsageDescription","NSLocationWhenInUseUsageDescription"]){if(!ip[k])throw new Error("missing "+k)}'
+node -e 'const p=require("./apps/mobile/app.json");const ip=p.expo.ios.infoPlist;for(const k of ["NSAlarmKitUsageDescription","NSCalendarsFullAccessUsageDescription","NSRemindersFullAccessUsageDescription","NSContactsUsageDescription","NSLocationWhenInUseUsageDescription","NSPhotoLibraryUsageDescription"]){if(!ip[k])throw new Error("missing "+k)}'
 grep -q 'expo-font' apps/mobile/app.json
 # The icon is shipped as an Icon Composer package and the splash as images: a patch that lost
 # either would still compile, so fail here and name what is missing.
@@ -153,6 +153,29 @@ grep -q 'hasNativePhotoPicker' apps/mobile/lib/pick-attachments.ts
 grep -q 'failed to present photo picker' apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
 grep -q 'requestImageDataAndOrientation' apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
 grep -q 'LIBRARY_PICK_WATCHDOG_MS' apps/mobile/lib/pick-attachments.ts
+# v28: a photo on the phone is decoded straight from the item provider, beside the file route,
+# so it arrives at once instead of after a copy that stalls on an iCloud download; and the whole
+# read is over within six seconds whatever a system callback does. A patch that lost the race or
+# the deadline still compiles and still leaves the composer on "reading photos", so gate here.
+grep -q 'canLoadObject(ofClass: UIImage.self)' apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
+grep -q 'provider.loadObject(ofClass: UIImage.self)' apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
+grep -q 'static let totalDeadline: TimeInterval = 6' apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
+grep -q 'final class PhotoRead' apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
+# A failure names the steps it tried, so a real phone tells which system call refused.
+grep -q 'case unreadable(String)' apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
+grep -q 'final class ReadTrace' apps/mobile/modules/photo-picker/ios/PhotoPickerModule.swift
+# v28 crashed on the first image card: a worklet method written inside ImageStackLayout's own
+# object literal cannot see the object it belongs to, and the worklet build leaves it undefined.
+# The literal may hold constants and module-level functions only.
+if sed -n '/export const ImageStackLayout = {/,/} as const;/p' apps/mobile/lib/image-stack-layout.ts \
+  | grep -nE "ImageStackLayout\.|'worklet'"; then
+  echo "::error::ImageStackLayout's own methods must be module-level worklets, not methods in the literal"
+  exit 1
+fi
+# v28: a previewed link draws the page's own picture, small, beside its title and domain.
+grep -q 'export function linkPreviewCover' apps/mobile/lib/link-preview.ts
+grep -q 'testID="link-card"' apps/mobile/components/thread/link-preview-card.tsx
+grep -q 'cardCover' apps/mobile/components/thread/link-preview-card.tsx
 test -f apps/mobile/modules/message-image-actions/ios/MessageImageActionsModule.swift
 test -f apps/mobile/modules/message-image-actions/ios/MessageImageActions.podspec
 test -f apps/mobile/modules/message-image-actions/expo-module.config.json

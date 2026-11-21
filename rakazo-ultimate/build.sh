@@ -273,6 +273,48 @@ if grep -n 'await loadServerHeaders(' apps/mobile/lib/api-server.ts; then
   exit 1
 fi
 grep -q 'applyStoredServerHeaders' apps/mobile/lib/server-headers.ts
+# v32: the launch reads the home screen's own state beside the splash — the session token, the
+# returning-user mark, the activity mode, the folded sections and the saved inbox — so the frame
+# after the logo is the inbox itself and not a spinner followed by a second wait (`IMG_2997`).
+test -f apps/mobile/lib/launch-warmup.ts
+test -f apps/mobile/lib/launch-warmup.test.ts
+test -f apps/mobile/lib/use-home-inbox.test.tsx
+grep -q 'export function startLaunchWarmup' apps/mobile/lib/launch-warmup.ts
+grep -q 'export function launchState' apps/mobile/lib/launch-warmup.ts
+# It starts with the splash's own reads and the splash waits for it: the reads overlap instead of
+# following one another. The wait is capped so a store that never answers cannot hold the splash.
+grep -q 'const warm = trackMobileStartup("session", startLaunchWarmup(server.catch(() => undefined)));' \
+  apps/mobile/app/_layout.tsx
+if sed -n '/const firstFrame = Promise.all(/,/setReady(true)/p' apps/mobile/app/_layout.tsx \
+  | grep -qE 'Promise\.race\(\[warm,'; then :; else
+  echo "::error::the home screen's own reads no longer start with the splash's reads"
+  exit 1
+fi
+grep -q 'const LAUNCH_SEED_WAIT_MS' apps/mobile/app/_layout.tsx
+# The saved inbox is filed under the Space this device was last on, which the launch's server read
+# restores: an inbox read that does not wait for it reads another Space's copy or none.
+grep -q 'Promise.all(\[token, serverRead' apps/mobile/lib/launch-warmup.ts
+# The home screen draws that seed on its first frame instead of waiting behind the splash.
+grep -q 'const seed = launchState();' apps/mobile/app/index.tsx
+grep -q 'useHomeInbox(spaceActionRef, seed?.inbox ?? null)' apps/mobile/app/index.tsx
+grep -q 'useState(seed !== null)' apps/mobile/app/index.tsx
+grep -q 'seed ? seed.collapsed : undefined' apps/mobile/app/index.tsx
+grep -q 'seed: SavedInbox | null = null' apps/mobile/lib/use-home-inbox.ts
+grep -q 'useState<MobileBot\[\]>(seed?.bots ?? \[\])' apps/mobile/lib/use-home-inbox.ts
+grep -q 'seed === undefined ? null : (seed ?? { keys: new Set() })' apps/mobile/lib/use-collapsed-sections.ts
+# The scope the inbox needs is read once, its two Keychain entries together, and answered from
+# memory within the session; read in sequence they made the launch wait for their sum.
+grep -q 'if (verifiedScope?.generation === generation) return verifiedScope.value;' apps/mobile/lib/session.ts
+grep -q 'const \[token, stored\] = await Promise.all(\[' apps/mobile/lib/session.ts
+if sed -n '/export async function loadVerifiedIntegrationsScope/,/^}/p' apps/mobile/lib/session.ts \
+  | grep -qE 'await SecureStore.getItemAsync\(INTEGRATIONS_SCOPE_KEY\)'; then
+  echo "::error::the scope's two Keychain entries are read one after another again"
+  exit 1
+fi
+# A request asks for the bearer on every call; one session is one answer, and a caller that must
+# know what the store holds still reads it (`snapshotSessionToken`).
+grep -q 'let sessionTokenCache' apps/mobile/lib/session.ts
+grep -q 'if (cached?.generation === generation) return cached.value;' apps/mobile/lib/session.ts
 test -f apps/mobile/modules/message-image-actions/ios/MessageImageActionsModule.swift
 test -f apps/mobile/modules/message-image-actions/ios/MessageImageActions.podspec
 test -f apps/mobile/modules/message-image-actions/expo-module.config.json

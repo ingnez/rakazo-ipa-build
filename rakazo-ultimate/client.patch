@@ -3653,7 +3653,7 @@ index c938f4ead..725c94cff 100644
      addLabel: { color: native.label, fontSize: 17 },
      tile: {
 diff --git a/apps/mobile/app/_layout.tsx b/apps/mobile/app/_layout.tsx
-index e65118bfb..1360268f8 100644
+index e65118bfb..e6d6e319d 100644
 --- a/apps/mobile/app/_layout.tsx
 +++ b/apps/mobile/app/_layout.tsx
 @@ -24,10 +24,11 @@ import type { ReactNode } from "react";
@@ -3677,15 +3677,17 @@ index e65118bfb..1360268f8 100644
  import { loadAppearancePreference, mobileTokens } from "../lib/appearance";
  import { replaceWithSignIn } from "../lib/auth-routing";
  import { AvatarScreenFocus } from "../lib/avatar-life";
-@@ -57,6 +59,7 @@ import { installClientUpdates, watchForegroundUpdates } from "../lib/client-upda
+@@ -57,7 +59,9 @@ import { installClientUpdates, watchForegroundUpdates } from "../lib/client-upda
  import { loadHapticsPreference } from "../lib/haptics";
  import { bootstrapI18n } from "../lib/i18n";
  import { startIncomingCalls } from "../lib/incoming-calls";
 +import { useKeyboardLift } from "../lib/keyboard-lift";
  import { clearLastBot } from "../lib/last-bot";
++import { startLaunchWarmup } from "../lib/launch-warmup";
  import { loadLinkFavicon } from "../lib/link-favicons";
  import {
-@@ -67,6 +70,7 @@ import { OpenPageContext } from "../lib/message-mentions";
+   configureForegroundNotifications,
+@@ -67,6 +71,7 @@ import { OpenPageContext } from "../lib/message-mentions";
  import { setMobileMonitoringScreen } from "../lib/monitoring";
  import { native, useMobileTokens, useResolvedAppearance } from "../lib/native";
  import { useNotificationResponses } from "../lib/open-notification";
@@ -3693,7 +3695,7 @@ index e65118bfb..1360268f8 100644
  import { clearQueries } from "../lib/query";
  import { useReferral } from "../lib/referral";
  import {
-@@ -96,7 +100,6 @@ import {
+@@ -96,7 +101,6 @@ import {
    markMobileStartupMounted,
    trackMobileStartup,
  } from "../lib/startup";
@@ -3701,7 +3703,7 @@ index e65118bfb..1360268f8 100644
  import {
    loadTrustedLinkSites,
    trustLinkSite,
-@@ -106,8 +109,10 @@ import { startUnsentSends } from "../lib/unsent-sends";
+@@ -106,8 +110,10 @@ import { startUnsentSends } from "../lib/unsent-sends";
  import { startWorkActivities } from "../lib/work-activity";
  import { InboxPane } from "./index";
  
@@ -3714,7 +3716,14 @@ index e65118bfb..1360268f8 100644
  configureForegroundNotifications();
  registerSessionDiskCache(clearSavedChats);
  registerSessionDiskCache(clearQueries);
-@@ -123,6 +128,16 @@ const DIVIDER_GRAB_WIDTH = 24;
+@@ -120,9 +126,23 @@ registerSessionDiskCache(() => void clearAppBadge());
+ void SplashScreen.preventAutoHideAsync().catch(() => undefined);
+ 
+ const DIVIDER_GRAB_WIDTH = 24;
++// How long the splash may wait for the home screen's own reads. They are Keychain and disk reads
++// that answer in milliseconds; the cap is only so a store that never answers leaves the splash up
++// for a moment rather than forever, and the home then draws as it did before `v32`.
++const LAUNCH_SEED_WAIT_MS = 600;
  // Screens that take the whole window even when it is wide enough for the chat list beside them.
  const FULL_WINDOW_ROUTES = new Set(["/sign-in", "/server", "/image", "/computer", "/share"]);
  
@@ -3731,7 +3740,7 @@ index e65118bfb..1360268f8 100644
  /** On a wide window the chat list stays on the left and the stack shows the open chat beside it. */
  function SplitFrame({ children }: { children: ReactNode }) {
    const pathname = usePathname();
-@@ -358,34 +373,46 @@ function LayoutContent() {
+@@ -358,34 +378,54 @@ function LayoutContent() {
      return startWorkActivities();
    }, [ready]);
  
@@ -3759,12 +3768,20 @@ index e65118bfb..1360268f8 100644
 +    // the inbox width — shapes a detail inside a screen that is already up, so each is read behind
 +    // the first frame and applied by its own subscription when it lands. Waiting on all seven was
 +    // several Keychain reads deep before a single pixel appeared (`IMG_2997`).
++    const server = trackMobileStartup("server", loadApiBase());
++    const warm = trackMobileStartup("session", startLaunchWarmup(server.catch(() => undefined)));
 +    const firstFrame = Promise.all([
-+      trackMobileStartup("server", loadApiBase()),
++      server,
 +      trackMobileStartup("appearance", loadAppearancePreference()).finally(() =>
 +        setAppearanceReady(true),
 +      ),
 +      trackMobileStartup("language", bootstrapI18n()),
++      // The home screen's own state — session, activity mode, folded sections, the saved inbox —
++      // starts with the splash's reads and finishes before the splash goes, so the frame after it
++      // is the inbox instead of a spinner and a second wait (`IMG_2997`). The inbox read needs the
++      // Space this launch restores, which is why it waits on the server read above. The cap only
++      // matters for a store that never answers: the splash then goes as it did before `v32`.
++      Promise.race([warm, new Promise((resolve) => setTimeout(resolve, LAUNCH_SEED_WAIT_MS))]),
 +    ]).catch(() => undefined);
 +    void firstFrame.then(() => {
 +      setReady(true);
@@ -3798,7 +3815,7 @@ index e65118bfb..1360268f8 100644
    }, []);
  
    return (
-@@ -396,7 +423,7 @@ function LayoutContent() {
+@@ -396,7 +436,7 @@ function LayoutContent() {
              <ThemeProvider value={navigationTheme}>
                <StatusBar style={resolved === "light" ? "dark" : "light"} />
                <CallKeyboardContext.Provider value={call}>
@@ -3807,7 +3824,7 @@ index e65118bfb..1360268f8 100644
                    <SplitFrame>
                      <Stack
                        screenLayout={({ navigation, options, children }) => (
-@@ -422,20 +449,24 @@ function LayoutContent() {
+@@ -422,20 +462,24 @@ function LayoutContent() {
                          headerShadowVisible: false,
                          headerBackButtonDisplayMode: "minimal",
                          contentStyle: { backgroundColor: String(native.page) },
@@ -3840,7 +3857,7 @@ index e65118bfb..1360268f8 100644
                          }}
                        />
                        <Stack.Screen name="share" options={{ headerShown: false }} />
-@@ -452,12 +483,13 @@ function LayoutContent() {
+@@ -452,12 +496,13 @@ function LayoutContent() {
                          name="(settings)"
                          options={{
                            headerShown: false,
@@ -3860,7 +3877,7 @@ index e65118bfb..1360268f8 100644
                            contentStyle: { backgroundColor: native.groupedPage },
                          }}
                        />
-@@ -484,7 +516,11 @@ function LayoutContent() {
+@@ -484,7 +529,11 @@ function LayoutContent() {
                          name="new-bot"
                          options={{
                            title: t`New bot`,
@@ -3873,7 +3890,7 @@ index e65118bfb..1360268f8 100644
                            gestureEnabled: true,
                            headerBackVisible: false,
                          }}
-@@ -532,11 +568,13 @@ function LayoutContent() {
+@@ -532,11 +581,13 @@ function LayoutContent() {
                          name="page"
                          options={{
                            headerShown: false,
@@ -3891,7 +3908,7 @@ index e65118bfb..1360268f8 100644
                          }}
                        />
                        <Stack.Screen
-@@ -594,14 +632,15 @@ function LayoutContent() {
+@@ -594,14 +645,15 @@ function LayoutContent() {
                        />
                      </Stack>
                    </SplitFrame>
@@ -3909,7 +3926,7 @@ index e65118bfb..1360268f8 100644
                </CallKeyboardContext.Provider>
                <ComputerUpdateProgress />
                <MessageMenuHost />
-@@ -617,11 +656,14 @@ function LayoutContent() {
+@@ -617,11 +669,14 @@ function LayoutContent() {
    );
  }
  
@@ -4351,7 +4368,7 @@ index 6b8ea3a7c..070adc682 100644
      </SafeAreaProvider>
    );
 diff --git a/apps/mobile/app/index.tsx b/apps/mobile/app/index.tsx
-index 0a5db832f..ec5f30401 100644
+index 0a5db832f..8189870fb 100644
 --- a/apps/mobile/app/index.tsx
 +++ b/apps/mobile/app/index.tsx
 @@ -26,8 +26,12 @@ import {
@@ -4360,43 +4377,42 @@ index 0a5db832f..ec5f30401 100644
  import { useSafeAreaInsets } from "react-native-safe-area-context";
 +import { SoftErrorBoundary } from "../components/app-error-boundary";
  import { BotOrganizeModal } from "../components/bot-organize-modal";
-+import { HomeBottomBar, HOME_BOTTOM_BAR_HEIGHT } from "../components/home-bottom-bar";
++import { HOME_BOTTOM_BAR_HEIGHT, HomeBottomBar } from "../components/home-bottom-bar";
  import { HomeErrorState } from "../components/home-error-state";
 +import { HomeHero, homeHeroMenu } from "../components/home-hero";
 +import { HomeSearchSheet } from "../components/home-search-sheet";
  import { createHomeStyles } from "../components/home-styles";
  import { ActivitySection } from "../components/inbox-activity";
  import { InboxHeader } from "../components/inbox-header";
-@@ -35,6 +39,7 @@ import { InboxListFooter, SWIPE_ROWS, useInboxRenderItem } from "../components/i
- import { CompactRowsContext, SelectedChatContext } from "../components/inbox-rows";
+@@ -36,16 +40,21 @@ import { CompactRowsContext, SelectedChatContext } from "../components/inbox-row
  import { NativeInboxList } from "../components/native-inbox-list";
  import { OrganizationTitleMenu } from "../components/organization-menu";
-+import { useTextEditDialog } from "../components/profile-edit-dialog";
  import { PickChatPane } from "../components/pick-chat-pane";
++import { useTextEditDialog } from "../components/profile-edit-dialog";
  import { useUnreadJumpPills } from "../components/unread-jump-overlay";
- import { loadActivityMode, saveActivityMode } from "../lib/activity-mode";
-@@ -44,7 +49,9 @@ import { signOut } from "../lib/api-auth";
+-import { loadActivityMode, saveActivityMode } from "../lib/activity-mode";
++import { saveActivityMode } from "../lib/activity-mode";
+ import { readableGutters } from "../lib/adaptive-layout";
++import { useAfterFirstPaint } from "../lib/after-first-paint";
+ import { currentApiBase } from "../lib/api";
+ import { signOut } from "../lib/api-auth";
  import { selectSpace } from "../lib/api-server";
  import { forgetAppBadge, syncInboxAppBadge, unreadChatCount } from "../lib/app-badge";
- import { mobileTokens, resolveMobileAppearance } from "../lib/appearance";
 +import { useAppResume } from "../lib/app-foreground";
+ import { mobileTokens, resolveMobileAppearance } from "../lib/appearance";
  import { explicitSignInRoute } from "../lib/auth-routing";
-+import { shareBotTemplate } from "../lib/bot-template-share";
  import { AvatarViewportScope, createAvatarViewport } from "../lib/avatar-life";
++import { shareBotTemplate } from "../lib/bot-template-share";
++import { chatRpc } from "../lib/chat-rpc";
  import { useContentBottomInset } from "../lib/content-bottom-inset";
  import type { CreateAction } from "../lib/create-chooser";
-@@ -54,6 +61,7 @@ import { hapticImpact, hapticSelection } from "../lib/haptics";
- import { useUiLocale } from "../lib/i18n";
- import { onInboxChanged, onOpenChatFromInbox } from "../lib/inbox-changes";
- import { retainInboxValue } from "../lib/inbox-retention";
-+import { presentMessageActionSheet } from "../lib/message-action-sheet";
- import type { InboxItem, InboxSpace, PinnedChat } from "../lib/inbox-spaces";
- import {
-   canDeleteInboxSpace,
-@@ -70,6 +78,14 @@ import {
+ import { useHeaderHeightIfAny } from "../lib/floating-header";
+@@ -68,7 +77,17 @@ import {
+   spaceInboxItems,
+ } from "../lib/inbox-spaces";
  import { applyUnreadOverrides, withoutArchiving } from "../lib/inbox-swipe";
++import { launchState, startLaunchWarmup } from "../lib/launch-warmup";
  import { mobileLogoAvatarActivity } from "../lib/logo-avatar-activity";
- import type { MobileBot, MobileGroup } from "../lib/mobile-types";
 +import {
 +  getMainBotId,
 +  loadMainBot,
@@ -4405,20 +4421,24 @@ index 0a5db832f..ec5f30401 100644
 +  setMainBot,
 +  subscribeMainBot,
 +} from "../lib/main-bot";
++import { presentMessageActionSheet } from "../lib/message-action-sheet";
+ import type { MobileBot, MobileGroup } from "../lib/mobile-types";
  import { native, useThemedStyles } from "../lib/native";
  import { iosAtLeast } from "../lib/native-controls";
- import {
-@@ -82,6 +98,9 @@ import type { OrganizeTarget } from "../lib/organize-target";
+@@ -82,23 +101,24 @@ import type { OrganizeTarget } from "../lib/organize-target";
  import { findOrganizeTarget } from "../lib/organize-target";
  import { offerPasskeyOnce } from "../lib/passkey";
  import { INBOX_POLL_INTERVAL_MS, INBOX_SIGNALLED_POLL_INTERVAL_MS } from "../lib/poll-cadence";
-+import { chatRpc } from "../lib/chat-rpc";
-+import { useAfterFirstPaint } from "../lib/after-first-paint";
 +import { allowPreloadAfterFirstPaint, inboxChats, preloadChats } from "../lib/preload-chats";
  import { registerPushToken } from "../lib/push";
- import { hasSignedInBefore, rememberSignedIn } from "../lib/returning-user";
+-import { hasSignedInBefore, rememberSignedIn } from "../lib/returning-user";
++import { rememberSignedIn } from "../lib/returning-user";
  import { useRosterSignals } from "../lib/roster-signals";
-@@ -93,12 +112,13 @@ import {
+ import { loadSavedInbox } from "../lib/saved-chats";
+ import {
+   currentReadySessionGeneration,
+   currentSessionGeneration,
+-  loadSessionToken,
    subscribeSessionGeneration,
  } from "../lib/session";
  import { useSplitView } from "../lib/split-view";
@@ -4433,7 +4453,7 @@ index 0a5db832f..ec5f30401 100644
  import { useInboxDay } from "../lib/use-inbox-day";
  import { usePublishSearchInbox } from "../lib/use-publish-search-inbox";
  import { useSnoozeClock } from "../lib/use-snooze-clock";
-@@ -158,7 +178,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -158,10 +178,14 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
    const tokens = mobileTokens();
    const appearance = resolveMobileAppearance();
    const styles = useThemedStyles(createHomeStyles);
@@ -4442,18 +4462,49 @@ index 0a5db832f..ec5f30401 100644
    const locale = useUiLocale();
    const isFocused = useIsFocused();
    const day = useInboxDay();
-@@ -198,10 +218,27 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
++  // What the launch read beside the splash before this screen opened. It is what the first frame
++  // is drawn with: without it the screen shows an ActivityIndicator until a Keychain read and a
++  // disk read land after the logo is gone (`IMG_2997`).
++  const seed = launchState();
+   const spaceActionRef = useRef<{ busy: boolean; recoveryId: string | null }>({
+     busy: false,
+     recoveryId: null,
+@@ -187,27 +211,49 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+     inboxLoaded,
+     loadBots,
+     refreshBots,
+-  } = useHomeInbox(spaceActionRef);
+-  const [sessionLoaded, setSessionLoaded] = useState(false);
+-  const [hasSession, setHasSession] = useState(false);
+-  const [returningUser, setReturningUser] = useState(false);
++  } = useHomeInbox(spaceActionRef, seed?.inbox ?? null);
++  const [sessionLoaded, setSessionLoaded] = useState(seed !== null);
++  const [hasSession, setHasSession] = useState(Boolean(seed?.token));
++  const [returningUser, setReturningUser] = useState(Boolean(seed?.returningUser));
+   const [organizeTarget, setOrganizeTarget] = useState<OrganizeTarget | null>(null);
+   const organizeRequestId = useRef(0);
+-  const [activityMode, setActivityMode] = useState(false);
+-  const [activityModeLoaded, setActivityModeLoaded] = useState(false);
++  const [activityMode, setActivityMode] = useState(Boolean(seed?.activityMode));
++  const [activityModeLoaded, setActivityModeLoaded] = useState(seed !== null);
    const [spaceBusy, setSpaceBusy] = useState(false);
    const [spaceRecoveryId, setSpaceRecoveryId] = useState<string | null>(null);
    const userId = me?.userId;
+-  const { collapsed, toggleCollapsed, loaded: collapsedLoaded } = useCollapsedSections(userId);
 +  // The bot the home screen centres: chosen by long press, or the first chat on this device.
 +  const mainBotId = useSyncExternalStore(subscribeMainBot, getMainBotId, getMainBotId);
 +  const spaceIdForMainBot = me?.spaceId;
-   const { collapsed, toggleCollapsed, loaded: collapsedLoaded } = useCollapsedSections(userId);
++  const {
++    collapsed,
++    toggleCollapsed,
++    loaded: collapsedLoaded,
++  } = useCollapsedSections(userId, seed ? seed.collapsed : undefined);
    // Collapsed sections and the view load before the inbox first renders, so neither jumps on launch.
    const ready = sessionLoaded && collapsedLoaded && activityModeLoaded;
  
-+  useEffect(() => {
+   useEffect(() => {
+-    void loadActivityMode().then((on) => {
+-      setActivityMode(on);
 +    if (!userId || !spaceIdForMainBot) return;
 +    void loadMainBot(userId, spaceIdForMainBot);
 +  }, [userId, spaceIdForMainBot]);
@@ -4467,10 +4518,65 @@ index 0a5db832f..ec5f30401 100644
 +    void setMainBot(userId, spaceIdForMainBot, rosterMainBotId);
 +  }, [rosterMainBotId, spaceIdForMainBot, userId]);
 +
++  useEffect(() => {
++    if (activityModeLoaded) return;
++    void startLaunchWarmup().then((state) => {
++      setActivityMode(state.activityMode);
+       setActivityModeLoaded(true);
+     });
+-  }, []);
++  }, [activityModeLoaded]);
+ 
+   // Only while the inbox is in front, so the offer waits until signup setup is done.
+   useFocusEffect(
+@@ -237,26 +283,38 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+     return () => subscription.remove();
+   }, []);
+ 
++  // Only when this screen opened before the launch's own read settled; it joins that read rather
++  // than starting a second one.
    useEffect(() => {
-     void loadActivityMode().then((on) => {
-       setActivityMode(on);
-@@ -278,6 +315,13 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+-    void Promise.all([loadSessionToken(), hasSignedInBefore()]).then(([token, before]) => {
+-      // Sessions saved before this mark existed are recorded on their first open.
+-      if (token) void rememberSignedIn();
+-      setHasSession(Boolean(token));
+-      setReturningUser(before);
++    if (sessionLoaded) return;
++    let active = true;
++    void startLaunchWarmup().then((state) => {
++      if (!active) return;
++      setHasSession(Boolean(state.token));
++      setReturningUser(state.returningUser);
+       setSessionLoaded(true);
+     });
+-  }, []);
++    return () => {
++      active = false;
++    };
++  }, [sessionLoaded]);
++
++  useEffect(() => {
++    // Sessions saved before this mark existed are recorded on their first open.
++    if (hasSession) void rememberSignedIn();
++  }, [hasSession]);
+ 
+   useEffect(() => {
+     if (!hasSession || onShareSelect) return;
+     void registerPushToken().catch(() => undefined);
+   }, [hasSession, onShareSelect]);
+ 
+-  // Show the inbox saved on this device until the first live load replaces it.
++  // Show the inbox saved on this device until the first live load replaces it. The launch already
++  // read it; a launch with no session read none, and this asks again once one signs in.
+   useEffect(() => {
+     if (!hasSession) return;
+     let cancelled = false;
+-    void loadSavedInbox().then((saved) => {
++    void startLaunchWarmup().then(({ inbox: saved }) => {
+       if (cancelled || !saved || inboxLoaded.current) return;
+       setBots(saved.bots);
+       setBotSections(saved.botSections);
+@@ -278,6 +336,13 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
      rosterSignalsLive ? INBOX_SIGNALLED_POLL_INTERVAL_MS : INBOX_POLL_INTERVAL_MS,
      inboxShown,
    );
@@ -4484,7 +4590,7 @@ index 0a5db832f..ec5f30401 100644
    useEffect(() => onInboxChanged(() => void refreshBots().catch(() => undefined)), [refreshBots]);
  
    const archivedCount = useArchivedCount(me?.spaceId, hasSession);
-@@ -318,6 +362,12 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -318,6 +383,12 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
        withoutArchiving("group", applyUnreadOverrides("group", groups, unreadOverrides), archiving),
      [groups, unreadOverrides, archiving],
    );
@@ -4497,7 +4603,7 @@ index 0a5db832f..ec5f30401 100644
    const shownSpaces = useMemo(
      () =>
        archiving.size === 0
-@@ -334,7 +384,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -334,7 +405,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
        shownSpaces.length > 0
          ? shownSpaces.map((space) =>
              space.id === me?.spaceId
@@ -4506,7 +4612,7 @@ index 0a5db832f..ec5f30401 100644
                : space,
            )
          : me
-@@ -344,21 +394,29 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -344,21 +415,29 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
                  name: t`Personal`,
                  isDefault: true,
                  hasContent: true,
@@ -4539,7 +4645,7 @@ index 0a5db832f..ec5f30401 100644
    const spaceSections = retainInboxValue(
      keptSections,
      inboxSpaces.map(({ id, botSections }) => ({ id, botSections })),
-@@ -378,7 +436,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -378,7 +457,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
      // Android pins sit above the list; iOS keeps rows with native swipe and context menus.
      const otherSpaces = shownSpaces.filter((space) => space.id !== me?.spaceId);
      const pinned: PinnedChat[] = [
@@ -4548,7 +4654,7 @@ index 0a5db832f..ec5f30401 100644
          .filter((bot) => bot.pinned && !chatSnoozed(bot, snoozeNow))
          .map((bot) => ({ kind: "bot" as const, bot })),
        ...[...visibleGroups, ...otherSpaces.flatMap((space) => space.groups)]
-@@ -400,17 +458,30 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -400,17 +479,30 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
      collapsed,
      me?.spaceId,
      shownSpaces,
@@ -4582,7 +4688,7 @@ index 0a5db832f..ec5f30401 100644
            groups: space.groups.filter((group) => !chatSnoozed(group, snoozeNow)),
          })),
        )
-@@ -472,7 +543,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -472,7 +564,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
      listRef,
      // The Liquid Glass header floats over the list; the older header sits above it.
      topInset: nativeHeader ? headerHeight : 0,
@@ -4591,7 +4697,7 @@ index 0a5db832f..ec5f30401 100644
    });
    const router = useRouter();
    const pathname = usePathname();
-@@ -641,9 +712,10 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -641,9 +733,10 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
    const runCreateAction = useCallback(
      (action: CreateAction) => {
        if (action === "bot") newBot();
@@ -4603,7 +4709,7 @@ index 0a5db832f..ec5f30401 100644
    );
  
    const organizations = useOrganizations(hasSession && !onShareSelect).data;
-@@ -655,11 +727,11 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -655,11 +748,11 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
  
    useHomeHeader({
      nativeHeader,
@@ -4617,7 +4723,7 @@ index 0a5db832f..ec5f30401 100644
      runCreateAction,
      headerTitle,
    });
-@@ -667,6 +739,8 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -667,6 +760,8 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
    const openBot = useCallback(
      (bot: MobileBot | SpaceBot) => {
        if (spaceActionRef.current.busy || spaceActionRef.current.recoveryId) return;
@@ -4626,7 +4732,7 @@ index 0a5db832f..ec5f30401 100644
        void openMobileSpace(bot.spaceId, () => {
          if (onShareSelect) onShareSelect(bot);
          else openChat({ pathname: "/thread", params: { botId: bot.id, name: bot.name } });
-@@ -674,6 +748,49 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -674,6 +769,49 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
      },
      [openChat, onShareSelect],
    );
@@ -4676,7 +4782,7 @@ index 0a5db832f..ec5f30401 100644
    const openGroup = useCallback(
      (group: MobileGroup | SpaceGroup) => {
        if (spaceActionRef.current.busy || spaceActionRef.current.recoveryId) return;
-@@ -728,6 +845,21 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -728,6 +866,21 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
    const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: ListViewToken[] }) =>
      avatarViewport.update(viewableItems.map((token) => token.key)),
    ).current;
@@ -4698,7 +4804,7 @@ index 0a5db832f..ec5f30401 100644
    const renderItem = useInboxRenderItem({
      appearance,
      botAction,
-@@ -737,6 +869,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -737,6 +890,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
      day,
      now: snoozeNow,
      deleteSection,
@@ -4706,7 +4812,7 @@ index 0a5db832f..ec5f30401 100644
      editSectionFromMenu,
      groupAction,
      spaceId: me?.spaceId,
-@@ -751,6 +884,10 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -751,6 +905,10 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
      sharing: !!onShareSelect,
      spaces: spaceSections,
      toggleCollapsed,
@@ -4717,7 +4823,7 @@ index 0a5db832f..ec5f30401 100644
    });
  
    if (!ready) {
-@@ -770,9 +907,34 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -770,9 +928,34 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
    const activityView = !onShareSelect && activityMode && Boolean(userId);
    const showActivity = activityView && !showLoadFailure;
    const rows = activityView || showLoadFailure ? [] : listData;
@@ -4753,7 +4859,7 @@ index 0a5db832f..ec5f30401 100644
        {inlineError ? <Text style={styles.error}>{inlineError}</Text> : null}
        {spaceRecoveryId ? (
          <Pressable
-@@ -830,6 +992,11 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -830,6 +1013,11 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
    const refreshInbox = async () => {
      await Promise.all([refreshBots(), loadActivity()]);
    };
@@ -4765,7 +4871,7 @@ index 0a5db832f..ec5f30401 100644
  
    return (
      <View style={styles.screen}>
-@@ -837,8 +1004,6 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -837,8 +1025,6 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
          <InboxHeader
            embedded={embedded}
            initials={initials}
@@ -4774,7 +4880,7 @@ index 0a5db832f..ec5f30401 100644
            runCreateAction={runCreateAction}
            columnInsets={columnInsets}
            title={headerTitle?.()}
-@@ -860,6 +1025,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -860,6 +1046,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
                      (!onShareSelect && (item.type === "bot" || item.type === "group"))
                    }
                    header={hasListHeader ? listHeader : null}
@@ -4782,7 +4888,7 @@ index 0a5db832f..ec5f30401 100644
                    empty={listEmpty}
                    footer={listFooter}
                    gutters={{
-@@ -871,6 +1037,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -871,6 +1058,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
                    onRefresh={refreshInbox}
                    signals={jumpSignals}
                    showJumpPills={!onShareSelect && !refreshing && !inboxHasNoChats(rows)}
@@ -4790,7 +4896,7 @@ index 0a5db832f..ec5f30401 100644
                  />
                ) : (
                  <FlatList<InboxItem>
-@@ -887,7 +1054,11 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -887,7 +1075,11 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
                    indicatorStyle={appearance === "dark" ? "white" : "black"}
                    contentContainerStyle={[
                      styles.list,
@@ -4803,7 +4909,7 @@ index 0a5db832f..ec5f30401 100644
                    ]}
                    contentInsetAdjustmentBehavior="automatic"
                    refreshControl={
-@@ -915,6 +1086,15 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -915,6 +1107,15 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
            </View>
          </CompactRowsContext.Provider>
        </SelectedChatContext.Provider>
@@ -4819,7 +4925,7 @@ index 0a5db832f..ec5f30401 100644
        {organizeChat && organizeTarget ? (
          <BotOrganizeModal
            bot={organizeChat}
-@@ -938,6 +1118,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
+@@ -938,6 +1139,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
            }}
          />
        ) : null}
@@ -149240,6 +149346,243 @@ index 000000000..c6a942e8a
 +    release: () => undefined,
 +  };
 +}
+diff --git a/apps/mobile/lib/launch-warmup.test.ts b/apps/mobile/lib/launch-warmup.test.ts
+new file mode 100644
+index 000000000..dbd71ccd2
+--- /dev/null
++++ b/apps/mobile/lib/launch-warmup.test.ts
+@@ -0,0 +1,148 @@
++import { beforeEach, expect, it, vi } from "vitest";
++
++const state = vi.hoisted(() => ({
++  generation: 1,
++  token: "fake-token",
++  returningUser: true,
++  activityMode: false,
++  collapsed: null as { userId?: string; keys: ReadonlySet<string> } | null,
++  inbox: null as { bots: Array<{ id: string }> } | null,
++  reads: [] as string[],
++  serverSettled: false,
++}));
++
++vi.mock("./session", () => ({
++  currentSessionGeneration: () => state.generation,
++  loadSessionToken: async () => {
++    state.reads.push("token");
++    return state.token;
++  },
++}));
++vi.mock("./returning-user", () => ({
++  hasSignedInBefore: async () => {
++    state.reads.push("returning");
++    return state.returningUser;
++  },
++}));
++vi.mock("./activity-mode", () => ({
++  loadActivityMode: async () => {
++    state.reads.push("activity");
++    return state.activityMode;
++  },
++}));
++vi.mock("./collapsed-sections", () => ({
++  loadCollapsedSections: async () => {
++    state.reads.push("collapsed");
++    return state.collapsed;
++  },
++}));
++vi.mock("./saved-chats", () => ({
++  loadSavedInbox: async () => {
++    state.reads.push(`inbox:${state.serverSettled ? "after-server" : "before-server"}`);
++    return state.inbox;
++  },
++}));
++
++/** A fresh launch: the module keeps its seed per process, as the app does. */
++async function launch() {
++  vi.resetModules();
++  return import("./launch-warmup.js");
++}
++
++function tick() {
++  return new Promise((resolve) => setTimeout(resolve, 0));
++}
++
++beforeEach(() => {
++  state.generation = 1;
++  state.token = "fake-token";
++  state.returningUser = true;
++  state.activityMode = false;
++  state.collapsed = null;
++  state.inbox = { bots: [{ id: "bot-a" }] };
++  state.reads = [];
++  state.serverSettled = false;
++});
++
++it("reads the home screen's own state in one wave, before the splash is gone", async () => {
++  const { launchState, startLaunchWarmup } = await launch();
++  let releaseServer!: () => void;
++  const server = new Promise<void>((resolve) => {
++    releaseServer = () => {
++      state.serverSettled = true;
++      resolve();
++    };
++  });
++  const warm = startLaunchWarmup(server);
++
++  // Nothing is drawn from a seed before the reads land.
++  expect(launchState()).toBeNull();
++
++  await tick();
++  // The saved inbox is filed under the Space the launch restores, so it waits for the server read
++  // instead of reading another Space's copy or none.
++  expect(state.reads).toEqual(
++    expect.arrayContaining(["token", "returning", "activity", "collapsed"]),
++  );
++  expect(state.reads.some((read) => read.startsWith("inbox"))).toBe(false);
++
++  releaseServer();
++  await expect(warm).resolves.toEqual({
++    generation: 1,
++    token: "fake-token",
++    returningUser: true,
++    activityMode: false,
++    collapsed: null,
++    inbox: { bots: [{ id: "bot-a" }] },
++  });
++  expect(state.reads).toContain("inbox:after-server");
++  // The home screen's first frame draws this, with no second wait.
++  expect(launchState()).toMatchObject({ token: "fake-token", inbox: { bots: [{ id: "bot-a" }] } });
++});
++
++it("starts each read once and joins the read already running", async () => {
++  const { startLaunchWarmup } = await launch();
++  const first = startLaunchWarmup(Promise.resolve());
++  const second = startLaunchWarmup();
++  expect(second).toBe(first);
++
++  await first;
++  expect(state.reads.filter((read) => read === "token")).toHaveLength(1);
++  expect(state.reads.filter((read) => read.startsWith("inbox"))).toHaveLength(1);
++});
++
++it("reads no saved inbox for a signed-out launch", async () => {
++  state.token = "";
++  state.inbox = null;
++  const { startLaunchWarmup } = await launch();
++
++  await expect(startLaunchWarmup(Promise.resolve())).resolves.toMatchObject({
++    token: "",
++    inbox: null,
++  });
++  expect(state.reads.some((read) => read.startsWith("inbox"))).toBe(false);
++});
++
++it("does not hand one session's seed to the next", async () => {
++  const warmup = await launch();
++  await warmup.startLaunchWarmup(Promise.resolve());
++  expect(warmup.launchState()).not.toBeNull();
++
++  // Signing in, signing out or switching servers is a new session generation.
++  state.generation = 2;
++  state.token = "other-token";
++  state.inbox = null;
++  expect(warmup.launchState()).toBeNull();
++
++  const next = warmup.startLaunchWarmup();
++  await expect(next).resolves.toMatchObject({ generation: 2, token: "other-token" });
++  expect(warmup.launchState()).toMatchObject({ generation: 2, token: "other-token" });
++});
++
++it("keeps a failing read from holding the first frame", async () => {
++  const { launchState, startLaunchWarmup } = await launch();
++  const failing = Promise.reject(new Error("server read failed"));
++
++  await expect(startLaunchWarmup(failing)).resolves.toMatchObject({ token: "fake-token" });
++  expect(launchState()).not.toBeNull();
++});
+diff --git a/apps/mobile/lib/launch-warmup.ts b/apps/mobile/lib/launch-warmup.ts
+new file mode 100644
+index 000000000..04d5ea1e5
+--- /dev/null
++++ b/apps/mobile/lib/launch-warmup.ts
+@@ -0,0 +1,77 @@
++import { loadActivityMode } from "./activity-mode";
++import type { CollapsedSections } from "./collapsed-sections";
++import { loadCollapsedSections } from "./collapsed-sections";
++import { hasSignedInBefore } from "./returning-user";
++import type { SavedInbox } from "./saved-chats";
++import { loadSavedInbox } from "./saved-chats";
++import { currentSessionGeneration, loadSessionToken } from "./session";
++
++/**
++ * Everything the home screen needs before it can draw itself, read once per launch.
++ *
++ * These reads used to start only after the native splash was gone: the home screen mounted, drew an
++ * ActivityIndicator, and waited for the session token, the returning-user mark and the activity
++ * mode, and only then for the saved inbox — whose own read queued two Keychain entries before it
++ * could touch the disk. The person saw three waits in a row: the black logo, a spinner, and the
++ * chats (`IMG_2997`, and the report after `v31` that the home screen was no faster).
++ *
++ * The launch starts them beside the splash's own reads instead, one wave, so the splash waits for
++ * the slowest read rather than for the sum, and the first frame after it is the inbox itself. What
++ * one session read is never handed to another: a sign-in, a sign-out or a server switch during the
++ * read bumps the session generation, and `launchState` answers only for the generation it read.
++ */
++export type LaunchState = {
++  generation: number;
++  /** The saved session token; empty when signed out or when the store could not be read. */
++  token: string;
++  returningUser: boolean;
++  activityMode: boolean;
++  collapsed: CollapsedSections | null;
++  inbox: SavedInbox | null;
++};
++
++/** The launch's own server read; the Space it restores is what files the saved inbox. */
++let serverRead: Promise<unknown> = Promise.resolve();
++let warming: { generation: number; state: Promise<LaunchState> } | null = null;
++let settled: LaunchState | null = null;
++
++/**
++ * Starts this launch's read, or joins the one already running. `server` is the launch's server
++ * read (`loadApiBase`): it restores the Space this device was last on, and the saved inbox is filed
++ * under that Space, so the inbox waits for it rather than reading the wrong one or none.
++ */
++export function startLaunchWarmup(server?: Promise<unknown>): Promise<LaunchState> {
++  if (server) serverRead = server;
++  const generation = currentSessionGeneration();
++  if (warming?.generation === generation) return warming.state;
++  const token = loadSessionToken().catch(() => "");
++  const returningUser = hasSignedInBefore().catch(() => false);
++  const activityMode = loadActivityMode().catch(() => false);
++  const collapsed = loadCollapsedSections().catch(() => null);
++  const inbox = Promise.all([token, serverRead.catch(() => undefined)]).then(([value]) =>
++    value ? loadSavedInbox().catch(() => null) : null,
++  );
++  const state = Promise.all([token, returningUser, activityMode, collapsed, inbox]).then(
++    ([token, returningUser, activityMode, collapsed, inbox]) => {
++      const next: LaunchState = {
++        generation,
++        token,
++        returningUser,
++        activityMode,
++        collapsed,
++        inbox,
++      };
++      // A session change during the read owns what comes next; this seed belongs to the session
++      // that asked for it and must not be drawn for another.
++      if (generation === currentSessionGeneration()) settled = next;
++      return next;
++    },
++  );
++  warming = { generation, state };
++  return state;
++}
++
++/** What this launch already read, for a home screen drawing its first frame after the splash. */
++export function launchState(): LaunchState | null {
++  return settled?.generation === currentSessionGeneration() ? settled : null;
++}
 diff --git a/apps/mobile/lib/ledger-store.ts b/apps/mobile/lib/ledger-store.ts
 new file mode 100644
 index 000000000..c5e089fe8
@@ -155843,6 +156186,233 @@ index 48ae0ca43..74e01d4bb 100644
 +  expect(labels).toContain("http://10.0.0.8");
 +  expect(labels).toContain("10.0.0.8");
 +});
+diff --git a/apps/mobile/lib/session.test.ts b/apps/mobile/lib/session.test.ts
+index f1d81b4f2..e090bc598 100644
+--- a/apps/mobile/lib/session.test.ts
++++ b/apps/mobile/lib/session.test.ts
+@@ -173,10 +173,11 @@ describe("mobile session storage", () => {
+   });
+ 
+   it("returns an empty token when secure storage is empty or unavailable", async () => {
+-    vi.mocked(SecureStore.getItemAsync).mockResolvedValueOnce(null);
++    // An unreadable store is not remembered as an empty session: the next read asks again.
++    vi.mocked(SecureStore.getItemAsync).mockRejectedValueOnce(new Error("device locked"));
+     await expect(loadSessionToken()).resolves.toBe("");
+ 
+-    vi.mocked(SecureStore.getItemAsync).mockRejectedValueOnce(new Error("device locked"));
++    vi.mocked(SecureStore.getItemAsync).mockResolvedValueOnce(null);
+     await expect(loadSessionToken()).resolves.toBe("");
+ 
+     expect(SecureStore.getItemAsync).toHaveBeenCalledTimes(2);
+@@ -184,6 +185,25 @@ describe("mobile session storage", () => {
+     expect(SecureStore.getItemAsync).toHaveBeenNthCalledWith(2, "rakazo.session_token");
+   });
+ 
++  it("reads the token once per session, so no request waits on the Keychain", async () => {
++    vi.mocked(SecureStore.getItemAsync).mockResolvedValue("secret-token");
++    await saveSessionToken("secret-token");
++    vi.mocked(SecureStore.getItemAsync).mockClear();
++
++    await expect(loadSessionToken()).resolves.toBe("secret-token");
++    await expect(loadSessionToken()).resolves.toBe("secret-token");
++    expect(SecureStore.getItemAsync).toHaveBeenCalledOnce();
++
++    // A caller that must know what the store holds still asks it.
++    await expect(snapshotSessionToken()).resolves.toEqual({ ok: true, value: "secret-token" });
++    expect(SecureStore.getItemAsync).toHaveBeenCalledTimes(2);
++
++    // Another session is another answer, read from the store again.
++    await saveSessionToken("other-token");
++    await expect(loadSessionToken()).resolves.toBe("secret-token");
++    expect(SecureStore.getItemAsync).toHaveBeenCalledTimes(3);
++  });
++
+   it("restores the active session in memory when persistence is unavailable", async () => {
+     vi.mocked(SecureStore.setItemAsync).mockRejectedValue(new Error("device locked"));
+ 
+@@ -450,6 +470,11 @@ describe("verified integration session scope", () => {
+     spaceId: "space-a",
+     selectionId: "space-a",
+   };
++  /** This launch again: what the app is like after it was killed and opened. */
++  async function freshSession() {
++    vi.resetModules();
++    return import("./session.js");
++  }
+   let disk: Map<string, string>;
+   beforeEach(async () => {
+     disk = new Map();
+@@ -466,9 +491,33 @@ describe("verified integration session scope", () => {
+   it("loads the scope only for the exact stored session", async () => {
+     await saveVerifiedIntegrationsScope(currentSessionGeneration(), scope);
+     expect(await loadVerifiedIntegrationsScope()).toEqual(scope);
+-    disk.set("rakazo.session_token", "fake-session-b");
++    // A replacement session is not the one this record was verified against.
++    await saveSessionToken("fake-session-b");
+     expect(await loadVerifiedIntegrationsScope()).toBeNull();
+   });
++  it("reads the token and its record together, then answers from memory", async () => {
++    await saveVerifiedIntegrationsScope(currentSessionGeneration(), scope);
++    // This launch has nothing in memory yet, so both entries are read here.
++    const next = await freshSession();
++    let inFlight = 0;
++    let most = 0;
++    vi.mocked(SecureStore.getItemAsync).mockImplementation(async (key) => {
++      inFlight += 1;
++      most = Math.max(most, inFlight);
++      await new Promise((resolve) => setTimeout(resolve, 5));
++      inFlight -= 1;
++      return disk.get(key) ?? null;
++    });
++
++    expect(await next.loadVerifiedIntegrationsScope()).toEqual(scope);
++    // Read one after the other, the launch waited for their sum (`IMG_2997`).
++    expect(most).toBeGreaterThanOrEqual(2);
++    const reads = vi.mocked(SecureStore.getItemAsync).mock.calls.length;
++
++    // The same session's answer is the same answer; the inbox asks on every list change.
++    expect(await next.loadVerifiedIntegrationsScope()).toEqual(scope);
++    expect(vi.mocked(SecureStore.getItemAsync).mock.calls.length).toBe(reads);
++  });
+   it.each(["sign-out", "replacement", "restore"])("invalidates the scope on %s", async (change) => {
+     await saveVerifiedIntegrationsScope(currentSessionGeneration(), scope);
+     if (change === "sign-out") await clearSessionToken();
+@@ -504,6 +553,8 @@ describe("verified integration session scope", () => {
+   it("treats malformed stored scopes as misses", async () => {
+     await saveVerifiedIntegrationsScope(currentSessionGeneration(), scope);
+     disk.set("rakazo.integrations-scope", "{");
+-    expect(await loadVerifiedIntegrationsScope()).toBeNull();
++    // A record written by an earlier process is read afresh and rejected.
++    const next = await freshSession();
++    expect(await next.loadVerifiedIntegrationsScope()).toBeNull();
+   });
+ });
+diff --git a/apps/mobile/lib/session.ts b/apps/mobile/lib/session.ts
+index 6d9104aeb..235df4186 100644
+--- a/apps/mobile/lib/session.ts
++++ b/apps/mobile/lib/session.ts
+@@ -22,6 +22,13 @@ export type VerifiedIntegrationsScope = {
+ let scopeInvalidated = false;
+ let scopeWrites: Promise<void> = Promise.resolve();
+ 
++/**
++ * The scope this session already verified, keyed by the generation that verified it. The inbox asks
++ * for it on every list change, and each answer used to cost two Keychain reads; a generation's
++ * scope is the same answer until a write, a wipe or a new session says otherwise.
++ */
++let verifiedScope: { generation: number; value: VerifiedIntegrationsScope } | null = null;
++
+ function enqueueScopeWrite<T>(task: () => Promise<T>): Promise<T> {
+   const next = scopeWrites.then(task, task);
+   scopeWrites = next.then(
+@@ -51,6 +58,7 @@ function invalidateSessionCaches(
+   rejectedUnsent = false,
+ ): Promise<void> {
+   scopeInvalidated = true;
++  verifiedScope = null;
+   if (!keepUnsent && !rejectedUnsent) clearFailedSends();
+   clearNetworkCache();
+   // Another account must never see, or share, the previous owner's invite link.
+@@ -81,9 +89,14 @@ function invalidateSessionCaches(
+ export async function loadVerifiedIntegrationsScope(): Promise<VerifiedIntegrationsScope | null> {
+   const generation = sessionGeneration;
+   if (scopeInvalidated) return null;
++  if (verifiedScope?.generation === generation) return verifiedScope.value;
+   try {
+-    const token = await snapshotSessionToken();
+-    const stored = await SecureStore.getItemAsync(INTEGRATIONS_SCOPE_KEY);
++    // The token and the record that must carry it are two independent Keychain entries; read at
++    // once, the answer waits for the slower one instead of their sum (`IMG_2997`).
++    const [token, stored] = await Promise.all([
++      snapshotSessionToken(),
++      SecureStore.getItemAsync(INTEGRATIONS_SCOPE_KEY),
++    ]);
+     if (
+       !token.ok ||
+       !token.value ||
+@@ -104,12 +117,15 @@ export async function loadVerifiedIntegrationsScope(): Promise<VerifiedIntegrati
+       !(data.selectionId === null || typeof data.selectionId === "string")
+     )
+       return null;
+-    return {
++    const value = {
+       apiBase: data.apiBase,
+       userId: data.userId,
+       spaceId: data.spaceId,
+       selectionId: data.selectionId,
+     };
++    if (generation === sessionGeneration && !scopeInvalidated)
++      verifiedScope = { generation, value };
++    return value;
+   } catch {
+     return null;
+   }
+@@ -119,6 +135,8 @@ export async function saveVerifiedIntegrationsScope(
+   generation: number,
+   scope: VerifiedIntegrationsScope,
+ ): Promise<void> {
++  // Until this write lands the stored record is the old one, so no read may answer from memory.
++  verifiedScope = null;
+   // The launch's first token read queues its recovery write, so it cannot run inside the queue.
+   if (!(await snapshotSessionToken()).ok) return;
+   return enqueueScopeWrite(async () => {
+@@ -130,7 +148,10 @@ export async function saveVerifiedIntegrationsScope(
+         INTEGRATIONS_SCOPE_KEY,
+         JSON.stringify({ ...scope, token: token.value }),
+       );
+-      if (generation === sessionGeneration) scopeInvalidated = false;
++      if (generation === sessionGeneration) {
++        scopeInvalidated = false;
++        verifiedScope = { generation, value: scope };
++      }
+     } catch {
+       // Verified scope persistence is optional.
+     }
+@@ -140,6 +161,14 @@ export async function saveVerifiedIntegrationsScope(
+ /** In-memory gate so a failed SecureStore wipe cannot keep sending the old bearer. */
+ let sessionInvalidated = false;
+ let sessionFallback: string | undefined;
++/**
++ * The token this generation last read for its requests. Every request attaches the bearer, so a
++ * Keychain read sat in front of each of them; one generation's token is one answer, and every path
++ * that stores, clears or replaces a token bumps the generation before it writes. Only
++ * `loadSessionToken` answers from here: a caller that must know what the store itself holds
++ * (signing out, switching servers, revoking) reads it with `snapshotSessionToken`.
++ */
++let sessionTokenCache: { generation: number; value: string } | null = null;
+ /** Bumped by every session change, so a late response can tell it no longer owns the session. */
+ let sessionGeneration = 0;
+ 
+@@ -181,8 +210,16 @@ export function sessionOnlyInMemory() {
+ }
+ 
+ export async function loadSessionToken() {
++  const generation = sessionGeneration;
++  const cached = sessionTokenCache;
++  if (cached?.generation === generation) return cached.value;
+   const snapshot = await snapshotSessionToken();
+-  return snapshot.ok ? snapshot.value : "";
++  if (!snapshot.ok) return "";
++  // Only a signed-in session is remembered: an empty read costs nothing to repeat, and a store
++  // that starts answering again must not be masked by it.
++  if (generation === sessionGeneration && snapshot.value)
++    sessionTokenCache = { generation, value: snapshot.value };
++  return snapshot.value;
+ }
+ 
+ export async function saveSessionToken(token: string) {
+@@ -390,7 +427,10 @@ async function recoverRotatedToken(): Promise<boolean> {
+ /** Writes the token unless another session change started; that change then owns the store. */
+ function saveRotatedToken(generation: number, token: string): Promise<void> {
+   return enqueueScopeWrite(async () => {
+-    if (generation === sessionGeneration) await SecureStore.setItemAsync(SESSION_KEY, token);
++    if (generation !== sessionGeneration) return;
++    await SecureStore.setItemAsync(SESSION_KEY, token);
++    // The store now holds another token without a new generation; memory follows the store.
++    sessionTokenCache = { generation, value: token };
+   });
+ }
+ 
 diff --git a/apps/mobile/lib/settings-sheet.ts b/apps/mobile/lib/settings-sheet.ts
 index 8b29c087c..63f25da3a 100644
 --- a/apps/mobile/lib/settings-sheet.ts
@@ -155864,10 +156434,10 @@ index 8b29c087c..63f25da3a 100644
    "voice",
    "wallet",
 diff --git a/apps/mobile/lib/startup.ts b/apps/mobile/lib/startup.ts
-index eef99b9c7..186671929 100644
+index eef99b9c7..a487ac6c5 100644
 --- a/apps/mobile/lib/startup.ts
 +++ b/apps/mobile/lib/startup.ts
-@@ -1,7 +1,14 @@
+@@ -1,7 +1,16 @@
  import { AppState } from "react-native";
  import { reportMobileError } from "./monitoring";
  
@@ -155879,7 +156449,9 @@ index eef99b9c7..186671929 100644
 +  | "streaming"
 +  | "images"
 +  | "inbox"
-+  | "language";
++  | "language"
++  // What the home screen is drawn with, read beside the splash so it is not a second wait after it.
++  | "session";
  
  const STARTUP_TIMEOUT_MS = 20_000;
  const pending = new Set<StartupStep>();
@@ -158388,6 +158960,104 @@ index 000000000..3101802aa
 +    expect(text()).toContain("这个时间段还没有产生用量。");
 +  });
 +});
+diff --git a/apps/mobile/lib/use-collapsed-sections.test.tsx b/apps/mobile/lib/use-collapsed-sections.test.tsx
+new file mode 100644
+index 000000000..2b7a026c2
+--- /dev/null
++++ b/apps/mobile/lib/use-collapsed-sections.test.tsx
+@@ -0,0 +1,61 @@
++// @vitest-environment jsdom
++
++import { act, createElement } from "react";
++import type { Root } from "react-dom/client";
++import { createRoot } from "react-dom/client";
++import { afterEach, beforeEach, expect, it, vi } from "vitest";
++import { useCollapsedSections } from "./use-collapsed-sections";
++
++const state = vi.hoisted(() => ({ load: vi.fn(async () => null), save: vi.fn() }));
++vi.mock("./collapsed-sections", () => ({
++  loadCollapsedSections: state.load,
++  saveCollapsedSections: state.save,
++}));
++
++let root: Root;
++let container: HTMLDivElement;
++
++beforeEach(() => {
++  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
++  state.load.mockReset();
++  state.load.mockImplementation(async () => null);
++  container = document.createElement("div");
++  document.body.append(container);
++  root = createRoot(container);
++});
++
++afterEach(() => {
++  act(() => root.unmount());
++  container.remove();
++  vi.unstubAllGlobals();
++});
++
++function Harness({ seed }: { seed?: { userId?: string; keys: Set<string> } | null }) {
++  const { collapsed, loaded } = useCollapsedSections("user-a", seed);
++  return createElement("p", null, `${loaded ? "loaded" : "waiting"}|${[...collapsed].join(",")}`);
++}
++
++it("draws the folds the launch already read, without another Keychain read", () => {
++  act(() =>
++    root.render(createElement(Harness, { seed: { userId: "user-a", keys: new Set(["s-bots"]) } })),
++  );
++
++  expect(container.textContent).toBe("loaded|s-bots");
++  expect(state.load).not.toHaveBeenCalled();
++});
++
++it("reads the folds itself when the launch had no seed for this screen", async () => {
++  act(() => root.render(createElement(Harness, {})));
++
++  expect(container.textContent).toBe("waiting|");
++  await act(async () => undefined);
++  expect(container.textContent).toBe("loaded|");
++  expect(state.load).toHaveBeenCalledOnce();
++});
++
++it("treats a seed with nothing stored as every section expanded", () => {
++  act(() => root.render(createElement(Harness, { seed: null })));
++
++  expect(container.textContent).toBe("loaded|");
++  expect(state.load).not.toHaveBeenCalled();
++});
+diff --git a/apps/mobile/lib/use-collapsed-sections.ts b/apps/mobile/lib/use-collapsed-sections.ts
+index 1552cc4a9..0ec56df15 100644
+--- a/apps/mobile/lib/use-collapsed-sections.ts
++++ b/apps/mobile/lib/use-collapsed-sections.ts
+@@ -1,4 +1,4 @@
+-import { useCallback, useEffect, useMemo, useState } from "react";
++import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+ import type { CollapsedSections } from "./collapsed-sections";
+ import { loadCollapsedSections, saveCollapsedSections } from "./collapsed-sections";
+ 
+@@ -6,10 +6,18 @@ import { loadCollapsedSections, saveCollapsedSections } from "./collapsed-sectio
+  * Roster parent bot ids and section heading keys, kept on this device for the last account
+  * that changed them. `loaded` turns true once they are read, so the inbox can wait for them and
+  * sections don't fold on launch.
++ *
++ * `seed` is what the launch already read beside the splash; passing it (even as `null`, meaning
++ * nothing was stored) is what lets the first frame come up with the folds already known instead of
++ * a screen that waits for a Keychain read after the logo.
+  */
+-export function useCollapsedSections(userId: string | undefined) {
+-  const [collapsedSections, setCollapsedSections] = useState<CollapsedSections | null>(null);
++export function useCollapsedSections(userId: string | undefined, seed?: CollapsedSections | null) {
++  const [collapsedSections, setCollapsedSections] = useState<CollapsedSections | null>(() =>
++    seed === undefined ? null : (seed ?? { keys: new Set() }),
++  );
++  const seeded = useRef(seed !== undefined);
+   useEffect(() => {
++    if (seeded.current) return;
+     void loadCollapsedSections().then((stored) =>
+       setCollapsedSections(stored ?? { keys: new Set() }),
+     );
 diff --git a/apps/mobile/lib/use-home-header.ts b/apps/mobile/lib/use-home-header.tsx
 similarity index 62%
 rename from apps/mobile/lib/use-home-header.ts
@@ -158499,6 +159169,173 @@ index acc1e1567..4cf483691 100644
      locale,
    ]);
  }
+diff --git a/apps/mobile/lib/use-home-inbox.test.tsx b/apps/mobile/lib/use-home-inbox.test.tsx
+new file mode 100644
+index 000000000..a5599c527
+--- /dev/null
++++ b/apps/mobile/lib/use-home-inbox.test.tsx
+@@ -0,0 +1,117 @@
++// @vitest-environment jsdom
++
++import type { RefObject } from "react";
++import { act, createElement } from "react";
++import type { Root } from "react-dom/client";
++import { createRoot } from "react-dom/client";
++import { afterEach, beforeEach, expect, it, vi } from "vitest";
++import type { SavedInbox } from "./saved-chats";
++import { useHomeInbox } from "./use-home-inbox";
++
++const state = vi.hoisted(() => ({
++  rpc: vi.fn(),
++  selectInitialSpace: vi.fn(async () => true),
++}));
++
++vi.mock("@lingui/react/macro", () => ({
++  useLingui: () => ({ t: (parts: TemplateStringsArray) => parts.join("") }),
++}));
++vi.mock("@rakazo/core", async () => {
++  const actual = await vi.importActual<typeof import("@rakazo/core")>("@rakazo/core");
++  return {
++    ...actual,
++    isRetryableError: () => true,
++    reportUiLocale: async () => undefined,
++  };
++});
++vi.mock("expo-router", () => ({ useRouter: () => ({ push: vi.fn() }) }));
++vi.mock("./api", () => ({
++  currentApiBase: () => "https://api.example.test",
++  rpc: state.rpc,
++  selectedSpaceId: () => "space-a",
++}));
++vi.mock("./api-server", () => ({ selectInitialSpace: state.selectInitialSpace }));
++vi.mock("./app-badge", () => ({ appBadgeGeneration: () => 1 }));
++vi.mock("./billing", () => ({ isPaywallShown: () => false }));
++vi.mock("./i18n", () => ({ getActiveUiLocale: () => "en" }));
++vi.mock("./organizations", () => ({ ensureOrganizations: () => undefined }));
++vi.mock("./referral", () => ({
++  forgetReferrals: () => undefined,
++  rememberReferral: () => undefined,
++}));
++vi.mock("./saved-chats", () => ({ saveInbox: () => undefined }));
++vi.mock("./session", () => ({ currentSessionGeneration: () => 1 }));
++
++const saved: SavedInbox = {
++  bots: [
++    {
++      id: "bot-a",
++      name: "小猪包",
++      preview: "on it",
++      unread: 2,
++      spaceId: "space-a",
++    } as SavedInbox["bots"][number],
++  ],
++  groups: [],
++  botSections: [],
++  spaces: [],
++  me: { userId: "user-a", spaceId: "space-a", name: "Li" },
++};
++
++const spaceActionRef: RefObject<{ busy: boolean; recoveryId: string | null }> = {
++  current: { busy: false, recoveryId: null },
++};
++
++let root: Root;
++let container: HTMLDivElement;
++
++beforeEach(() => {
++  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
++  state.rpc.mockReset();
++  state.rpc.mockImplementation(async (method: string) =>
++    method === "spaces/list"
++      ? {
++          current: {
++            id: "space-a",
++            bots: [],
++            groups: [],
++            botSections: [],
++            externalConversations: [],
++          },
++          spaces: [],
++        }
++      : { userId: "user-a", spaceId: "space-a", name: "Li", billingEnabled: false },
++  );
++  container = document.createElement("div");
++  document.body.append(container);
++  root = createRoot(container);
++});
++
++afterEach(() => {
++  act(() => root.unmount());
++  container.remove();
++  vi.unstubAllGlobals();
++});
++
++function Harness({ seed }: { seed: SavedInbox | null }) {
++  const inbox = useHomeInbox(spaceActionRef, seed);
++  return createElement(
++    "p",
++    null,
++    `${inbox.bots.map((bot) => bot.id).join(",")}|${inbox.me?.userId ?? "-"}`,
++  );
++}
++
++it("draws the inbox this device saved before any request answers", () => {
++  act(() => root.render(createElement(Harness, { seed: saved })));
++
++  // The first frame is the list, not a spinner: nothing was awaited and nothing was fetched yet.
++  expect(container.textContent).toBe("bot-a|user-a");
++  expect(state.rpc).not.toHaveBeenCalled();
++});
++
++it("starts empty when the launch had nothing saved", () => {
++  act(() => root.render(createElement(Harness, { seed: null })));
++
++  expect(container.textContent).toBe("|-");
++});
+diff --git a/apps/mobile/lib/use-home-inbox.ts b/apps/mobile/lib/use-home-inbox.ts
+index 3e9d514bd..0e87432ca 100644
+--- a/apps/mobile/lib/use-home-inbox.ts
++++ b/apps/mobile/lib/use-home-inbox.ts
+@@ -18,6 +18,7 @@ import type {
+ } from "./mobile-types";
+ import { ensureOrganizations } from "./organizations";
+ import { forgetReferrals, rememberReferral } from "./referral";
++import type { SavedInbox } from "./saved-chats";
+ import { saveInbox } from "./saved-chats";
+ import { currentSessionGeneration } from "./session";
+ import type { LoadFailureKind } from "./user-error";
+@@ -26,20 +27,25 @@ import { errorText, loadFailureKind } from "./user-error";
+ /** The account this launch has saved its language to (see the inbox load). */
+ let localeReportedFor: string | null = null;
+ 
+-/** The inbox's chats, Spaces, and account, and the load that fetches them. */
++/**
++ * The inbox's chats, Spaces, and account, and the load that fetches them. `seed` is the copy the
++ * launch read from this device before the first frame (`launch-warmup`): it draws the list at once
++ * and the live load replaces it as it lands.
++ */
+ export function useHomeInbox(
+   spaceActionRef: RefObject<{ busy: boolean; recoveryId: string | null }>,
++  seed: SavedInbox | null = null,
+ ) {
+   const { t } = useLingui();
+   const router = useRouter();
+-  const [bots, setBots] = useState<MobileBot[]>([]);
+-  const [groups, setGroups] = useState<MobileGroup[]>([]);
+-  const [botSections, setBotSections] = useState<MobileBotSection[]>([]);
+-  const [spaces, setSpaces] = useState<MobileSpace[]>([]);
++  const [bots, setBots] = useState<MobileBot[]>(seed?.bots ?? []);
++  const [groups, setGroups] = useState<MobileGroup[]>(seed?.groups ?? []);
++  const [botSections, setBotSections] = useState<MobileBotSection[]>(seed?.botSections ?? []);
++  const [spaces, setSpaces] = useState<MobileSpace[]>(seed?.spaces ?? []);
+   // A cached inbox has no avatar set; the live load fills it in for the New bot preview.
+   const [me, setMe] = useState<
+     (Pick<MobileMe, "userId" | "spaceId" | "name"> & Partial<Pick<MobileMe, "botAvatarSet">>) | null
+-  >(null);
++  >(seed?.me ?? null);
+   const [error, setError] = useState<string | null>(null);
+   // Kept apart from action errors so a failed action never borrows the load's title.
+   const [inboxLoading, setInboxLoading] = useState(false);
 diff --git a/apps/mobile/lib/use-inbox-chat-actions.ts b/apps/mobile/lib/use-inbox-chat-actions.ts
 index 44bdbd27a..529e69523 100644
 --- a/apps/mobile/lib/use-inbox-chat-actions.ts

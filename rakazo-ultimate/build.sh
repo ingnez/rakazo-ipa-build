@@ -281,16 +281,60 @@ test -f apps/mobile/lib/launch-warmup.test.ts
 test -f apps/mobile/lib/use-home-inbox.test.tsx
 grep -q 'export function startLaunchWarmup' apps/mobile/lib/launch-warmup.ts
 grep -q 'export function launchState' apps/mobile/lib/launch-warmup.ts
-# It starts with the splash's own reads and the splash waits for it: the reads overlap instead of
-# following one another. The wait is capped so a store that never answers cannot hold the splash.
-grep -q 'const warm = trackMobileStartup("session", startLaunchWarmup(server.catch(() => undefined)));' \
+# It still starts with the splash's own reads, but the splash no longer waits for it: holding the
+# black logo until these landed only put the launch's own Keychain and disk work in front of the
+# first frame (`IMG_3002`). The home draws whatever has settled and fills the rest in as it lands.
+grep -q 'trackMobileStartup("session", startLaunchWarmup(server.catch(() => undefined)));' \
   apps/mobile/app/_layout.tsx
 if sed -n '/const firstFrame = Promise.all(/,/setReady(true)/p' apps/mobile/app/_layout.tsx \
-  | grep -qE 'Promise\.race\(\[warm,'; then :; else
-  echo "::error::the home screen's own reads no longer start with the splash's reads"
+  | grep -qE 'warm'; then
+  echo "::error::the splash waits for the home screen's own reads again"
   exit 1
 fi
-grep -q 'const LAUNCH_SEED_WAIT_MS' apps/mobile/app/_layout.tsx
+if grep -q 'LAUNCH_SEED_WAIT_MS' apps/mobile/app/_layout.tsx; then
+  echo "::error::the splash's wait cap on the home screen's reads is back"
+  exit 1
+fi
+# v33: the launch evaluates what draws its first screen and nothing else. With inline requires off,
+# the 16 MB bundle's top-level code — every settings page, the thread and its markdown renderer,
+# the call UI — ran before the first pixel, which is the black logo the person waits on.
+if ! grep -q 'inlineRequires: true' apps/mobile/metro.config.js \
+  || sed -n '/^const upstreamTransformOptions/,/^};/p' apps/mobile/metro.config.js \
+    | grep -qE 'inlineRequires: false'; then
+  echo "::error::the launch evaluates the whole app again"
+  exit 1
+fi
+# The floating hosts and the call screen are mounted after the first frame: their modules are not
+# part of the render the splash is waiting for, and none of them can be used before the person acts.
+if ! grep -q 'function AfterFirstFrame' apps/mobile/app/_layout.tsx \
+  || ! sed -n '/function AfterFirstFrame/,/^}/p' apps/mobile/app/_layout.tsx \
+    | grep -q 'useAfterFirstPaint()'; then
+  echo "::error::the floating hosts are mounted with the render the splash waits for again"
+  exit 1
+fi
+# A host left outside that frame — rendered directly by the layout — is the same loss.
+for host in '<CallCard />' '<VoicePlayerBar ' '<ComputerUpdateProgress />' '<MessageMenuHost />' \
+  '<MessageActionSheetHost />' '<IncomingCall />'; do
+  if grep -qF "$host" apps/mobile/app/_layout.tsx \
+    && ! sed -n '/<AfterFirstFrame>/,/<\/AfterFirstFrame>/p' apps/mobile/app/_layout.tsx \
+      | grep -qF "$host"; then
+    echo "::error::$host is mounted with the first frame again"
+    exit 1
+  fi
+done
+# The crash reporter and the notification/update setup start behind the first frame, never before it.
+if ! grep -q 'setTimeout(() => require("./lib/monitoring-bootstrap").startMobileMonitoring(), 0);' \
+  apps/mobile/index.ts; then
+  echo "::error::the crash reporter is set up before the first frame again"
+  exit 1
+fi
+if sed -n '1,/^const DIVIDER_GRAB_WIDTH/p' apps/mobile/app/_layout.tsx \
+  | grep -qE '^(configureForegroundNotifications|installClientUpdates)\(\);'; then
+  echo "::error::notifications and the update check are set up before the first frame again"
+  exit 1
+fi
+grep -q 'configureForegroundNotifications();' apps/mobile/app/_layout.tsx
+grep -q 'installClientUpdates();' apps/mobile/app/_layout.tsx
 # The saved inbox is filed under the Space this device was last on, which the launch's server read
 # restores: an inbox read that does not wait for it reads another Space's copy or none.
 grep -q 'Promise.all(\[token, serverRead' apps/mobile/lib/launch-warmup.ts

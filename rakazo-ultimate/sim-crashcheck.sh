@@ -92,3 +92,8 @@ cat "$OUT/RESULTS.txt"
 for f in "$OUT"/*.errors.txt; do echo "== $f"; cat "$f"; done
 grep -q "tree.*ALIVE" "$OUT/RESULTS.txt" || FAIL=1
 exit "$FAIL"
+
+# v34: the avatar page, photographed on the very build this check installed. The JS is re-bundled
+# with EXPO_PUBLIC_AVATAR_REVIEW=1 (the .ipa is untouched) and the app opens on the Lumen page:
+# the team, the seven states, the palette, the appearance picker and a bot list, in light and dark.
+SCREEN_DIR="$OUT" bash "$HERE/sim-screens.sh" || echo "::warning::avatar page screenshots skipped"

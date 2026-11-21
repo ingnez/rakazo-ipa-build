@@ -295,13 +295,13 @@ if grep -q 'LAUNCH_SEED_WAIT_MS' apps/mobile/app/_layout.tsx; then
   echo "::error::the splash's wait cap on the home screen's reads is back"
   exit 1
 fi
-# v33: the launch evaluates what draws its first screen and nothing else. With inline requires off,
-# the 16 MB bundle's top-level code — every settings page, the thread and its markdown renderer,
-# the call UI — ran before the first pixel, which is the black logo the person waits on.
-if ! grep -q 'inlineRequires: true' apps/mobile/metro.config.js \
-  || sed -n '/^const upstreamTransformOptions/,/^};/p' apps/mobile/metro.config.js \
-    | grep -qE 'inlineRequires: false'; then
-  echo "::error::the launch evaluates the whole app again"
+# v33: inline requires was the first thing this round tried, and it could not ship: two builds with
+# it never left the launch screen in the simulator (no JS error, root never mounted, the 3 s
+# failsafe still showing the splash). Expo ships it off by default and its own transform worker
+# notes it cannot respect module side-effect order (`users` screenshots in downloads/v33 + v33b).
+if sed -n '/^const config = getSentryExpoConfig/,/^const defaultResolveRequest/p' \
+  apps/mobile/metro.config.js | grep -q 'inlineRequires: true'; then
+  echo "::error::inline requires is back on without a build that survives it"
   exit 1
 fi
 # The floating hosts and the call screen are mounted after the first frame: their modules are not

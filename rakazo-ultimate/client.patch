@@ -160114,26 +160114,21 @@ index dbb86f806..c7044ce9b 100644
    }
  }
 diff --git a/apps/mobile/metro.config.js b/apps/mobile/metro.config.js
-index aa5d58325..f5257b616 100644
+index aa5d58325..dd7e8e582 100644
 --- a/apps/mobile/metro.config.js
 +++ b/apps/mobile/metro.config.js
-@@ -8,6 +8,19 @@ const config = getSentryExpoConfig(projectRoot);
+@@ -8,6 +8,14 @@ const config = getSentryExpoConfig(projectRoot);
  process.env.RAKAZO_UPSTREAM_BABEL_TRANSFORMER = config.transformer.babelTransformerPath;
  config.transformer.babelTransformerPath = require.resolve("./metro-transformer");
  config.resolver.sourceExts = [...config.resolver.sourceExts, "po"];
-+// The launch used to evaluate the whole app before it drew anything: with inline requires off,
-+// Metro runs the top-level code of every linked module when the bundle is loaded, so the inbox
-+// waited for the thread screen, the settings pages and the call UI to finish initialising on the
-+// splash's clock (`IMG_3002`). Inline requires turn each import into a read at its first use, so
-+// the launch pays only for the modules the first screen actually draws; the rest initialise as
-+// they are opened. The transform keeps the ESM imports above working: Metro applies it after the
-+// import/export pass, so a module that only writes top-level state (the i18n catalogs, the font
-+// installer) still runs the moment something reads it.
-+const upstreamTransformOptions = config.transformer.getTransformOptions;
-+config.transformer.getTransformOptions = async (...args) => {
-+  const upstream = (await upstreamTransformOptions?.(...args)) ?? {};
-+  return { ...upstream, transform: { ...upstream.transform, inlineRequires: true } };
-+};
++// Inline requires (Metro's `inlineRequires` transform option) would stop the
++// launch from evaluating every linked module before the first frame, and it is what this round
++// tried first. It does not run on this app: two builds with it never left the launch screen in the
++// simulator, with no JS error logged and the root never mounted (`users` screenshots in
++// `downloads/v33/sim`, `downloads/v33b/sim`). Expo ships it off by default and its own transform
++// worker notes it cannot respect module side-effect order, which is what the i18n catalogs, the
++// font installer and the theme subscriptions rely on. The gates below keep it off until a build
++// with it is seen to reach the home screen.
  const defaultResolveRequest = config.resolver.resolveRequest;
  const pinned = new Set(["react", "react/jsx-runtime", "react/jsx-dev-runtime", "react-native"]);
  

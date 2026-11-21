@@ -322,12 +322,21 @@ for host in '<CallCard />' '<VoicePlayerBar ' '<ComputerUpdateProgress />' '<Mes
     exit 1
   fi
 done
-# The crash reporter and the notification/update setup start behind the first frame, never before it.
-if ! grep -q 'setTimeout(() => require("./lib/monitoring-bootstrap").startMobileMonitoring(), 0);' \
-  apps/mobile/index.ts; then
-  echo "::error::the crash reporter is set up before the first frame again"
+# The language and the catalogs are read while the layout loads, not by the effect: with inline
+# requires an import only an effect uses is read after the first frame, which would draw the app's
+# words before the catalog exists.
+if ! grep -qx 'import "../lib/i18n";' apps/mobile/app/_layout.tsx; then
+  echo "::error::the catalogs no longer load before the first render"
   exit 1
 fi
+# No launch may hold the logo: a store that never answers still gives up at the failsafe.
+if ! grep -q 'const LAUNCH_FAILSAFE_MS' apps/mobile/app/_layout.tsx \
+  || ! sed -n '/const failsafe = setTimeout/,/LAUNCH_FAILSAFE_MS);/p' apps/mobile/app/_layout.tsx \
+    | grep -q 'setReady(true)'; then
+  echo "::error::a stalled read can hold the black logo again"
+  exit 1
+fi
+# The notification handler and the update check start behind the first frame, never before it.
 if sed -n '1,/^const DIVIDER_GRAB_WIDTH/p' apps/mobile/app/_layout.tsx \
   | grep -qE '^(configureForegroundNotifications|installClientUpdates)\(\);'; then
   echo "::error::notifications and the update check are set up before the first frame again"

@@ -3653,7 +3653,7 @@ index c938f4ead..725c94cff 100644
      addLabel: { color: native.label, fontSize: 17 },
      tile: {
 diff --git a/apps/mobile/app/_layout.tsx b/apps/mobile/app/_layout.tsx
-index e65118bfb..fe9ed8b3f 100644
+index e65118bfb..128c6e9e8 100644
 --- a/apps/mobile/app/_layout.tsx
 +++ b/apps/mobile/app/_layout.tsx
 @@ -24,10 +24,11 @@ import type { ReactNode } from "react";
@@ -3685,8 +3685,14 @@ index e65118bfb..fe9ed8b3f 100644
  import { loadAppearancePreference, mobileTokens } from "../lib/appearance";
  import { replaceWithSignIn } from "../lib/auth-routing";
  import { AvatarScreenFocus } from "../lib/avatar-life";
-@@ -57,7 +60,9 @@ import { installClientUpdates, watchForegroundUpdates } from "../lib/client-upda
+@@ -55,9 +58,15 @@ import { CallKeyboardContext } from "../lib/call-keyboard-context";
+ import { useCallActive } from "../lib/call-session";
+ import { installClientUpdates, watchForegroundUpdates } from "../lib/client-update";
  import { loadHapticsPreference } from "../lib/haptics";
++// The catalogs and the active locale have to exist before the first render draws a word: with
++// inline requires an import that only an effect uses is read when that effect runs, which is after
++// the frame. A bare import is never inlined, so this one still runs while the layout loads.
++import "../lib/i18n";
  import { bootstrapI18n } from "../lib/i18n";
  import { startIncomingCalls } from "../lib/incoming-calls";
 +import { useKeyboardLift } from "../lib/keyboard-lift";
@@ -3695,7 +3701,7 @@ index e65118bfb..fe9ed8b3f 100644
  import { loadLinkFavicon } from "../lib/link-favicons";
  import {
    configureForegroundNotifications,
-@@ -67,6 +72,7 @@ import { OpenPageContext } from "../lib/message-mentions";
+@@ -67,6 +76,7 @@ import { OpenPageContext } from "../lib/message-mentions";
  import { setMobileMonitoringScreen } from "../lib/monitoring";
  import { native, useMobileTokens, useResolvedAppearance } from "../lib/native";
  import { useNotificationResponses } from "../lib/open-notification";
@@ -3703,7 +3709,7 @@ index e65118bfb..fe9ed8b3f 100644
  import { clearQueries } from "../lib/query";
  import { useReferral } from "../lib/referral";
  import {
-@@ -96,7 +102,6 @@ import {
+@@ -96,7 +106,6 @@ import {
    markMobileStartupMounted,
    trackMobileStartup,
  } from "../lib/startup";
@@ -3711,7 +3717,7 @@ index e65118bfb..fe9ed8b3f 100644
  import {
    loadTrustedLinkSites,
    trustLinkSite,
-@@ -106,15 +111,17 @@ import { startUnsentSends } from "../lib/unsent-sends";
+@@ -106,23 +115,40 @@ import { startUnsentSends } from "../lib/unsent-sends";
  import { startWorkActivities } from "../lib/work-activity";
  import { InboxPane } from "./index";
  
@@ -3723,6 +3729,7 @@ index e65118bfb..fe9ed8b3f 100644
 +// module's Text is replaced once. Notification handling and the client's own update check are
 +// set up after the first frame instead (`firstFrame` below): neither shapes a pixel, and both
 +// pulled their modules' setup ahead of the screen the splash is waiting for (`IMG_3002`).
++console.info("[launch] layout module");
 +applyAppFont();
  registerSessionDiskCache(clearSavedChats);
  registerSessionDiskCache(clearQueries);
@@ -3733,7 +3740,12 @@ index e65118bfb..fe9ed8b3f 100644
  registerSessionDiskCache(() => void clearAppBadge());
  // Keep the splash up until the saved appearance applies, so the first frame isn't in the OS scheme.
  void SplashScreen.preventAutoHideAsync().catch(() => undefined);
-@@ -123,6 +130,16 @@ const DIVIDER_GRAB_WIDTH = 24;
+ 
+ const DIVIDER_GRAB_WIDTH = 24;
++// A launch never holds the logo longer than this, whatever a store does: the reads above answer in
++// milliseconds, and a phone whose Keychain never answers would otherwise sit on the black logo for
++// good (`IMG_3002`).
++const LAUNCH_FAILSAFE_MS = 3_000;
  // Screens that take the whole window even when it is wide enough for the chat list beside them.
  const FULL_WINDOW_ROUTES = new Set(["/sign-in", "/server", "/image", "/computer", "/share"]);
  
@@ -3750,7 +3762,7 @@ index e65118bfb..fe9ed8b3f 100644
  /** On a wide window the chat list stays on the left and the stack shows the open chat beside it. */
  function SplitFrame({ children }: { children: ReactNode }) {
    const pathname = usePathname();
-@@ -219,6 +236,20 @@ function SplitFrame({ children }: { children: ReactNode }) {
+@@ -219,6 +245,20 @@ function SplitFrame({ children }: { children: ReactNode }) {
    );
  }
  
@@ -3771,7 +3783,7 @@ index e65118bfb..fe9ed8b3f 100644
  function LinkGlobe() {
    const tokens = useMobileTokens();
    return (
-@@ -358,34 +389,59 @@ function LayoutContent() {
+@@ -358,34 +398,73 @@ function LayoutContent() {
      return startWorkActivities();
    }, [ready]);
  
@@ -3799,6 +3811,7 @@ index e65118bfb..fe9ed8b3f 100644
 +    // the inbox width — shapes a detail inside a screen that is already up, so each is read behind
 +    // the first frame and applied by its own subscription when it lands. Waiting on all seven was
 +    // several Keychain reads deep before a single pixel appeared (`IMG_2997`).
++    console.info("[launch] mounted");
 +    const server = trackMobileStartup("server", loadApiBase());
 +    // The home screen's own state — session, activity mode, folded sections, the saved inbox —
 +    // starts here, beside the splash's reads, but the splash no longer waits for it (`IMG_3002`).
@@ -3809,12 +3822,25 @@ index e65118bfb..fe9ed8b3f 100644
 +    trackMobileStartup("session", startLaunchWarmup(server.catch(() => undefined)));
 +    const firstFrame = Promise.all([
 +      server,
-+      trackMobileStartup("appearance", loadAppearancePreference()).finally(() =>
-+        setAppearanceReady(true),
++      trackMobileStartup("appearance", loadAppearancePreference()).finally(() => {
++        console.info("[launch] appearance");
++        setAppearanceReady(true);
++      }),
++      trackMobileStartup("language", bootstrapI18n()).finally(() =>
++        console.info("[launch] language"),
 +      ),
-+      trackMobileStartup("language", bootstrapI18n()),
 +    ]).catch(() => undefined);
++    void server
++      .then(() => console.info("[launch] server"))
++      .catch(() => console.info("[launch] server failed"));
++    const failsafe = setTimeout(() => {
++      console.info("[launch] failsafe");
++      setAppearanceReady(true);
++      setReady(true);
++    }, LAUNCH_FAILSAFE_MS);
 +    void firstFrame.then(() => {
++      clearTimeout(failsafe);
++      console.info("[launch] ready");
 +      setReady(true);
 +      // What the first frame does not draw is set up behind it: the notification handler for
 +      // banners arriving while the app is open, and the client's update check and its version
@@ -3851,7 +3877,7 @@ index e65118bfb..fe9ed8b3f 100644
    }, []);
  
    return (
-@@ -396,7 +452,7 @@ function LayoutContent() {
+@@ -396,7 +475,7 @@ function LayoutContent() {
              <ThemeProvider value={navigationTheme}>
                <StatusBar style={resolved === "light" ? "dark" : "light"} />
                <CallKeyboardContext.Provider value={call}>
@@ -3860,7 +3886,7 @@ index e65118bfb..fe9ed8b3f 100644
                    <SplitFrame>
                      <Stack
                        screenLayout={({ navigation, options, children }) => (
-@@ -422,20 +478,24 @@ function LayoutContent() {
+@@ -422,20 +501,24 @@ function LayoutContent() {
                          headerShadowVisible: false,
                          headerBackButtonDisplayMode: "minimal",
                          contentStyle: { backgroundColor: String(native.page) },
@@ -3893,7 +3919,7 @@ index e65118bfb..fe9ed8b3f 100644
                          }}
                        />
                        <Stack.Screen name="share" options={{ headerShown: false }} />
-@@ -452,12 +512,13 @@ function LayoutContent() {
+@@ -452,12 +535,13 @@ function LayoutContent() {
                          name="(settings)"
                          options={{
                            headerShown: false,
@@ -3913,7 +3939,7 @@ index e65118bfb..fe9ed8b3f 100644
                            contentStyle: { backgroundColor: native.groupedPage },
                          }}
                        />
-@@ -484,7 +545,11 @@ function LayoutContent() {
+@@ -484,7 +568,11 @@ function LayoutContent() {
                          name="new-bot"
                          options={{
                            title: t`New bot`,
@@ -3926,7 +3952,7 @@ index e65118bfb..fe9ed8b3f 100644
                            gestureEnabled: true,
                            headerBackVisible: false,
                          }}
-@@ -532,11 +597,13 @@ function LayoutContent() {
+@@ -532,11 +620,13 @@ function LayoutContent() {
                          name="page"
                          options={{
                            headerShown: false,
@@ -3944,7 +3970,7 @@ index e65118bfb..fe9ed8b3f 100644
                          }}
                        />
                        <Stack.Screen
-@@ -594,19 +661,24 @@ function LayoutContent() {
+@@ -594,19 +684,24 @@ function LayoutContent() {
                        />
                      </Stack>
                    </SplitFrame>
@@ -3980,7 +4006,7 @@ index e65118bfb..fe9ed8b3f 100644
              </ThemeProvider>
            </ChatContentProviders>
          ) : (
-@@ -617,11 +689,14 @@ function LayoutContent() {
+@@ -617,11 +712,14 @@ function LayoutContent() {
    );
  }
  
@@ -138368,23 +138394,6 @@ index c3c0cfd9b..628979216 100644
      </View>
    );
  }
-diff --git a/apps/mobile/index.ts b/apps/mobile/index.ts
-index ee6ad5900..534f7dca4 100644
---- a/apps/mobile/index.ts
-+++ b/apps/mobile/index.ts
-@@ -2,6 +2,11 @@ import { installMobileEarlyErrorReporting } from "./lib/monitoring";
- 
- installMobileEarlyErrorReporting(require("expo-secure-store"), require("expo-application"));
- require("./lib/startup").startMobileStartupWatchdog();
--require("./lib/monitoring-bootstrap").startMobileMonitoring();
-+// The crash reporter starts after the launch's own entry: connecting it reads the stored server
-+// out of the Keychain, asks it for a config and imports the API module, all of which used to run
-+// ahead of the first frame. A timer runs it right after the root has drawn its first frame, and
-+// the early handler installed above (with the restart watchdog) still reports anything that fails
-+// before it; the errors it records are persisted and sent on the next launch.
-+setTimeout(() => require("./lib/monitoring-bootstrap").startMobileMonitoring(), 0);
- // Expo's entry registers the root component after the early error handler exists.
- require("expo-router/entry");
 diff --git a/apps/mobile/ios-widgets/Assets.xcassets/AppMark.imageset/app-mark.png b/apps/mobile/ios-widgets/Assets.xcassets/AppMark.imageset/app-mark.png
 index 8e90572a9be4f0a44da5b834630061164aa75cf4..91ec680a9b61d2640e428b3eee94fa725df71f1f 100644
 GIT binary patch

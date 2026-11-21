@@ -75,14 +75,20 @@ test -f apps/mobile/modules/rakazo-connectors/ios/PhoneCalendarConnector.swift
 test -f apps/mobile/lib/phone-connectors.ts
 node -e 'const p=require("./apps/mobile/app.json");const ip=p.expo.ios.infoPlist;for(const k of ["NSAlarmKitUsageDescription","NSCalendarsFullAccessUsageDescription","NSRemindersFullAccessUsageDescription","NSContactsUsageDescription","NSLocationWhenInUseUsageDescription","NSPhotoLibraryUsageDescription"]){if(!ip[k])throw new Error("missing "+k)}'
 grep -q 'expo-font' apps/mobile/app.json
-# The icon is shipped as an Icon Composer package and the splash as images: a patch that lost
-# either would still compile, so fail here and name what is missing.
-test -f apps/mobile/assets/Bot.icon/icon.json
-test -f apps/mobile/assets/Bot.icon/Assets/bot-foreground.png
+# v34: the icon is one 1024 PNG (the Lumen chief on night navy) and the splash is that same image,
+# so the mark on the home screen and the mark on the splash are one drawing. A patch that lost
+# either would still compile a package with an old mark in it, so fail here and name what is
+# missing; the retired Icon Composer package must not ride along at all.
+test -f apps/mobile/assets/bot-icon.png
 test -f apps/mobile/assets/splash-icon.png
 test -f apps/mobile/assets/splash-icon-dark.png
-grep -q 'assets/Bot.icon' apps/mobile/app.json
+test -f apps/mobile/assets/notification-icon.png
+grep -q 'assets/bot-icon.png' apps/mobile/app.json
 grep -q 'splash-icon-dark.png' apps/mobile/app.json
+if [ -e apps/mobile/assets/Bot.icon ] || [ -e apps/mobile/assets/app-icon ]; then
+  echo "::error::the retired icon package is still in the tree"
+  exit 1
+fi
 node -e 'const p=require("./apps/mobile/app.json");const f=(p.expo.plugins||[]).flat();if(!f.includes("expo-font"))throw new Error("expo-font plugin missing");'
 
 # This round's own speed: the inbox keeps a copy of its first chats so the first tap opens at once,
@@ -134,10 +140,15 @@ test -f apps/mobile/lib/avatar-badges.ts
 grep -q 'export const HERO_AVATAR_SIZE = 103;' apps/mobile/lib/avatar-badges.ts
 test -f packages/core/src/mochi-avatar.ts
 test -f packages/core/src/mochi-avatar.test.ts
-test -f apps/mobile/components/mochi-bot-avatar.tsx
-grep -q 'MochiBotAvatar' apps/mobile/components/bot-avatar.tsx
 test -f apps/mobile/lib/after-first-paint.ts
-grep -q 'useAfterFirstPaint' apps/mobile/components/mochi-bot-avatar.tsx
+# v34: the avatar a person sees is the Lumen body, drawn after the first paint; the retired
+# dumpling renderer is gone. A patch that brought it back would still compile one, so fail here.
+if [ -e apps/mobile/components/mochi-bot-avatar.tsx ]; then
+  echo "::error::the retired dumpling renderer is back in the tree"
+  exit 1
+fi
+grep -q 'LumenBotAvatar' apps/mobile/components/bot-avatar.tsx
+grep -q 'useAfterFirstPaint' apps/mobile/components/lumen-bot-avatar.tsx
 test -f apps/mobile/components/image-card-stack.tsx
 test -f apps/mobile/components/composer-attach-tray.tsx
 # The composer's own photo picker module: without it the shipped app falls back to the package,
@@ -375,6 +386,11 @@ grep -q 'stackOwnsLongPress' apps/mobile/components/thread/message-row.tsx
 grep -q 'visibleThreadBlocks' apps/mobile/components/thread/message-bubble.tsx
 grep -q 'NSPhotoLibraryAddUsageDescription' apps/mobile/app.json
 
+# v34: 灯芯 · Lumen everywhere, the new icon and splash, and one image gallery per thread. The
+# checks live in their own script so the same file can prove each of them fails when the work is
+# missing (work/v34/negative-gates.sh, 12/12 mutations exit 1 with an ::error).
+bash "$HERE/gates-v34.sh"
+
 npm i -g pnpm@12.18.0
 pnpm install --frozen-lockfile
 
@@ -386,15 +402,12 @@ pnpm exec expo prebuild --platform ios --no-install
 
 # Upstream ships an Icon Composer package of its own, and prebuild without --clean leaves it in
 # the project: actool would then compile the retired ghost as the app icon and the app would show
-# two marks on launch. Drop it, keep Bot.icon, and fail loudly if the project still names it.
-rm -rf ios/Rakazo/Rakazo.icon
-if grep -Rqs 'Rakazo\.icon' ios/Rakazo.xcodeproj/project.pbxproj; then
-  echo "::error::the Xcode project still references Rakazo.icon after prebuild"
+# two marks on launch. v34 ships one PNG icon, so drop both Icon Composer packages and fail loudly
+# if the project still names either of them.
+rm -rf ios/Rakazo/Rakazo.icon ios/Rakazo/Bot.icon
+if grep -Rqs -E 'Rakazo\.icon|Bot\.icon' ios/Rakazo.xcodeproj/project.pbxproj; then
+  echo "::error::the Xcode project still references a retired icon package after prebuild"
   exit 1
-fi
-if [ -d ios/Rakazo/Bot.icon ]; then
-  grep -Eq 'ASSETCATALOG_COMPILER_APPICON_NAME = "?Bot"?' ios/Rakazo.xcodeproj/project.pbxproj ||
-    { echo "::error::the app icon is not the Bot package"; exit 1; }
 fi
 # A stale upstream layer would resurface as the old ghost in a notification banner.
 if grep -Rqs 'F97A10\|fb7a11\|FB7A11' ios/Rakazo/Images.xcassets 2>/dev/null; then

@@ -27865,7 +27865,7 @@ index e7b0ca096..89eaeb712 100644
                  {bot.name}
                </Text>
 diff --git a/apps/mobile/app/bot-profile.tsx b/apps/mobile/app/bot-profile.tsx
-index 9187feee6..cacf01215 100644
+index 9187feee6..5dd94dda4 100644
 --- a/apps/mobile/app/bot-profile.tsx
 +++ b/apps/mobile/app/bot-profile.tsx
 @@ -8,6 +8,7 @@ import { Alert, Platform, ScrollView, StyleSheet, Text, View } from "react-nativ
@@ -27876,7 +27876,7 @@ index 9187feee6..cacf01215 100644
  import { glassHeaderOptions } from "../components/glass-title";
  import { NativeActionButton } from "../components/native-action-button";
  import { NativeSymbol } from "../components/native-symbol";
-@@ -122,6 +123,7 @@ export default function BotProfile() {
+@@ -122,9 +123,11 @@ export default function BotProfile() {
        <View style={styles.identity}>
          {bot ? (
            <BotAvatar
@@ -27884,7 +27884,11 @@ index 9187feee6..cacf01215 100644
              color={bot.color}
              avatarSet={bot.avatarSet}
              identity={bot.id}
-@@ -141,6 +143,11 @@ export default function BotProfile() {
++            lead={Boolean(bot.leadSectionId)}
+             size={96}
+             status={bot.status}
+           />
+@@ -141,6 +144,11 @@ export default function BotProfile() {
            onPress={() => router.push({ pathname: "/bot-settings", params: { botId } })}
          />
        </View>
@@ -27897,7 +27901,7 @@ index 9187feee6..cacf01215 100644
          <SettingsRow
            key="routines"
 diff --git a/apps/mobile/app/bot-settings.tsx b/apps/mobile/app/bot-settings.tsx
-index 408ddab44..9c5ece1cb 100644
+index 408ddab44..687eeaec1 100644
 --- a/apps/mobile/app/bot-settings.tsx
 +++ b/apps/mobile/app/bot-settings.tsx
 @@ -8,7 +8,6 @@ import {
@@ -27945,7 +27949,36 @@ index 408ddab44..9c5ece1cb 100644
    const [instructions, setInstructions] = useState("");
    const [color, setColor] = useState<string>(DEFAULT_BOT_AVATAR_COLOR);
    const [computerMode, setComputerMode] = useState<ComputerMode>("team");
-@@ -202,6 +207,7 @@ export default function BotSettingsScreen() {
+@@ -89,6 +94,7 @@ export default function BotSettingsScreen() {
+   const [dailyCheckIns, setDailyCheckIns] = useState(true);
+   const [crossSpaceCommunication, setCrossSpaceCommunication] = useState(true);
+   const [fleetManagement, setFleetManagement] = useState(true);
++  const [leadSectionId, setLeadSectionId] = useState<string | null>(null);
+   const [replyMode, setReplyMode] = useState<ReplyMode>("chat");
+   const [credentials, setCredentials] = useState<MobileModelCredential[]>([]);
+   const [catalog, setCatalog] = useState<MobileModel[]>([]);
+@@ -141,6 +147,20 @@ export default function BotSettingsScreen() {
+     [botId, t],
+   );
+ 
++  // A folder lead runs the bots inside its own folder: it may create them and give them work,
++  // and anything outside the folder it asks the main bot for.
++  const leadSave = useMemo(
++    () =>
++      createQueuedSave<string | null>(null, {
++        save: async (value) => {
++          await rpc("bots/update", { botId, leadSectionId: value });
++        },
++        onChange: setLeadSectionId,
++        onError: (err) => setError(errorText(err, t`Could not save bot`)),
++      }),
++    [botId, t],
++  );
++
+   const replyModeSave = useMemo(
+     () =>
+       createQueuedSave<ReplyMode>("chat", {
+@@ -202,6 +222,7 @@ export default function BotSettingsScreen() {
          nameSave.reset(next.name);
          notifySave.reset(next.notifyOnFinish ?? true);
          setDescription(next.description ?? "");
@@ -27953,7 +27986,22 @@ index 408ddab44..9c5ece1cb 100644
          setInstructions(next.instructions ?? "");
          setColor(next.color);
          setAvatarSet(resolveBotAvatarSet(next.avatarSet));
-@@ -407,6 +413,7 @@ export default function BotSettingsScreen() {
+@@ -220,11 +241,13 @@ export default function BotSettingsScreen() {
+         crossSpaceSave.reset(next.crossSpaceCommunication ?? true);
+         setFleetManagement(next.fleetManagement);
+         fleetSave.reset(next.fleetManagement);
++        setLeadSectionId(next.leadSectionId ?? null);
++        leadSave.reset(next.leadSectionId ?? null);
+         setReplyMode(next.replyMode);
+         replyModeSave.reset(next.replyMode);
+       })
+       .catch((err) => setError(errorText(err, t`Could not load bot`)));
+-  }, [botId, dailyCheckInsSave, crossSpaceSave, fleetSave, replyModeSave, notifySave, nameSave]);
++  }, [botId, dailyCheckInsSave, crossSpaceSave, fleetSave, leadSave, replyModeSave, notifySave, nameSave]);
+ 
+   useEffect(() => {
+     void Promise.all([rpc("me"), rpc("models/list"), rpc("models/credentials")])
+@@ -407,6 +430,7 @@ export default function BotSettingsScreen() {
          description?: string;
          instructions?: string;
          expectedInstructions?: string;
@@ -27961,7 +28009,7 @@ index 408ddab44..9c5ece1cb 100644
          color?: string;
          avatarSet?: BotAvatarSet;
          modelProvider?: string | null;
-@@ -421,6 +428,8 @@ export default function BotSettingsScreen() {
+@@ -421,6 +445,8 @@ export default function BotSettingsScreen() {
          input.instructions = instructions;
          input.expectedInstructions = bot.instructions;
        }
@@ -27970,7 +28018,7 @@ index 408ddab44..9c5ece1cb 100644
        if (color !== bot.color) input.color = color;
        if (avatarSet !== resolveBotAvatarSet(bot.avatarSet)) input.avatarSet = avatarSet;
        const modelChanged =
-@@ -452,6 +461,8 @@ export default function BotSettingsScreen() {
+@@ -452,6 +478,8 @@ export default function BotSettingsScreen() {
          // does not resend them.
          const { botId: _botId, expectedInstructions: _expected, ...saved } = input;
          setBot((prev) => (prev ? { ...prev, ...saved, ...updated } : prev));
@@ -27979,7 +28027,7 @@ index 408ddab44..9c5ece1cb 100644
        }
        await Promise.all([
          dailyCheckInsSave.flush(),
-@@ -473,6 +484,7 @@ export default function BotSettingsScreen() {
+@@ -473,6 +501,7 @@ export default function BotSettingsScreen() {
    const dirty =
      bot &&
      (description.trim() !== (bot.description ?? "") ||
@@ -27987,7 +28035,36 @@ index 408ddab44..9c5ece1cb 100644
        instructions !== (bot.instructions ?? "") ||
        color !== bot.color ||
        avatarSet !== resolveBotAvatarSet(bot.avatarSet) ||
-@@ -700,6 +712,10 @@ export default function BotSettingsScreen() {
+@@ -684,6 +713,28 @@ export default function BotSettingsScreen() {
+                 value={fleetManagement}
+               />
+             </SettingsGroup>
++            <SettingsGroup label="小组长">
++              {bot.sectionId ? (
++                <>
++                  <SettingsSwitch
++                    label="设为小组长"
++                    value={leadSectionId === bot.sectionId}
++                    onChange={(value) => {
++                      if (!botId) return;
++                      setError(null);
++                      leadSave.update(value ? bot.sectionId : null);
++                    }}
++                  />
++                  <Text style={[styles.hint, { color: tokens.mutedForeground }]}>
++                    小组长可以统筹本文件夹里的 Bot、新建并直接派活；要动其它文件夹的 Bot，得先向主 Bot 递交申请。
++                  </Text>
++                </>
++              ) : (
++                <Text style={[styles.hint, { color: tokens.mutedForeground }]}>
++                  先把这个 Bot 移进一个文件夹，才能让它当小组长。
++                </Text>
++              )}
++            </SettingsGroup>
+             <SettingsGroup label={t`Replies`}>
+               <MenuPicker
+                 choices={[
+@@ -700,6 +751,10 @@ export default function BotSettingsScreen() {
                  value={replyMode}
                />
              </SettingsGroup>
@@ -27998,7 +28075,7 @@ index 408ddab44..9c5ece1cb 100644
              <View style={{ gap: 7 }}>
                <View
                  style={{
-@@ -853,44 +869,68 @@ export default function BotSettingsScreen() {
+@@ -853,44 +908,68 @@ export default function BotSettingsScreen() {
            presentationStyle="pageSheet"
            onRequestClose={() => setAvatarOpen(false)}
          >
@@ -28101,9 +28178,11 @@ index 408ddab44..9c5ece1cb 100644
          </Modal>
        ) : null}
      </>
-@@ -900,4 +940,34 @@ export default function BotSettingsScreen() {
+@@ -899,5 +978,36 @@ export default function BotSettingsScreen() {
+ 
  const styles = StyleSheet.create({
    cardContent: { padding: 16 },
++  hint: { fontSize: 13, lineHeight: 18, paddingHorizontal: 16, paddingBottom: 12 },
    voiceError: { flexShrink: 1, fontSize: 17 },
 +  appearanceScreen: { flex: 1 },
 +  appearanceHeader: {
@@ -170492,10 +170571,10 @@ index 000000000..877956f35
 +  );
 +}
 diff --git a/apps/mobile/components/bot-avatar.tsx b/apps/mobile/components/bot-avatar.tsx
-index a58981051..23014673b 100644
+index a58981051..57bba38b5 100644
 --- a/apps/mobile/components/bot-avatar.tsx
 +++ b/apps/mobile/components/bot-avatar.tsx
-@@ -1,121 +1,21 @@
+@@ -1,121 +1,23 @@
  import { useLingui } from "@lingui/react/macro";
  import type { BotAvatarSet } from "@rakazo/contracts";
 -import type { AvatarEyes, AvatarMotionMode, LogoAvatarActivity } from "@rakazo/core";
@@ -170524,9 +170603,7 @@ index a58981051..23014673b 100644
 -  SHIPPED_BOT_AVATAR_VIEWBOX,
 -  usesLogoAvatar,
 -} from "@rakazo/core";
-+import type { AvatarMotionMode, LogoAvatarActivity } from "@rakazo/core";
-+import { avatarWorkingDot, isRunWorking } from "@rakazo/core";
- import { memo, useSyncExternalStore } from "react";
+-import { memo, useSyncExternalStore } from "react";
 -import { Image, Pressable, View } from "react-native";
 -import Animated, {
 -  useAnimatedProps,
@@ -170537,13 +170614,19 @@ index a58981051..23014673b 100644
 -import type { AvatarLife } from "../lib/avatar-life";
 -import { useAvatarOnScreen, useLife, usePoke, useSettling } from "../lib/avatar-life";
 -import { mobileBotAvatarPresentation } from "../lib/bot-avatar";
++import type { AvatarMotionMode, LogoAvatarActivity } from "@rakazo/core";
++import { avatarWorkingDot, isRunWorking } from "@rakazo/core";
++import { memo, useState, useSyncExternalStore } from "react";
 +import { Image, View } from "react-native";
 +import type { AvatarBadgeCorner, AvatarBadgeSurface } from "../lib/avatar-badges";
 +import { mainBotBadgeLayout, placeAvatarBadges, styleForAvatarBadgeCorner } from "../lib/avatar-badges";
  import { mobileLogoAvatarActivity } from "../lib/logo-avatar-activity";
-+import { lumenLookFor, parseLumenLook } from "../lib/lumen/lumen-avatar";
- import { useMobileTokens } from "../lib/native";
+-import { useMobileTokens } from "../lib/native";
 -import { LogoAvatar } from "./logo-avatar";
++import { lumenLookFor, parseLumenLook } from "../lib/lumen/lumen-avatar";
++import { lumenManifestPicture } from "../lib/lumen/lumen-manifest";
++import { useLumenManifest, useLumenReducedMotion } from "../lib/lumen/lumen-manifest-store";
++import { useMobileTokens, useResolvedAppearance } from "../lib/native";
  import { NativeSymbol } from "./native-symbol";
 -
 -const AnimatedRect = Animated.createAnimatedComponent(Rect);
@@ -170626,7 +170709,7 @@ index a58981051..23014673b 100644
    size?: number;
    status?: string;
    identity?: string;
-@@ -125,68 +25,179 @@ export interface BotAvatarProps {
+@@ -125,68 +27,267 @@ export interface BotAvatarProps {
    motion?: AvatarMotionMode;
    composing?: boolean;
    pokeable?: boolean;
@@ -170644,6 +170727,8 @@ index a58981051..23014673b 100644
 +  surface?: AvatarBadgeSurface;
 +  /** The orange star that marks the main bot, drawn at the avatar's bottom-right. */
 +  main?: boolean;
++  /** The bot leads its folder: a small flag sits where no other badge does. */
++  lead?: boolean;
  }
  
 -/** Missing set metadata deliberately preserves every existing avatar. */
@@ -170684,6 +170769,7 @@ index a58981051..23014673b 100644
 +    entrance = false,
 +    surface = "default",
 +    main = false,
++    lead = false,
 +  } = props;
    const liveActivity = useSyncExternalStore(
      mobileLogoAvatarActivity.subscribe,
@@ -170701,6 +170787,14 @@ index a58981051..23014673b 100644
 +  // The working dot marks a bot at work, not one writing its reply; a running avatar is itself
 +  // that sign, so it carries none.
 +  const working = isRunWorking(status) && !composing && motion !== "running";
++  // The finished Lumen pictures the server's manifest names: a bot listed there shows its own
++  // still or motion picture; a bot it does not list keeps the drawn body below.
++  const manifest = useLumenManifest();
++  const reducedMotion = useLumenReducedMotion();
++  const appearance = useResolvedAppearance();
++  // The pictures to try, and the ones this run already failed to load (offline, a 404, a torn
++  // file). A failure falls to the next picture, then to the drawn body — never a blank box.
++  const [failed, setFailed] = useState<readonly string[]>([]);
 +  // A photo a bot was given still draws: it is the person's own picture, not one of the retired
 +  // bodies. Everything else is the Lumen body.
 +  const stored = parseLumenLook(color).color ?? color;
@@ -170721,6 +170815,43 @@ index a58981051..23014673b 100644
 +          size={size}
 +          surface={surface}
 +          main={main}
++          lead={lead}
++          working={working}
++          muted={muted}
++        />
++      </View>
++    );
++  }
++  const picture = lumenManifestPicture(manifest, {
++    identity,
++    name,
++    surface,
++    size,
++    dark: appearance === "dark",
++    reducedMotion,
++  });
++  const uri = picture?.uris.find((candidate) => !failed.includes(candidate));
++  if (picture && uri) {
++    const shown = picture.size ?? size;
++    return (
++      <View style={{ width: shown, height: shown, overflow: "visible" }}>
++        {/* contain: the whole drawing, never cropped; iOS plays the GIF natively. */}
++        <Image
++          source={{ uri }}
++          style={{ width: shown, height: shown }}
++          resizeMode="contain"
++          accessibilityIgnoresInvertColors
++          onError={() => {
++            setFailed((current) =>
++              current.includes(uri) ? current : [...current, uri],
++            );
++          }}
++        />
++        <AvatarStatusBadges
++          size={shown}
++          surface={surface}
++          main={main && picture.drawMainStar}
++          lead={lead}
 +          working={working}
 +          muted={muted}
 +        />
@@ -170747,16 +170878,17 @@ index a58981051..23014673b 100644
          pokeable={pokeable}
 +        chief={chief}
 +        entrance={entrance}
-       />
--      {working ? <WorkingDot size={size} muted={muted} /> : null}
--      {muted ? <MutedBadge size={size} /> : null}
++      />
 +      <AvatarStatusBadges
 +        size={size}
 +        surface={surface}
 +        main={main}
++        lead={lead}
 +        working={working}
 +        muted={muted}
-+      />
+       />
+-      {working ? <WorkingDot size={size} muted={muted} /> : null}
+-      {muted ? <MutedBadge size={size} /> : null}
 +    </View>
 +  );
 +});
@@ -170765,21 +170897,25 @@ index a58981051..23014673b 100644
 +  size,
 +  surface = "default",
 +  main = false,
++  lead = false,
 +  working,
 +  muted,
 +}: {
 +  size: number;
 +  surface?: AvatarBadgeSurface;
 +  main?: boolean;
++  lead?: boolean;
 +  working: boolean;
 +  muted: boolean;
 +}) {
-+  const badges = placeAvatarBadges(surface, { main, working, muted });
++  const badges = placeAvatarBadges(surface, { main, lead, working, muted });
 +  return (
 +    <>
 +      {badges.map((badge) =>
 +        badge.kind === "main" ? (
 +          <MainBotBadge key="main" size={size} />
++        ) : badge.kind === "lead" ? (
++          <LeadBadge key="lead" size={size} corner={badge.corner} />
 +        ) : badge.kind === "working" ? (
 +          <WorkingDot key="working" size={size} corner={badge.corner} />
 +        ) : (
@@ -170819,8 +170955,43 @@ index a58981051..23014673b 100644
  }
  
 -function WorkingDot({ size, muted }: { size: number; muted: boolean }) {
-+function WorkingDot({ size, corner }: { size: number; corner: AvatarBadgeCorner }) {
++/** The folder leader's flag: the app's own blue, legible on both themes. */
++const LEAD_BADGE_COLOR = "#0A84FF";
++
++/** The folder leader: a small flag where the star and the working dot leave room. */
++function LeadBadge({ size, corner }: { size: number; corner: AvatarBadgeCorner }) {
    const tokens = useMobileTokens();
++  const { t } = useLingui();
++  const badge = Math.max(14, Math.round(size * 0.32));
++  return (
++    <View
++      accessible
++      accessibilityLabel={t`Folder lead`}
++      pointerEvents="none"
++      style={{
++        position: "absolute",
++        ...styleForAvatarBadgeCorner(corner, { end: -1, start: -1, bottom: -1, top: -1 }),
++        width: badge,
++        height: badge,
++        borderRadius: badge / 2,
++        borderWidth: 1.5,
++        borderColor: tokens.background,
++        backgroundColor: LEAD_BADGE_COLOR,
++        alignItems: "center",
++        justifyContent: "center",
++      }}
++    >
++      <NativeSymbol
++        ios="flag.fill"
++        android="flag"
++        size={Math.max(7, Math.round(badge * 0.6))}
++        color="#FFFFFF"
++      />
++    </View>
++  );
++}
++
++function WorkingDot({ size, corner }: { size: number; corner: AvatarBadgeCorner }) {  const tokens = useMobileTokens();
    const { t } = useLingui();
    const dot = avatarWorkingDot(size);
 +  const inset = dot.inset - dot.ring;
@@ -170842,7 +171013,7 @@ index a58981051..23014673b 100644
          width: dot.diameter + dot.ring * 2,
          height: dot.diameter + dot.ring * 2,
          borderRadius: size,
-@@ -198,19 +209,20 @@ function WorkingDot({ size, muted }: { size: number; muted: boolean }) {
+@@ -198,19 +299,20 @@ function WorkingDot({ size, muted }: { size: number; muted: boolean }) {
    );
  }
  
@@ -170868,7 +171039,7 @@ index a58981051..23014673b 100644
          borderRadius: size,
          borderWidth: 2,
          borderColor: tokens.background,
-@@ -240,232 +252,3 @@ function MutedBadge({ size }: { size: number }) {
+@@ -240,232 +342,3 @@ function MutedBadge({ size }: { size: number }) {
      </View>
    );
  }
@@ -171564,6 +171735,61 @@ index 26aaac4dc..c95ada324 100644
                  color={bot.color}
                  avatarSet={bot.avatarSet}
                  identity={bot.id}
+diff --git a/apps/mobile/components/bot-organize-modal.tsx b/apps/mobile/components/bot-organize-modal.tsx
+index dd145c5c2..6cbef5acc 100644
+--- a/apps/mobile/components/bot-organize-modal.tsx
++++ b/apps/mobile/components/bot-organize-modal.tsx
+@@ -33,6 +33,8 @@ import { NativeSymbol } from "./native-symbol";
+ export type BotOrganizationUpdate = {
+   pinned?: boolean;
+   sectionId?: string | null;
++  /** The folder this bot leads, or null to stop leading it. */
++  leadSectionId?: string | null;
+   notifyOnFinish?: boolean;
+ };
+ 
+@@ -48,7 +50,7 @@ export function BotOrganizeModal({
+   onSnooze,
+ }: {
+   bot: Pick<MobileBot, "name" | "pinned" | "sectionId"> &
+-    Partial<Pick<MobileBot, "notifyOnFinish">>;
++    Partial<Pick<MobileBot, "notifyOnFinish" | "leadSectionId">>;
+   sections: MobileBotSection[];
+   onClose: () => void;
+   onUpdate: (update: BotOrganizationUpdate) => Promise<void>;
+@@ -131,6 +133,32 @@ export function BotOrganizeModal({
+         />
+         <Text style={styles.actionLabel}>{bot.pinned ? t`Unpin` : t`Pin`}</Text>
+       </Pressable>
++      {/* A folder lead runs the bots inside its own folder; a bot outside any folder has none. */}
++      {currentSection ? (
++        <Pressable
++          accessibilityRole="button"
++          disabled={saving}
++          onPress={() =>
++            void save(() =>
++              onUpdate({
++                leadSectionId: bot.leadSectionId === currentSection.id ? null : currentSection.id,
++              }),
++            )
++          }
++          style={({ pressed }) => [styles.action, pressed && styles.pressed]}
++        >
++          <NativeSymbol
++            ios={bot.leadSectionId === currentSection.id ? "flag.slash" : "flag"}
++            android={bot.leadSectionId === currentSection.id ? "flag-outline" : "flag"}
++            size={18}
++          />
++          <Text style={styles.actionLabel}>
++            {bot.leadSectionId === currentSection.id
++              ? `取消「${currentSection.name}」小组长`
++              : `设为「${currentSection.name}」小组长`}
++          </Text>
++        </Pressable>
++      ) : null}
+       {typeof bot.notifyOnFinish === "boolean" ? (
+         <Pressable
+           accessibilityRole="button"
 diff --git a/apps/mobile/components/bot-profile-tabs.tsx b/apps/mobile/components/bot-profile-tabs.tsx
 new file mode 100644
 index 000000000..38a775842
@@ -174036,7 +174262,7 @@ index eaa8cfae3..2c3f99480 100644
          router.push({ pathname: "/group-settings", params: { groupId: groupId ?? "" } }),
        onInvite: canInvite && botId ? openInvite : undefined,
 diff --git a/apps/mobile/components/chat-title-avatar.tsx b/apps/mobile/components/chat-title-avatar.tsx
-index 8f744a23b..7b3126c11 100644
+index 8f744a23b..94e2e6fe5 100644
 --- a/apps/mobile/components/chat-title-avatar.tsx
 +++ b/apps/mobile/components/chat-title-avatar.tsx
 @@ -45,6 +45,7 @@ export function ChatTitleAvatar({
@@ -174047,6 +174273,14 @@ index 8f744a23b..7b3126c11 100644
        color={bot.color}
        avatarSet={bot.avatarSet}
        identity={bot.id}
+@@ -52,6 +53,7 @@ export function ChatTitleAvatar({
+       status={status}
+       composing={composing}
+       muted={bot.notifyOnFinish === false}
++      lead={"leadSectionId" in bot && Boolean(bot.leadSectionId)}
+     />
+   );
+ }
 diff --git a/apps/mobile/components/code-copy-button.tsx b/apps/mobile/components/code-copy-button.tsx
 index 0416683a8..075696591 100644
 --- a/apps/mobile/components/code-copy-button.tsx
@@ -176222,7 +176456,7 @@ index b22c9bd2f..5852fa162 100644
      },
      spaceHeading: {
 diff --git a/apps/mobile/components/image-artifact-viewer.tsx b/apps/mobile/components/image-artifact-viewer.tsx
-index ed4520542..de0d0a4f9 100644
+index ed4520542..3c016c6b7 100644
 --- a/apps/mobile/components/image-artifact-viewer.tsx
 +++ b/apps/mobile/components/image-artifact-viewer.tsx
 @@ -1,7 +1,15 @@
@@ -176257,7 +176491,7 @@ index ed4520542..de0d0a4f9 100644
 +  recognizeImageText,
 +  saveImageToPhotos,
 +} from "../lib/image-actions";
-+import { ImageViewerIndex } from "../lib/image-stack-layout";
++import { ImageViewerIndex, galleryNeighbourOrder } from "../lib/image-stack-layout";
  import { imageDismissBackdropOpacity, shouldDismissImage } from "../lib/image-dismiss";
  import type { ImageSize } from "../lib/inline-image";
  import { fitImageSize } from "../lib/inline-image";
@@ -176303,7 +176537,7 @@ index ed4520542..de0d0a4f9 100644
    const dismissY = useSharedValue(0);
    const backdropStyle = useAnimatedStyle(() => ({
      backgroundColor: interpolateColor(
-@@ -245,45 +278,137 @@ export function ImageArtifactViewer({
+@@ -245,45 +278,141 @@ export function ImageArtifactViewer({
      onClose();
    };
    const [box, setBox] = useState<ImageSize | null>(null);
@@ -176362,12 +176596,11 @@ index ed4520542..de0d0a4f9 100644
 +  }, [targetBotId, targetGroupId, currentTarget.artifactId, currentTarget.mimeType]);
 +
 +  // The strip shows every picture in the thread, so their previews are read in the background —
-+  // the current one first — instead of appearing one by one as they are opened.
++  // the current one and its two neighbours first, so the strip never opens onto a row of grey
++  // boxes — instead of appearing one by one as they are opened.
 +  useEffect(() => {
 +    let cancelled = false;
-+    const order = [currentTarget, ...gallery].filter(
-+      (item, at, list) => list.findIndex((other) => other.artifactId === item.artifactId) === at,
-+    );
++    const order = galleryNeighbourOrder(gallery, current);
 +    void (async () => {
 +      for (const item of order) {
 +        if (cancelled) return;
@@ -176390,7 +176623,7 @@ index ed4520542..de0d0a4f9 100644
 +    };
 +    // The gallery's identity is its artifact ids.
 +    // eslint-disable-next-line react-hooks/exhaustive-deps
-+  }, [gallery.map((item) => item.artifactId).join("|"), currentTarget.artifactId]);
++  }, [gallery.map((item) => item.artifactId).join("|"), current]);
 +
 +  const currentLoaded = loaded[currentTarget.artifactId];
 +  const nativeActions = imageActionsAvailable();
@@ -176450,12 +176683,17 @@ index ed4520542..de0d0a4f9 100644
 +
 +  // A sideways swipe on the picture flips to the next or previous one; the picture's own pan
 +  // refuses horizontal drags, so the two never fight.
++  //
++  // This callback runs on the JS thread on purpose: it reads the gallery's index through
++  // `ImageViewerIndex.clamp`, an ordinary function, and a worklet calling it killed the app on
++  // the first swipe (v34's real-device recording, 3.0 s). Nothing here needs a frame deadline.
 +  const swipe = Gesture.Pan()
 +    .activeOffsetX([-24, 24])
++    .runOnJS(true)
 +    .onEnd((event) => {
 +      if (gallery.length < 2) return;
-+      if (event.translationX <= -60) scheduleOnRN(go, ImageViewerIndex.clamp(current + 1, gallery.length));
-+      else if (event.translationX >= 60) scheduleOnRN(go, ImageViewerIndex.clamp(current - 1, gallery.length));
++      if (event.translationX <= -60) go(current + 1);
++      else if (event.translationX >= 60) go(current - 1);
 +    });
  
    return (
@@ -176464,7 +176702,7 @@ index ed4520542..de0d0a4f9 100644
      <Animated.View
        style={[
          styles.screen,
-@@ -294,15 +419,7 @@ export function ImageArtifactViewer({
+@@ -294,15 +423,7 @@ export function ImageArtifactViewer({
          },
        ]}
      >
@@ -176481,7 +176719,7 @@ index ed4520542..de0d0a4f9 100644
          <GlassIconButton
            accessibilityLabel={t`Close image`}
            ios="xmark"
-@@ -310,46 +427,231 @@ export function ImageArtifactViewer({
+@@ -310,46 +431,231 @@ export function ImageArtifactViewer({
            iconSize={18}
            onPress={close}
          />
@@ -176728,7 +176966,7 @@ index ed4520542..de0d0a4f9 100644
  const styles = StyleSheet.create({
    screen: { flex: 1 },
    header: {
-@@ -361,4 +663,28 @@ const styles = StyleSheet.create({
+@@ -361,4 +667,28 @@ const styles = StyleSheet.create({
    },
    stage: { flex: 1, alignItems: "center", justifyContent: "center", overflow: "hidden" },
    message: { fontSize: 15, textAlign: "center", padding: 24 },
@@ -176759,12 +176997,12 @@ index ed4520542..de0d0a4f9 100644
  });
 diff --git a/apps/mobile/components/image-card-stack.tsx b/apps/mobile/components/image-card-stack.tsx
 new file mode 100644
-index 000000000..cb1ffd3bb
+index 000000000..fdf26f202
 --- /dev/null
 +++ b/apps/mobile/components/image-card-stack.tsx
-@@ -0,0 +1,402 @@
+@@ -0,0 +1,413 @@
 +import { useEffect, useMemo, useState } from "react";
-+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
++import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from "react-native";
 +import { Gesture, GestureDetector } from "react-native-gesture-handler";
 +import Animated, {
 +  Easing,
@@ -176850,8 +177088,7 @@ index 000000000..cb1ffd3bb
 +  focused: Animated.SharedValue<number>;
 +  index: number;
 +  onRetry?: () => void;
-+}) {
-+  const style = useAnimatedStyle(() => {
++}) {  const style = useAnimatedStyle(() => {
 +    const t = fanned.value;
 +    const x = rest.x + (fan.x - rest.x) * t;
 +    const y = rest.y + (fan.y - rest.y) * t;
@@ -176882,7 +177119,14 @@ index 000000000..cb1ffd3bb
 +      {source.uri ? (
 +        <Image source={{ uri: source.uri }} style={styles.fill} accessibilityIgnoresInvertColors />
 +      ) : (
-+        <View style={[styles.fill, styles.placeholder]} />
++        <View style={[styles.fill, styles.placeholder]}>
++          {!upload || upload.kind === "done" ? (
++            <ActivityIndicator
++              color="rgba(255,255,255,0.85)"
++              accessibilityLabel="正在加载图片"
++            />
++          ) : null}
++        </View>
 +      )}
 +      {upload.kind === "uploading" ? (
 +        <View style={styles.badge} accessibilityLabel="正在上传">
@@ -177071,24 +177315,25 @@ index 000000000..cb1ffd3bb
 +  const groupId = "groupId" in threadTarget ? threadTarget.groupId : undefined;
 +  const ids = items.map((item) => item.artifactId).join("|");
 +
++  // Each picture loads on its own and shows the moment it lands: a stack of four used to wait
++  // for all four, so one slow picture kept every card a grey box.
 +  useEffect(() => {
 +    let cancelled = false;
 +    const target: MobileArtifactTarget = botId !== undefined ? { botId } : { groupId: groupId! };
-+    void Promise.all(
-+      items.map(async (item) => {
-+        try {
-+          const loaded = await imageArtifactPreview(target, item.artifactId, item.mimeType);
-+          return [item.artifactId, loaded.uri] as const;
-+        } catch {
-+          return [item.artifactId, ""] as const;
-+        }
-+      }),
-+    ).then((entries) => {
-+      if (cancelled) return;
-+      const next: Record<string, string> = {};
-+      for (const [id, uri] of entries) if (uri) next[id] = uri;
-+      setUris(next);
-+    });
++    for (const item of items) {
++      void imageArtifactPreview(target, item.artifactId, item.mimeType)
++        .then((loaded) => {
++          if (cancelled || !loaded.uri) return;
++          setUris((current) =>
++            current[item.artifactId] === loaded.uri
++              ? current
++              : { ...current, [item.artifactId]: loaded.uri },
++          );
++        })
++        .catch(() => {
++          // A picture that will not load keeps its tile; opening it reports the error.
++        });
++    }
 +    return () => {
 +      cancelled = true;
 +    };
@@ -177121,7 +177366,11 @@ index 000000000..cb1ffd3bb
 +    shadowOffset: { width: 0, height: 2 },
 +  },
 +  fill: { width: "100%", height: "100%" },
-+  placeholder: { backgroundColor: "rgba(127,127,127,0.25)" },
++  placeholder: {
++    backgroundColor: "rgba(127,127,127,0.25)",
++    alignItems: "center",
++    justifyContent: "center",
++  },
 +  captionRow: {
 +    marginTop: CAPTION_SPACING,
 +    height: CAPTION_HEIGHT,
@@ -178330,10 +178579,10 @@ index 000000000..e957c64ea
 +}
 diff --git a/apps/mobile/components/inbox/inbox-rows.tsx b/apps/mobile/components/inbox/inbox-rows.tsx
 new file mode 100644
-index 000000000..4c1af7a0b
+index 000000000..e14037249
 --- /dev/null
 +++ b/apps/mobile/components/inbox/inbox-rows.tsx
-@@ -0,0 +1,551 @@
+@@ -0,0 +1,554 @@
 +import { ph } from "@lingui/core/macro";
 +import { useLingui } from "@lingui/react/macro";
 +import type { SpaceBot, SpaceGroup } from "@rakazo/contracts";
@@ -178619,6 +178868,7 @@ index 000000000..4c1af7a0b
 +                size={avatarSize}
 +                status={chat.bot.status}
 +                muted={chat.bot.notifyOnFinish === false}
++                lead={Boolean(chat.bot.leadSectionId)}
 +                motion="lazy"
 +              />
 +            ) : (
@@ -178721,6 +178971,7 @@ index 000000000..4c1af7a0b
 +              color={target.chat.color || FALLBACK_COLOR}
 +              avatarSet={target.chat.avatarSet}
 +              identity={target.chat.id}
++              lead={Boolean(target.chat.leadSectionId)}
 +              size={32}
 +            />
 +          ) : (
@@ -178801,6 +179052,7 @@ index 000000000..4c1af7a0b
 +            size={INBOX_ROW.avatarSize}
 +            status={bot.status}
 +            muted={bot.notifyOnFinish === false}
++            lead={Boolean(bot.leadSectionId)}
 +            motion="lazy"
 +          />
 +        </AvatarRow>
@@ -180297,7 +180549,7 @@ index 37ec3e1b0..000000000
 -}
 diff --git a/apps/mobile/components/lumen-bot-avatar.tsx b/apps/mobile/components/lumen-bot-avatar.tsx
 new file mode 100644
-index 000000000..071fc3e02
+index 000000000..dda7c18fc
 --- /dev/null
 +++ b/apps/mobile/components/lumen-bot-avatar.tsx
 @@ -0,0 +1,664 @@
@@ -180959,7 +181211,7 @@ index 000000000..071fc3e02
 +        </>
 +      ) : (
 +        <SvgText x="12" y="18" fill={ink} fontSize="16" fontWeight="600" textAnchor="middle">
-+          {look.initial ?? "?"}
++          {look.initial ?? ""}
 +        </SvgText>
 +      )}
 +    </G>
@@ -197322,10 +197574,10 @@ index 000000000..be24df2ee
 +});
 diff --git a/apps/mobile/lib/avatar-badges.ts b/apps/mobile/lib/avatar-badges.ts
 new file mode 100644
-index 000000000..18a7177d8
+index 000000000..2db304618
 --- /dev/null
 +++ b/apps/mobile/lib/avatar-badges.ts
-@@ -0,0 +1,96 @@
+@@ -0,0 +1,100 @@
 +/** Where an avatar badge sits, and which badges a given surface may show.
 +
 +The home header keeps only the orange main-bot star at the avatar's bottom-right.
@@ -197334,12 +197586,14 @@ index 000000000..18a7177d8
 +places at most one badge in a corner, and shows working/online at most once.
 +*/
 +
-+export type AvatarBadgeKind = "main" | "working" | "muted";
++export type AvatarBadgeKind = "main" | "lead" | "working" | "muted";
 +export type AvatarBadgeCorner = "bottom-end" | "bottom-start" | "top-end";
 +export type AvatarBadgeSurface = "home-hero" | "home-list" | "chat" | "default";
 +
 +export type AvatarBadgeFlags = {
 +  main?: boolean;
++  /** The bot leads its folder: the flag takes a corner the star leaves free. */
++  lead?: boolean;
 +  working?: boolean;
 +  muted?: boolean;
 +};
@@ -197385,6 +197639,7 @@ index 000000000..18a7177d8
 +  flags: AvatarBadgeFlags,
 +): PlacedAvatarBadge[] {
 +  const main = Boolean(flags.main);
++  const lead = Boolean(flags.lead);
 +  const muted = Boolean(flags.muted);
 +  const workingAllowed = surface !== "home-hero" && surface !== "home-list";
 +  const working = workingAllowed && Boolean(flags.working);
@@ -197403,6 +197658,7 @@ index 000000000..18a7177d8
 +  };
 +
 +  if (main) put("main", "bottom-end", "top-end");
++  if (lead) put("lead", "top-end", "bottom-start");
 +  if (muted) put("muted", "bottom-end", "top-end");
 +  if (working) put("working", "bottom-end", "bottom-start");
 +  return placed;
@@ -205930,10 +206186,10 @@ index 000000000..d7f0be54f
 +}
 diff --git a/apps/mobile/lib/image-stack-layout.test.ts b/apps/mobile/lib/image-stack-layout.test.ts
 new file mode 100644
-index 000000000..7fd59cffe
+index 000000000..09c2908cb
 --- /dev/null
 +++ b/apps/mobile/lib/image-stack-layout.test.ts
-@@ -0,0 +1,198 @@
+@@ -0,0 +1,229 @@
 +import { readFileSync } from "node:fs";
 +import { describe, expect, it } from "vitest";
 +import {
@@ -205941,6 +206197,7 @@ index 000000000..7fd59cffe
 +  ImageSendPolicy,
 +  ImageStackLayout,
 +  ImageViewerIndex,
++  galleryNeighbourOrder,
 +  imageStackCaption,
 +  imageStackCardSize,
 +  imageStackCards,
@@ -206116,6 +206373,36 @@ index 000000000..7fd59cffe
 +    expect(ImageViewerIndex.showsStrip(2)).toBe(true);
 +  });
 +
++  it("fetches the strip's pictures from the current one outward", () => {
++    const gallery = ["a", "b", "c", "d", "e"].map((id) => ({ artifactId: id }));
++    expect(galleryNeighbourOrder(gallery, 2).map((item) => item.artifactId)).toEqual([
++      "c",
++      "b",
++      "d",
++      "a",
++      "e",
++    ]);
++    expect(galleryNeighbourOrder(gallery, 0).map((item) => item.artifactId)).toEqual([
++      "a",
++      "b",
++      "c",
++      "d",
++      "e",
++    ]);
++    expect(galleryNeighbourOrder(gallery, 99).map((item) => item.artifactId)[0]).toBe("e");
++    // A repeated id keeps its first place, so no picture is read twice.
++    expect(
++      galleryNeighbourOrder(
++        [
++          { artifactId: "a" },
++          { artifactId: "a" },
++          { artifactId: "b" },
++        ],
++        0,
++      ).map((item) => item.artifactId),
++    ).toEqual(["a", "b"]);
++  });
++
 +  it("compresses to a 1600 long edge unless the original is kept", () => {
 +    const big = { width: 4032, height: 3024 };
 +    expect(ImageSendPolicy.targetSize(big, false)).toEqual({ width: 1600, height: 1200 });
@@ -206134,10 +206421,10 @@ index 000000000..7fd59cffe
 +});
 diff --git a/apps/mobile/lib/image-stack-layout.ts b/apps/mobile/lib/image-stack-layout.ts
 new file mode 100644
-index 000000000..0e59e7a36
+index 000000000..5e91bbfba
 --- /dev/null
 +++ b/apps/mobile/lib/image-stack-layout.ts
-@@ -0,0 +1,250 @@
+@@ -0,0 +1,276 @@
 +/** Geometry for a message's image cards, the composer attach tray, the viewer, and send policy.
 + * Shared by the UI and by layout tests so both read the same numbers.
 + *
@@ -206365,6 +206652,32 @@ index 000000000..0e59e7a36
 +    return count > 1;
 +  },
 +} as const;
++
++/**
++ * The gallery in the order the thumbnail strip should fetch it: the picture on screen first,
++ * then its neighbours outward on both sides, so the boxes beside the current one fill first and
++ * a strip never opens onto a row of grey tiles. Duplicates keep their first place.
++ */
++export function galleryNeighbourOrder<T extends { artifactId: string }>(
++  gallery: readonly T[],
++  current: number,
++): T[] {
++  const start = ImageViewerIndex.clamp(current, gallery.length);
++  const order: T[] = [];
++  const seen = new Set<string>();
++  const take = (at: number) => {
++    const item = gallery[at];
++    if (!item || seen.has(item.artifactId)) return;
++    seen.add(item.artifactId);
++    order.push(item);
++  };
++  take(start);
++  for (let step = 1; step < gallery.length; step += 1) {
++    take(start - step);
++    take(start + step);
++  }
++  return order;
++}
 +
 +/** Default send policy: long edge 1600, JPEG; HEIC always becomes JPEG. Keep-original skips resize only. */
 +export const ImageSendPolicy = {
@@ -211691,10 +212004,10 @@ index d2851a4f0..000000000
 -});
 diff --git a/apps/mobile/lib/lumen/lumen-avatar.test.ts b/apps/mobile/lib/lumen/lumen-avatar.test.ts
 new file mode 100644
-index 000000000..bdce0509a
+index 000000000..219075192
 --- /dev/null
 +++ b/apps/mobile/lib/lumen/lumen-avatar.test.ts
-@@ -0,0 +1,150 @@
+@@ -0,0 +1,157 @@
 +import { describe, expect, it } from "vitest";
 +import { LUMEN_EMBLEMS } from "./lumen-emblems.js";
 +import {
@@ -211756,6 +212069,13 @@ index 000000000..bdce0509a
 +    expect(look.color).toBe("#3DD6F5");
 +    expect(look.emblem?.id).toBe("e341");
 +    expect(look.source).toBe("stored");
++  });
++
++  it("gives an unnamed placeholder a real mark instead of a question mark", () => {
++    const placeholder = lumenLookFor({});
++    expect(placeholder.initial).toBeNull();
++    expect(placeholder.emblem?.id).toBe("e012");
++    expect(lumenLookFor({ name: "   " }).emblem?.id).toBe("e012");
 +  });
 +
 +  it("falls back from a name to the id, so the mark is stable", () => {
@@ -211847,10 +212167,10 @@ index 000000000..bdce0509a
 +});
 diff --git a/apps/mobile/lib/lumen/lumen-avatar.ts b/apps/mobile/lib/lumen/lumen-avatar.ts
 new file mode 100644
-index 000000000..db3a064fd
+index 000000000..1d1b965f6
 --- /dev/null
 +++ b/apps/mobile/lib/lumen/lumen-avatar.ts
-@@ -0,0 +1,749 @@
+@@ -0,0 +1,754 @@
 +import { LUMEN_EMBLEMS, LUMEN_EMBLEM_BY_ID, type LumenEmblem } from "./lumen-emblems";
 +
 +/**
@@ -212573,7 +212893,12 @@ index 000000000..db3a064fd
 +  const fallback = emblemByIdentity(input.identity ?? "");
 +  if (fallback) return { color, role, emblem: fallback, initial: null, source: "identity" };
 +  const first = [...(input.name ?? "").trim()][0] ?? null;
-+  return { color, role, emblem: null, initial: first, source: first ? "initial" : "identity" };
++  if (!first) {
++    // A bot with neither a name nor an id is a placeholder the person is still creating: it gets
++    // the library's own "AI 星芒" rather than a question mark, and the same mark every render.
++    return { color, role, emblem: LUMEN_EMBLEM_BY_ID.get("e012") ?? null, initial: null, source: "identity" };
++  }
++  return { color, role, emblem: null, initial: first, source: "initial" };
 +}
 +
 +/** A role word matched by the emblem scores well above an accidental two-character overlap. */
@@ -212907,6 +213232,403 @@ index 000000000..f0d7509b8
 +  { cat: "common", catName: "通用符号", zone: "neutral" },
 +  { cat: "food", catName: "饮食烹饪", zone: "life" },
 +];
+diff --git a/apps/mobile/lib/lumen/lumen-manifest-store.ts b/apps/mobile/lib/lumen/lumen-manifest-store.ts
+new file mode 100644
+index 000000000..0849b193f
+--- /dev/null
++++ b/apps/mobile/lib/lumen/lumen-manifest-store.ts
+@@ -0,0 +1,173 @@
++import { useSyncExternalStore } from "react";
++import { AccessibilityInfo, AppState } from "react-native";
++import { currentApiBase, subscribeApiBase } from "../api/api";
++import type { LumenManifest } from "./lumen-manifest";
++import { lumenManifestUrl, parseLumenManifest } from "./lumen-manifest";
++
++/**
++ * The manifest the avatars draw from: read from disk at once (so the first frame already has
++ * last launch's pictures), then fetched from the server on every launch, on the way back to the
++ * foreground after a while, and whenever the server address changes. A failed fetch keeps what
++ * the app had; with nothing at all, every avatar keeps the drawn Lumen body.
++ */
++
++const REFRESH_AFTER_MS = 10 * 60 * 1000;
++const FETCH_TIMEOUT_MS = 8_000;
++const MAX_BYTES = 512 * 1024;
++
++let manifest: LumenManifest | null = null;
++let reducedMotion = false;
++let fetchedAt = 0;
++let inFlight = false;
++let started = false;
++const listeners = new Set<() => void>();
++
++// Unit tests render avatars without a phone: no disk, no network, the drawn body.
++const underTest = typeof process !== "undefined" && Boolean(process.env?.VITEST);
++
++type CacheFile = {
++  exists: boolean;
++  textSync(): string;
++  create(options: { overwrite: boolean }): void;
++  writeSync(text: string): void;
++};
++
++function cacheFile(): CacheFile | null {
++  try {
++    // Loaded on first use, so a screen that never shows an avatar never touches the module.
++    // eslint-disable-next-line @typescript-eslint/no-require-imports
++    const fs = require("expo-file-system") as {
++      File: new (dir: unknown, name: string) => CacheFile;
++      Paths: { document: unknown };
++    };
++    return new fs.File(fs.Paths.document, "lumen-manifest.json");
++  } catch {
++    return null;
++  }
++}
++
++function emit() {
++  for (const listener of listeners) listener();
++}
++
++function publish(next: LumenManifest | null) {
++  manifest = next;
++  emit();
++}
++
++function loadFromDisk() {
++  try {
++    const file = cacheFile();
++    if (!file?.exists) return;
++    const saved = JSON.parse(file.textSync()) as { url?: string; body?: unknown };
++    if (typeof saved.url !== "string") return;
++    const parsed = parseLumenManifest(saved.body, saved.url);
++    if (parsed) publish(parsed);
++  } catch {
++    // A torn cache is the same as none.
++  }
++}
++
++async function refresh() {
++  if (inFlight) return;
++  inFlight = true;
++  let url: string;
++  try {
++    url = lumenManifestUrl(currentApiBase());
++  } catch {
++    inFlight = false;
++    return;
++  }
++  const controller = new AbortController();
++  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
++  try {
++    const response = await fetch(url, {
++      signal: controller.signal,
++      headers: { Accept: "application/json", "Cache-Control": "no-cache" },
++    });
++    if (!response.ok) return;
++    const text = await response.text();
++    if (text.length > MAX_BYTES) return;
++    const body: unknown = JSON.parse(text);
++    const parsed = parseLumenManifest(body, url);
++    if (!parsed) return;
++    fetchedAt = Date.now();
++    if (parsed.version !== manifest?.version || parsed.baseUrl !== manifest?.baseUrl) publish(parsed);
++    try {
++      const file = cacheFile();
++      if (file) {
++        file.create({ overwrite: true });
++        file.writeSync(JSON.stringify({ url, body }));
++      }
++    } catch {
++      // Not saving only costs the next cold launch one fetch.
++    }
++  } catch {
++    // Offline or a bad file: keep the pictures already shown.
++  } finally {
++    clearTimeout(timer);
++    inFlight = false;
++  }
++}
++
++function watchReducedMotion() {
++  try {
++    void AccessibilityInfo?.isReduceMotionEnabled?.().then((on) => {
++      if (on !== reducedMotion) {
++        reducedMotion = on;
++        emit();
++      }
++    });
++    AccessibilityInfo?.addEventListener?.("reduceMotionChanged", (on: boolean) => {
++      reducedMotion = on;
++      emit();
++    });
++  } catch {
++    // No accessibility bridge: keep the motion on.
++  }
++}
++
++function start() {
++  if (started) return;
++  started = true;
++  if (underTest) return;
++  loadFromDisk();
++  watchReducedMotion();
++  void refresh();
++  try {
++    AppState.addEventListener("change", (state) => {
++      if (state === "active" && Date.now() - fetchedAt > REFRESH_AFTER_MS) void refresh();
++    });
++  } catch {
++    // Without app-state events the manifest still loads once per launch.
++  }
++  subscribeApiBase(() => {
++    fetchedAt = 0;
++    void refresh();
++  });
++}
++
++function subscribe(listener: () => void) {
++  start();
++  listeners.add(listener);
++  return () => {
++    listeners.delete(listener);
++  };
++}
++
++function snapshot() {
++  return manifest;
++}
++
++function reducedSnapshot() {
++  return reducedMotion;
++}
++
++export function useLumenManifest(): LumenManifest | null {
++  return useSyncExternalStore(subscribe, snapshot, () => null);
++}
++
++/** iOS "Reduce Motion": the manifest's avatars then show their still picture. */
++export function useLumenReducedMotion(): boolean {
++  return useSyncExternalStore(subscribe, reducedSnapshot, () => false);
++}
+diff --git a/apps/mobile/lib/lumen/lumen-manifest.test.ts b/apps/mobile/lib/lumen/lumen-manifest.test.ts
+new file mode 100644
+index 000000000..7e24a4074
+--- /dev/null
++++ b/apps/mobile/lib/lumen/lumen-manifest.test.ts
+@@ -0,0 +1,183 @@
++import { describe, expect, it } from "vitest";
++import {
++  lumenManifestBot,
++  lumenManifestKind,
++  lumenManifestPicture,
++  lumenManifestUrl,
++  parseLumenManifest,
++} from "./lumen-manifest";
++
++const BASE = "https://rakazo.163ll.com/lumen-avatars/manifest.json";
++const pics = (key: string, theme: string) => ({
++  static: `assets/static/${key}-${theme}.png`,
++  list: `assets/list/${key}-${theme}.gif`,
++  header: `assets/header/${key}-${theme}.gif`,
++});
++const doc = {
++  schemaVersion: 2,
++  version: "20261122-1000",
++  playback: {
++    headerMinPt: 72,
++    reduceMotion: "static",
++    surfaces: { "home-hero": "header", chat: "header", "home-list": "list", default: "auto" },
++  },
++  bots: [
++    {
++      botId: "chief-id",
++      name: "小猪包",
++      role: "chief",
++      starBaked: true,
++      listVariant: "v3-full",
++      listSizePt: 96,
++      themes: { dark: pics("chief", "dark"), light: pics("chief", "light") },
++    },
++    {
++      botId: "quiz-id",
++      name: "刷题教练",
++      role: "member",
++      starBaked: false,
++      listVariant: "B-fx",
++      listSizePt: 56,
++      themes: { dark: pics("quiz", "dark"), light: pics("quiz", "light") },
++    },
++    // A row that names only a still keeps the bot: the picker falls back to it.
++    { botId: "still-only", name: "只有静图", themes: { dark: { static: "assets/static/memo-dark.png" } } },
++    { botId: "nothing", name: "全空" },
++  ],
++  hashes: { "assets/list/quiz-dark.gif": "abc123" },
++};
++
++describe("lumen manifest", () => {
++  it("builds the manifest address from the server address", () => {
++    expect(lumenManifestUrl("https://rakazo.163ll.com")).toBe(BASE);
++    expect(lumenManifestUrl("https://rakazo.163ll.com:9443/")).toBe(
++      "https://rakazo.163ll.com:9443/lumen-avatars/manifest.json",
++    );
++  });
++
++  it("keeps rows with at least one picture, skips empty ones, refuses files with none", () => {
++    const m = parseLumenManifest(doc, BASE);
++    expect(m?.bots.map((b) => b.name)).toEqual(["小猪包", "刷题教练", "只有静图"]);
++    expect(parseLumenManifest({ ...doc, bots: [doc.bots[3]] }, BASE)).toBeNull();
++    expect(parseLumenManifest({ ...doc, schemaVersion: 1 }, BASE)).toBeNull();
++    expect(parseLumenManifest("nope", BASE)).toBeNull();
++  });
++
++  it("matches a bot by id first, then by exact name", () => {
++    const m = parseLumenManifest(doc, BASE);
++    expect(lumenManifestBot(m, { identity: "quiz-id", name: "别名" })?.name).toBe("刷题教练");
++    expect(lumenManifestBot(m, { identity: "new-id", name: "刷题教练" })?.botId).toBe("quiz-id");
++    expect(lumenManifestBot(m, { identity: "new-id", name: "新来的" })).toBeNull();
++    expect(lumenManifestBot(null, { identity: "quiz-id" })).toBeNull();
++  });
++
++  it("picks the surface's picture, and the still under reduced motion", () => {
++    const base = {
++      headerMinPt: 72,
++      reduceMotionStatic: true,
++      reducedMotion: false,
++      surfaces: { "home-hero": "header", "home-list": "list" } as const,
++    };
++    expect(lumenManifestKind({ ...base, surface: "home-hero", size: 96 })).toBe("header");
++    expect(lumenManifestKind({ ...base, surface: "chat", size: 28 })).toBe("header");
++    expect(lumenManifestKind({ ...base, surface: "home-list", size: 56 })).toBe("list");
++    expect(lumenManifestKind({ ...base, surface: "default", size: 56 })).toBe("list");
++    expect(lumenManifestKind({ ...base, surface: "default", size: 112 })).toBe("header");
++    expect(
++      lumenManifestKind({ ...base, reducedMotion: true, surface: "home-hero", size: 96 }),
++    ).toBe("static");
++  });
++
++  it("resolves the picture address, theme, size and star rule", () => {
++    const m = parseLumenManifest(doc, BASE);
++    const quiz = lumenManifestPicture(m, {
++      identity: "quiz-id",
++      surface: "home-list",
++      size: 56,
++      dark: true,
++      reducedMotion: false,
++    });
++    expect(quiz?.uris[0]).toBe(
++      "https://rakazo.163ll.com/lumen-avatars/assets/list/quiz-dark.gif?h=abc123",
++    );
++    expect(quiz?.kind).toBe("list");
++    expect(quiz?.size).toBe(56);
++    expect(quiz?.drawMainStar).toBe(true);
++
++    const chief = lumenManifestPicture(m, {
++      name: "小猪包",
++      surface: "home-hero",
++      size: 103,
++      dark: false,
++      reducedMotion: false,
++    });
++    expect(chief?.uris[0]).toBe("https://rakazo.163ll.com/lumen-avatars/assets/header/chief-light.gif");
++    expect(chief?.drawMainStar).toBe(false);
++    expect(chief?.size).toBe(96);
++  });
++
++  it("shows the chief's own list row with the full ignition and its wider size", () => {
++    const m = parseLumenManifest(doc, BASE);
++    const chief = lumenManifestPicture(m, {
++      identity: "chief-id",
++      surface: "home-list",
++      size: 56,
++      dark: true,
++      reducedMotion: false,
++    });
++    expect(chief?.kind).toBe("header");
++    expect(chief?.uris[0]).toBe(
++      "https://rakazo.163ll.com/lumen-avatars/assets/header/chief-dark.gif",
++    );
++    expect(chief?.size).toBe(96);
++  });
++
++  it("falls back through the themes and finally the still", () => {
++    const m = parseLumenManifest(doc, BASE);
++    const still = lumenManifestPicture(m, {
++      identity: "still-only",
++      surface: "home-list",
++      size: 56,
++      dark: true,
++      reducedMotion: false,
++    });
++    expect(still?.uris).toEqual([
++      "https://rakazo.163ll.com/lumen-avatars/assets/static/memo-dark.png",
++    ]);
++    // The other theme is the last resort before the drawn body.
++    const other = lumenManifestPicture(m, {
++      identity: "quiz-id",
++      surface: "home-hero",
++      size: 96,
++      dark: false,
++      reducedMotion: true,
++    });
++    expect(other?.uris[0]).toBe(
++      "https://rakazo.163ll.com/lumen-avatars/assets/static/quiz-light.png",
++    );
++    expect(
++      lumenManifestPicture(m, {
++        identity: "x",
++        name: "陌生",
++        size: 56,
++        dark: true,
++        reducedMotion: false,
++      }),
++    ).toBeNull();
++  });
++
++  it("refuses picture paths that are not web addresses", () => {
++    const evil = JSON.parse(JSON.stringify(doc));
++    evil.bots[1].themes.dark.list = "javascript:alert(1)";
++    const m = parseLumenManifest(evil, BASE);
++    const picture = lumenManifestPicture(m, {
++      identity: "quiz-id",
++      surface: "home-list",
++      size: 56,
++      dark: true,
++      reducedMotion: false,
++    });
++    expect(picture?.uris.some((uri) => uri.startsWith("javascript:"))).toBe(false);
++    expect(picture?.uris[0]).toContain("assets/static/quiz-dark.png");
++  });
++});
+diff --git a/apps/mobile/lib/lumen/lumen-manifest.ts b/apps/mobile/lib/lumen/lumen-manifest.ts
+new file mode 100644
+index 000000000..0029c4cbb
+--- /dev/null
++++ b/apps/mobile/lib/lumen/lumen-manifest.ts
+@@ -0,0 +1,23 @@
++/**
++ * The avatar manifest's pure rules live in `@rakazo/core`, so the phone and the web read the same
++ * file the same way. This module is the phone's own name for them.
++ */
++export type {
++  LumenManifest,
++  LumenManifestBot,
++  LumenManifestKind,
++  LumenManifestPicture,
++  LumenManifestPictures,
++  LumenManifestSurface,
++  LumenManifestTheme,
++} from "@rakazo/core";
++export {
++  LUMEN_HERO_PT,
++  LUMEN_LIST_PT,
++  LUMEN_MANIFEST_PATH,
++  lumenManifestBot,
++  lumenManifestKind,
++  lumenManifestPicture,
++  lumenManifestUrl,
++  parseLumenManifest,
++} from "@rakazo/core";
 diff --git a/apps/mobile/lib/main-bot.test.ts b/apps/mobile/lib/main-bot.test.ts
 new file mode 100644
 index 000000000..103276649
@@ -214530,7 +215252,7 @@ index 000000000..be1a4d44c
 +    : tokens;
 +}
 diff --git a/apps/mobile/lib/mobile-types.ts b/apps/mobile/lib/mobile-types.ts
-index 27e01acb8..f136d3ca9 100644
+index 27e01acb8..44efd17e4 100644
 --- a/apps/mobile/lib/mobile-types.ts
 +++ b/apps/mobile/lib/mobile-types.ts
 @@ -24,6 +24,7 @@ export type MobileBot = Pick<
@@ -214541,6 +215263,15 @@ index 27e01acb8..f136d3ca9 100644
    | "status"
    | "threadStatus"
    | "sectionId"
+@@ -39,7 +40,7 @@ export type MobileBot = Pick<
+   | "crossSpaceCommunication"
+   | "dailyCheckIns"
+ > &
+-  Partial<Pick<Bot, "parentBotId" | "spaceId" | "instructions" | "snoozedUntil">>;
++  Partial<Pick<Bot, "parentBotId" | "spaceId" | "instructions" | "snoozedUntil" | "leadSectionId">>;
+ export type MobileBotSection = BotSection;
+ export type MobileMe = Pick<
+   Me,
 diff --git a/apps/mobile/lib/model-capability-line.ts b/apps/mobile/lib/model-capability-line.ts
 new file mode 100644
 index 000000000..8d1f36f29
@@ -245362,6 +246093,117 @@ index 500c662cd..03f6a6b30 100644
            </p>
          </Disclosure>
        ) : null}
+diff --git a/apps/web/src/pages/shell/bot-panel.tsx b/apps/web/src/pages/shell/bot-panel.tsx
+index 26c22ee58..fd66699ef 100644
+--- a/apps/web/src/pages/shell/bot-panel.tsx
++++ b/apps/web/src/pages/shell/bot-panel.tsx
+@@ -103,6 +103,7 @@ export function BotSettings({
+     memoryScope?: "isolated" | "shared" | null;
+     autoSpeak?: boolean;
+     fleetManagement?: boolean;
++    leadSectionId?: string | null;
+     replyMode?: ReplyMode;
+     crossSpaceCommunication?: boolean;
+     dailyCheckIns?: boolean;
+@@ -155,6 +156,9 @@ export function BotSettings({
+   useEffect(() => setDailyCheckIns(bot.dailyCheckIns ?? true), [bot.dailyCheckIns]);
+   const [fleetManagement, setFleetManagement] = useState(bot.fleetManagement);
+   useEffect(() => setFleetManagement(bot.fleetManagement), [bot.fleetManagement]);
++  // The folder this bot leads; only a bot inside a folder can lead one.
++  const [leadSectionId, setLeadSectionId] = useState(bot.leadSectionId);
++  useEffect(() => setLeadSectionId(bot.leadSectionId), [bot.leadSectionId]);
+   const [replyMode, setReplyMode] = useState(bot.replyMode);
+   useEffect(() => setReplyMode(bot.replyMode), [bot.replyMode]);
+   const [voiceId, setVoiceId] = useState(bot.voiceId ?? "");
+@@ -470,6 +474,7 @@ export function BotSettings({
+     avatarSet?: BotAvatarSet;
+     notifyOnFinish?: boolean;
+     fleetManagement?: boolean;
++    leadSectionId?: string | null;
+     replyMode?: ReplyMode;
+     crossSpaceCommunication?: boolean;
+     dailyCheckIns?: boolean;
+@@ -624,6 +629,16 @@ export function BotSettings({
+                 setFleetManagement(checked);
+                 void enqueueSave({ fleetManagement: checked });
+               }}
++              isLead={Boolean(leadSectionId) && leadSectionId === bot.sectionId}
++              onLeadChange={
++                bot.sectionId
++                  ? (checked) => {
++                      const next = checked ? bot.sectionId : null;
++                      setLeadSectionId(next);
++                      void enqueueSave({ leadSectionId: next });
++                    }
++                  : undefined
++              }
+             />
+             <RepliesGroup
+               ids={ids}
+diff --git a/apps/web/src/pages/shell/bot-settings-sections.tsx b/apps/web/src/pages/shell/bot-settings-sections.tsx
+index 6367a71a6..c33d91940 100644
+--- a/apps/web/src/pages/shell/bot-settings-sections.tsx
++++ b/apps/web/src/pages/shell/bot-settings-sections.tsx
+@@ -310,6 +310,9 @@ export function PermissionsGroup({
+   onCrossSpaceCommunicationChange,
+   fleetManagement,
+   onFleetManagementChange,
++  sectionName,
++  isLead,
++  onLeadChange,
+ }: {
+   ids: string;
+   saving: boolean;
+@@ -319,6 +322,10 @@ export function PermissionsGroup({
+   onCrossSpaceCommunicationChange: (checked: boolean) => void;
+   fleetManagement: boolean;
+   onFleetManagementChange: (checked: boolean) => void;
++  /** The folder the bot sits in, when it leads that same folder. */
++  sectionName?: string | null;
++  isLead?: boolean;
++  onLeadChange?: (checked: boolean) => void;
+ }) {
+   const { t } = useLingui();
+   return (
+@@ -356,6 +363,25 @@ export function PermissionsGroup({
+           onCheckedChange={onFleetManagementChange}
+         />
+       </div>
++      {onLeadChange ? (
++        <div className="flex flex-col gap-1">
++          <div className="flex min-h-11 items-center justify-between gap-3 text-body">
++            <label htmlFor={`${ids}-lead`} className={rowLabelClass}>
++              {sectionName ? `设为「${sectionName}」小组长` : "设为小组长"}
++            </label>
++            <Switch
++              id={`${ids}-lead`}
++              checked={isLead ?? false}
++              disabled={saving}
++              onCheckedChange={onLeadChange}
++            />
++          </div>
++          <p className="text-caption text-muted-foreground">
++            小组长可以统筹本文件夹里的 Bot、新建并直接派活；要动其它文件夹的 Bot，得先向主 Bot
++            递交申请。
++          </p>
++        </div>
++      ) : null}
+     </BotPanelGroup>
+   );
+ }
+diff --git a/apps/web/src/pages/shell/chat-header.tsx b/apps/web/src/pages/shell/chat-header.tsx
+index e8ec753a8..364e45d98 100644
+--- a/apps/web/src/pages/shell/chat-header.tsx
++++ b/apps/web/src/pages/shell/chat-header.tsx
+@@ -68,6 +68,8 @@ export function ChatHeader({
+             avatarSet={active.avatarSet}
+             color={active.color}
+             identity={active.id}
++            name={active.name}
++            lead={Boolean(active.leadSectionId)}
+             size={26}
+             status={active.status}
+           />
 diff --git a/apps/web/src/pages/shell/create-bot-dialog.test.tsx b/apps/web/src/pages/shell/create-bot-dialog.test.tsx
 index 2f5df3108..b0470938d 100644
 --- a/apps/web/src/pages/shell/create-bot-dialog.test.tsx
@@ -251346,7 +252188,7 @@ index eca1f50a3..2fdde1f31 100644
    "generate_secret",
    "list_secrets",
 diff --git a/packages/contracts/src/domain.ts b/packages/contracts/src/domain.ts
-index d45cd5ae9..c12089443 100644
+index d45cd5ae9..ea95a4df2 100644
 --- a/packages/contracts/src/domain.ts
 +++ b/packages/contracts/src/domain.ts
 @@ -89,6 +89,11 @@ export const BotSchema = z.object({
@@ -251361,7 +252203,7 @@ index d45cd5ae9..c12089443 100644
    instructionHistory: z.array(InstructionVersionSchema).optional(),
    color: z.string(),
    avatarSet: BotAvatarSetSchema.optional(),
-@@ -100,6 +105,12 @@ export const BotSchema = z.object({
+@@ -100,6 +105,17 @@ export const BotSchema = z.object({
    /** Hidden from the viewer's chat list until then; past, the chat has just woken. */
    snoozedUntil: z.string().nullable().optional(),
    parentBotId: Id.nullable(),
@@ -251369,12 +252211,17 @@ index d45cd5ae9..c12089443 100644
 +  reportsToBotId: Id.nullable().default(null),
 +  /** This bot's post in the team, such as 临床科研组长. */
 +  roleTitle: z.string().nullable().default(null),
++  /**
++   * The folder this bot leads, or null. A folder lead runs the bots inside its own folder — it
++   * creates them and gives them work — and asks the main bot for anything outside it.
++   */
++  leadSectionId: Id.nullable().default(null),
 +  /** This is its owner's main bot: the CEO that may create and manage the rest of the roster. */
 +  isMain: z.boolean().default(false),
    memoryScope: MemoryScopeSchema.nullable(),
    threadId: Id,
    preview: z.string(),
-@@ -442,6 +453,8 @@ export type SpaceNavigation = z.infer<typeof SpaceNavigationSchema>;
+@@ -442,6 +458,8 @@ export type SpaceNavigation = z.infer<typeof SpaceNavigationSchema>;
  export const BOT_NAME_MAX_LENGTH = 80;
  export const BOT_DESCRIPTION_MAX_LENGTH = 4000;
  export const BOT_INSTRUCTIONS_MAX_LENGTH = 20000;
@@ -251383,7 +252230,7 @@ index d45cd5ae9..c12089443 100644
  
  export const CreateBotInput = z.object({
    /** Optional reserved identity so a creation preview uses the final bot seed. */
-@@ -452,6 +465,7 @@ export const CreateBotInput = z.object({
+@@ -452,6 +470,7 @@ export const CreateBotInput = z.object({
    name: z.string().trim().min(1).max(BOT_NAME_MAX_LENGTH),
    description: z.string().max(BOT_DESCRIPTION_MAX_LENGTH).default(""),
    instructions: z.string().max(BOT_INSTRUCTIONS_MAX_LENGTH).default(""),
@@ -251391,7 +252238,7 @@ index d45cd5ae9..c12089443 100644
    notifyOnFinish: z.boolean().default(true),
    dailyCheckIns: z.boolean().optional(),
    fleetManagement: z.boolean().optional(),
-@@ -473,6 +487,8 @@ export const UpdateBotInput = z
+@@ -473,6 +492,8 @@ export const UpdateBotInput = z
      description: z.string().trim().max(BOT_DESCRIPTION_MAX_LENGTH).optional(),
      instructions: z.string().trim().max(BOT_INSTRUCTIONS_MAX_LENGTH).optional(),
      expectedInstructions: z.string().max(BOT_INSTRUCTIONS_MAX_LENGTH).optional(),
@@ -251400,7 +252247,16 @@ index d45cd5ae9..c12089443 100644
      /** Ignored; installed mobile apps may still send it. */
      selfUpdateInstructions: z.boolean().optional(),
      notifyOnFinish: z.boolean().optional(),
-@@ -845,6 +861,49 @@ export function isDeletableMemoryDocument(path: string): boolean {
+@@ -481,6 +502,8 @@ export const UpdateBotInput = z
+     pinned: z.boolean().optional(),
+     memoryScope: MemoryScopeSchema.nullable().optional(),
+     sectionId: Id.nullable().optional(),
++    /** The folder this bot leads; null stops leading. */
++    leadSectionId: Id.nullable().optional(),
+     voiceId: z.string().max(120).nullable().optional(),
+     autoSpeak: z.boolean().optional(),
+     modelProvider: z.string().trim().min(1).max(80).nullable().optional(),
+@@ -845,6 +868,49 @@ export function isDeletableMemoryDocument(path: string): boolean {
    return path !== MEMORY_INDEX_PATH;
  }
  
@@ -251450,7 +252306,7 @@ index d45cd5ae9..c12089443 100644
  export const ConnectionSchema = z.object({
    id: Id,
    connectorId: z.string(),
-@@ -1161,7 +1220,10 @@ export const UsageRecordSchema = z.object({
+@@ -1161,7 +1227,10 @@ export const UsageRecordSchema = z.object({
    createdAt: z.string(),
  });
  
@@ -251462,7 +252318,7 @@ index d45cd5ae9..c12089443 100644
  const UsageTotalsSchema = z.object({
    inputTokens: z.number().nullable(),
    outputTokens: z.number().nullable(),
-@@ -1177,6 +1239,131 @@ export const UsageSummarySchema = UsageTotalsSchema.extend({
+@@ -1177,6 +1246,131 @@ export const UsageSummarySchema = UsageTotalsSchema.extend({
  });
  export type UsageSummary = z.infer<typeof UsageSummarySchema>;
  
@@ -251594,7 +252450,7 @@ index d45cd5ae9..c12089443 100644
  /** One rolling allowance of a model subscription the member signed in with. */
  export const PlanLimitWindowSchema = z.object({
    period: z.enum(["session", "week", "month"]),
-@@ -1294,6 +1481,100 @@ export const ThreadMessagePageSchema = z.object({
+@@ -1294,6 +1488,100 @@ export const ThreadMessagePageSchema = z.object({
  });
  export type ThreadMessagePage = z.infer<typeof ThreadMessagePageSchema>;
  
@@ -251695,7 +252551,7 @@ index d45cd5ae9..c12089443 100644
  export const ThreadSnapshotSchema = z.object({
    threadId: Id,
    cursor: z.number().int().min(-1),
-@@ -1306,6 +1587,11 @@ export const ThreadSnapshotSchema = z.object({
+@@ -1306,6 +1594,11 @@ export const ThreadSnapshotSchema = z.object({
    run: RunSchema.nullable(),
    activeRuns: z.array(RunSchema).optional(),
    computer: ComputerStatusSchema.optional(),
@@ -257193,10 +258049,10 @@ index 000000000..9f4991ac9
 +  return avatarClipPose(avatarClip(name), seconds);
 +}
 diff --git a/packages/core/src/index.ts b/packages/core/src/index.ts
-index 0e9e48b49..8876b75df 100644
+index 0e9e48b49..18fa8f53b 100644
 --- a/packages/core/src/index.ts
 +++ b/packages/core/src/index.ts
-@@ -13,13 +13,17 @@ export * from "./avatar-clips.js";
+@@ -13,13 +13,18 @@ export * from "./avatar-clips.js";
  export * from "./avatar-life.js";
  export * from "./avatar-motion.js";
  export * from "./avatar-shape.js";
@@ -257207,6 +258063,7 @@ index 0e9e48b49..8876b75df 100644
 +export * from "./bot-avatar-palette.js";
  export * from "./bot-avatar-shapes.js";
 +export * from "./bot-motion-clips.js";
++export * from "./lumen-manifest.js";
 +export * from "./mochi-avatar.js";
  export * from "./bot-look.js";
  export * from "./bot-mentions.js";
@@ -257215,7 +258072,7 @@ index 0e9e48b49..8876b75df 100644
  export * from "./bot-sections.js";
  export * from "./bot-sender-name.js";
  export * from "./bot-templates.js";
-@@ -65,11 +69,12 @@ export * from "./mcp.js";
+@@ -65,11 +70,12 @@ export * from "./mcp.js";
  export * from "./mcp-app.js";
  export * from "./message-pages.js";
  export * from "./message-reactions.js";
@@ -257249,6 +258106,272 @@ index 9feb827e1..fbf887e07 100644
      expect(logoAvatarTraits("bot-1", "#abc").color).toBe("#abc");
    });
  });
+diff --git a/packages/core/src/lumen-manifest.ts b/packages/core/src/lumen-manifest.ts
+new file mode 100644
+index 000000000..7e2c3c03b
+--- /dev/null
++++ b/packages/core/src/lumen-manifest.ts
+@@ -0,0 +1,260 @@
++/**
++ * The Lumen avatar manifest: a JSON file on the server that names, for every bot, the finished
++ * still and motion pictures to show. The app reads it on every launch, so a new bot only needs
++ * its pictures and one manifest row on the server — no new build.
++ *
++ * Everything here is pure: parse, match a bot, pick the picture for a surface. A bot the
++ * manifest does not know keeps the drawn Lumen body.
++ */
++
++export type LumenManifestTheme = "dark" | "light";
++export type LumenManifestKind = "static" | "list" | "header";
++export type LumenManifestSurface = "home-hero" | "home-list" | "chat" | "default";
++
++/** A row may name only some of the three pictures; the picker fills the gaps. */
++export type LumenManifestPictures = Partial<Record<LumenManifestKind, string>>;
++
++export type LumenManifestBot = {
++  botId: string;
++  name: string;
++  role: "chief" | "lead" | "member";
++  /** The chief's orange star is drawn inside its pictures: the app must not add a second one. */
++  starBaked: boolean;
++  /** The list row shows the full ignition too (the chief), not the short list loop. */
++  listVariant: "v3-full" | null;
++  /** The list row's own size, when the art was drawn for it (the chief's is 96 pt). */
++  listSizePt: number | null;
++  themes: Partial<Record<LumenManifestTheme, LumenManifestPictures>>;
++};
++
++export type LumenManifest = {
++  version: string;
++  /** The manifest's own address: relative picture paths resolve against it. */
++  baseUrl: string;
++  headerMinPt: number;
++  reduceMotionStatic: boolean;
++  surfaces: Partial<Record<LumenManifestSurface, LumenManifestKind>>;
++  bots: LumenManifestBot[];
++  hashes: Record<string, string>;
++};
++
++/** Where the manifest lives on a server. */
++export const LUMEN_MANIFEST_PATH = "/lumen-avatars/manifest.json";
++
++/** The list row and hero sizes the art was finished at, in points. */
++export const LUMEN_HERO_PT = 96;
++export const LUMEN_LIST_PT = 56;
++
++export function lumenManifestUrl(apiBase: string): string {
++  return new URL(LUMEN_MANIFEST_PATH, apiBase.endsWith("/") ? apiBase : `${apiBase}/`).toString();
++}
++
++const KINDS: readonly LumenManifestKind[] = ["static", "list", "header"];
++const SURFACES: readonly LumenManifestSurface[] = ["home-hero", "home-list", "chat", "default"];
++
++function str(value: unknown): string | null {
++  return typeof value === "string" && value.trim() ? value.trim() : null;
++}
++
++function kindOf(value: unknown): LumenManifestKind | null {
++  return value === "static" || value === "list" || value === "header" ? value : null;
++}
++
++/**
++ * One theme's pictures. A row is kept when it names at least one picture: the picker then falls
++ * back through the theme's other pictures instead of dropping the whole bot.
++ */
++function pictures(value: unknown): LumenManifestPictures | null {
++  if (!value || typeof value !== "object") return null;
++  const row = value as Record<string, unknown>;
++  const out: LumenManifestPictures = {};
++  for (const kind of KINDS) {
++    const path = str(row[kind]);
++    if (path) out[kind] = path;
++  }
++  return Object.keys(out).length > 0 ? out : null;
++}
++
++/** The surface → picture table the manifest declares, or the design's defaults. */
++function surfacesOf(playback: Record<string, unknown>): LumenManifest["surfaces"] {
++  const raw = playback.surfaces;
++  const out: LumenManifest["surfaces"] = {};
++  if (raw && typeof raw === "object") {
++    for (const surface of SURFACES) {
++      const kind = kindOf((raw as Record<string, unknown>)[surface]);
++      if (kind) out[surface] = kind;
++    }
++  }
++  return out;
++}
++
++/**
++ * A manifest from untrusted JSON. A broken row is skipped rather than failing the whole file;
++ * a file with no usable row at all is null, so the app keeps what it had.
++ */
++export function parseLumenManifest(raw: unknown, baseUrl: string): LumenManifest | null {
++  if (!raw || typeof raw !== "object") return null;
++  const doc = raw as Record<string, unknown>;
++  if (typeof doc.schemaVersion !== "number" || doc.schemaVersion < 2) return null;
++  if (!Array.isArray(doc.bots)) return null;
++  const bots: LumenManifestBot[] = [];
++  for (const item of doc.bots) {
++    if (!item || typeof item !== "object") continue;
++    const row = item as Record<string, unknown>;
++    const botId = str(row.botId);
++    const name = str(row.name);
++    if (!botId || !name) continue;
++    const themes = row.themes as Record<string, unknown> | undefined;
++    const dark = pictures(themes?.dark);
++    const light = pictures(themes?.light);
++    if (!dark && !light) continue;
++    const role = row.role === "chief" || row.role === "lead" ? row.role : "member";
++    const listSize = typeof row.listSizePt === "number" && row.listSizePt > 0 ? row.listSizePt : null;
++    bots.push({
++      botId,
++      name,
++      role,
++      starBaked: row.starBaked === true,
++      listVariant: row.listVariant === "v3-full" ? "v3-full" : null,
++      listSizePt: listSize,
++      themes: {
++        ...(dark ? { dark } : {}),
++        ...(light ? { light } : {}),
++      },
++    });
++  }
++  if (bots.length === 0) return null;
++  const playback = (doc.playback ?? {}) as Record<string, unknown>;
++  const headerMinPt =
++    typeof playback.headerMinPt === "number" && playback.headerMinPt > 0 ? playback.headerMinPt : 72;
++  const hashes: Record<string, string> = {};
++  if (doc.hashes && typeof doc.hashes === "object") {
++    for (const [path, hash] of Object.entries(doc.hashes as Record<string, unknown>)) {
++      if (typeof hash === "string") hashes[path] = hash;
++    }
++  }
++  return {
++    version: str(doc.version) ?? "0",
++    baseUrl,
++    headerMinPt,
++    reduceMotionStatic: playback.reduceMotion !== "animate",
++    surfaces: surfacesOf(playback),
++    bots,
++    hashes,
++  };
++}
++
++/** A bot's row: its id first, its exact name second (a bot recreated under the same name). */
++export function lumenManifestBot(
++  manifest: LumenManifest | null,
++  bot: { identity?: string | null; name?: string | null },
++): LumenManifestBot | null {
++  if (!manifest) return null;
++  const id = (bot.identity ?? "").trim();
++  if (id) {
++    const byId = manifest.bots.find((row) => row.botId === id);
++    if (byId) return byId;
++  }
++  const name = (bot.name ?? "").trim();
++  if (!name) return null;
++  return manifest.bots.find((row) => row.name === name) ?? null;
++}
++
++/** Which picture a surface wants: the design's own table, then the size rule. */
++export function lumenManifestKind(input: {
++  surface: LumenManifestSurface;
++  size: number;
++  reducedMotion: boolean;
++  headerMinPt: number;
++  reduceMotionStatic: boolean;
++  surfaces?: LumenManifest["surfaces"];
++}): LumenManifestKind {
++  if (input.reducedMotion && input.reduceMotionStatic) return "static";
++  const declared = input.surfaces?.[input.surface];
++  if (declared && declared !== "static") return declared;
++  if (declared === "static") return "static";
++  if (input.surface === "home-hero" || input.surface === "chat") return "header";
++  if (input.surface === "home-list") return "list";
++  return input.size >= input.headerMinPt ? "header" : "list";
++}
++
++export type LumenManifestPicture = {
++  /**
++   * The pictures to try in order: the one wanted, the same theme's still, the other theme's
++   * picture of the same kind, the other theme's still. A picture that fails to load falls to
++   * the next, and an empty list means the drawn body.
++   */
++  uris: string[];
++  kind: LumenManifestKind;
++  /** The size the finished art was drawn for, in points, when it fixes one (list rows). */
++  size: number | null;
++  /** False when the art already carries the main-bot star. */
++  drawMainStar: boolean;
++};
++
++/** The address of one picture path, guarded so only web URLs are ever loaded. */
++function pictureUri(manifest: LumenManifest, path: string | undefined): string | null {
++  if (!path) return null;
++  try {
++    const url = new URL(path, manifest.baseUrl);
++    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
++    // A changed picture gets a new address, so no cache can keep showing the old one.
++    const hash = manifest.hashes[path];
++    if (hash) url.searchParams.set("h", hash);
++    return url.toString();
++  } catch {
++    return null;
++  }
++}
++
++/**
++ * The pictures a bot shows on one surface, best first. A list row of the chief (or of any row
++ * marked `v3-full`) uses the full ignition; everything else uses the kind the surface asks for.
++ */
++export function lumenManifestPicture(
++  manifest: LumenManifest | null,
++  input: {
++    identity?: string | null;
++    name?: string | null;
++    surface?: LumenManifestSurface;
++    size: number;
++    dark: boolean;
++    reducedMotion: boolean;
++  },
++): LumenManifestPicture | null {
++  const bot = lumenManifestBot(manifest, input);
++  if (!manifest || !bot) return null;
++  const surface = input.surface ?? "default";
++  const wanted = lumenManifestKind({
++    surface,
++    size: input.size,
++    reducedMotion: input.reducedMotion,
++    headerMinPt: manifest.headerMinPt,
++    reduceMotionStatic: manifest.reduceMotionStatic,
++    surfaces: manifest.surfaces,
++  });
++  const kind: LumenManifestKind =
++    wanted === "list" && (bot.role === "chief" || bot.listVariant === "v3-full") ? "header" : wanted;
++  const dark = input.dark ? "dark" : "light";
++  const light = input.dark ? "light" : "dark";
++  const own = bot.themes[dark];
++  const other = bot.themes[light];
++  const order = [own?.[kind], own?.static, other?.[kind], other?.static];
++  const uris: string[] = [];
++  for (const path of order) {
++    const uri = pictureUri(manifest, path);
++    if (uri && !uris.includes(uri)) uris.push(uri);
++  }
++  if (uris.length === 0) return null;
++  // The finished art fixes two sizes: the chief's hero at 96 pt, and the list rows (the chief's
++  // own row is the wider full ignition). Every other surface keeps the size its caller asked for.
++  const size =
++    surface === "home-hero"
++      ? bot.role === "chief"
++        ? LUMEN_HERO_PT
++        : null
++      : surface === "home-list"
++        ? (bot.listSizePt ?? (bot.role === "chief" ? LUMEN_HERO_PT : LUMEN_LIST_PT))
++        : null;
++  return { uris, kind, size, drawMainStar: !bot.starBaked };
++}
 diff --git a/packages/core/src/message-reactions.test.ts b/packages/core/src/message-reactions.test.ts
 index c6a2716b9..e7dab84fd 100644
 --- a/packages/core/src/message-reactions.test.ts
@@ -261391,7 +262514,7 @@ index 25445d099..a52af95b2 100644
    });
  
 diff --git a/packages/ui-web/src/bot-avatar.tsx b/packages/ui-web/src/bot-avatar.tsx
-index f0319929f..364997f48 100644
+index f0319929f..dc814dda5 100644
 --- a/packages/ui-web/src/bot-avatar.tsx
 +++ b/packages/ui-web/src/bot-avatar.tsx
 @@ -12,10 +12,14 @@ import {
@@ -261410,7 +262533,89 @@ index f0319929f..364997f48 100644
    shippedBotAvatarShapePath,
  } from "@rakazo/core";
  import type { ComponentProps, CSSProperties } from "react";
-@@ -156,90 +160,81 @@ export const BotAvatar = memo(function BotAvatar({
+@@ -24,6 +28,11 @@ import { useBotAvatarActivity } from "./bot-avatar-activity.js";
+ import { useAvatarMotionVisibility } from "./hooks/use-avatar-motion-visibility.js";
+ import { cn } from "./lib/utils.js";
+ import { LogoAvatar } from "./logo-avatar.js";
++import {
++  lumenManifestPictureFor,
++  lumenManifestSnapshot,
++  subscribeLumenManifest,
++} from "./lumen-manifest.js";
+ import "./styles.css";
+ 
+ export type { BotColorDef };
+@@ -83,6 +92,10 @@ export interface BotAvatarProps {
+   size?: number;
+   status?: string;
+   identity?: string;
++  /** The bot's name: the manifest falls back to it when an id was not listed. */
++  name?: string;
++  /** The bot leads its folder: a small flag badge, as on the phone. */
++  lead?: boolean;
+   className?: string;
+ }
+ 
+@@ -93,6 +106,8 @@ export const BotAvatar = memo(function BotAvatar({
+   size = 36,
+   status,
+   identity = "",
++  name,
++  lead,
+   className,
+ }: BotAvatarProps) {
+   const id = useId().replace(/[^a-zA-Z0-9-_]/g, "");
+@@ -100,12 +115,40 @@ export const BotAvatar = memo(function BotAvatar({
+ 
+   const parsed = useMemo(() => parseBotAvatar(color, identity), [color, identity]);
+   const effectiveId = identity || parsed.color || "agent";
+-
++  // The server's avatar manifest names finished pictures for the team; a bot it names shows that
++  // picture instead of a drawn body, so the web and the phone show the same art.
+   const colorDef = useMemo(
+     () => resolvePersonaColorDef(effectiveId, parsed.color),
+     [effectiveId, parsed.color],
+   );
+ 
++  const manifest = useSyncExternalStore(subscribeLumenManifest, lumenManifestSnapshot, () => null);
++  const picture = useMemo(
++    () =>
++      manifest && !parsed.imageUrl
++        ? lumenManifestPictureFor({ identity: effectiveId, name, size })
++        : null,
++    [manifest, parsed.imageUrl, effectiveId, name, size],
++  );
++  if (picture) {
++    return (
++      <div
++        className={cn("rakazo-bot-avatar relative shrink-0 select-none", className)}
++        data-working={isWorking ? true : undefined}
++        style={{ width: size, height: size }}
++      >
++        <img
++          src={picture.uri}
++          alt=""
++          draggable={false}
++          className="h-full w-full select-none object-contain"
++        />
++        {lead ? <LeadFlag size={size} /> : null}
++        {isWorking ? <WorkingRing size={size} /> : null}
++      </div>
++    );
++  }
++
+   if (parsed.isImage && parsed.imageUrl) {
+     return (
+       <div
+@@ -116,6 +159,7 @@ export const BotAvatar = memo(function BotAvatar({
+         <div className="rakazo-bot-avatar-picture relative flex h-full w-full items-center justify-center overflow-hidden rounded-full border border-border bg-secondary">
+           <img src={parsed.imageUrl} alt="" className="h-full w-full object-cover" />
+         </div>
++        {lead ? <LeadFlag size={size} /> : null}
+         {isWorking ? (
+           <svg
+             className="rakazo-bot-avatar-ring rakazo-bot-avatar-ring-working absolute pointer-events-none"
+@@ -156,90 +200,121 @@ export const BotAvatar = memo(function BotAvatar({
        />
      );
    }
@@ -261422,9 +262627,6 @@ index f0319929f..364997f48 100644
 -        size={size}
 -        isWorking={isWorking}
 -        className={className}
--      />
--    );
--  }
 +  const shape = mochiWebShape(parsed.shapeIndex, colorDef.hex, effectiveId);
 +  return (
 +    <MochiWebAvatar
@@ -261439,8 +262641,50 @@ index f0319929f..364997f48 100644
 +  );
 +});
 +
- 
++
 +/** Only live Rakazo consumers subscribe to public activity updates. */
++
++/** The folder leader's flag, at the corner the star leaves free. */
++function LeadFlag({ size }: { size: number }) {
++  const badge = Math.max(12, Math.round(size * 0.32));
++  return (
++    <span
++      className="absolute flex items-center justify-center rounded-full border border-background bg-[#0A84FF] text-white"
++      style={{ width: badge, height: badge, top: -1, right: -1 }}
++      title="小组长"
++      aria-label="小组长"
++    >
++      <svg viewBox="0 0 24 24" width={Math.round(badge * 0.62)} height={Math.round(badge * 0.62)} aria-hidden="true">
++        <path d="M6 3v18" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
++        <path d="M6 4h11l-2.2 4L17 12H6z" fill="currentColor" />
++      </svg>
++    </span>
++  );
++}
++
++function WorkingRing({ size }: { size: number }) {
++  return (
++    <svg
++      className="rakazo-bot-avatar-ring rakazo-bot-avatar-ring-working pointer-events-none absolute"
++      style={{ inset: -4, width: size + 8, height: size + 8 }}
++      viewBox="0 0 48 48"
++      fill="none"
++      aria-hidden="true"
++    >
++      <circle
++        cx="24"
++        cy="24"
++        r="22"
++        className="stroke-status-working"
++        strokeWidth="3.2"
++        strokeLinecap="round"
++        strokeDasharray="45 80"
+       />
+-    );
+-  }
++    </svg>
++  );
++}
 +
 +function mochiWebShape(shapeIndex: number | undefined, color: string, identity: string): string {
 +  if (shapeIndex === undefined) return officialFaceBodyKeyForColor(color, identity);
@@ -261451,7 +262695,7 @@ index f0319929f..364997f48 100644
 +    ] ?? "blob";
 +  return officialFaceBodyKey(key);
 +}
-+
+ 
 +function MochiWebAvatar({
 +  shape,
 +  color,
@@ -261567,7 +262811,7 @@ index f0319929f..364997f48 100644
  function LiveLogoAvatar({
    status,
    ...props
-@@ -396,12 +391,20 @@ export function BotShapePreview({
+@@ -396,12 +471,20 @@ export function BotShapePreview({
        {shapeIndex === undefined ? (
          <BotAvatar color={color} identity={identity} size={32} />
        ) : (
@@ -261594,6 +262838,171 @@ index f0319929f..364997f48 100644
        )}
      </button>
    );
+diff --git a/packages/ui-web/src/lumen-manifest.ts b/packages/ui-web/src/lumen-manifest.ts
+new file mode 100644
+index 000000000..dcd1b7cd1
+--- /dev/null
++++ b/packages/ui-web/src/lumen-manifest.ts
+@@ -0,0 +1,159 @@
++import type { LumenManifest, LumenManifestSurface } from "@rakazo/core";
++import { lumenManifestPicture, lumenManifestUrl, parseLumenManifest } from "@rakazo/core";
++
++/**
++ * The same avatar manifest the phone reads: a JSON file the server hosts at
++ * `/lumen-avatars/manifest.json`. The browser reads it once (per session, and again after the
++ * cached copy is old), then every avatar that the file names shows its finished picture; a bot it
++ * does not name keeps the drawn body.
++ */
++
++const CACHE_KEY = "rakazo.lumen-manifest";
++const REFRESH_AFTER_MS = 10 * 60 * 1000;
++const FETCH_TIMEOUT_MS = 8_000;
++
++type Cached = { at: number; url: string; body: unknown };
++
++let manifest: LumenManifest | null = null;
++let loadedAt = 0;
++let inFlight: Promise<void> | null = null;
++let started = false;
++const listeners = new Set<() => void>();
++
++function emit() {
++  for (const listener of listeners) listener();
++}
++
++function serverBase(): string {
++  return window.location.origin;
++}
++
++/** The web app's theme is the `dark` class the token layer puts on the document. */
++function isDark(): boolean {
++  try {
++    return document.documentElement.classList.contains("dark");
++  } catch {
++    return true;
++  }
++}
++
++function readCache(): Cached | null {
++  try {
++    const raw = window.sessionStorage.getItem(CACHE_KEY);
++    if (!raw) return null;
++    const parsed = JSON.parse(raw) as Partial<Cached>;
++    if (typeof parsed.url !== "string" || typeof parsed.at !== "number") return null;
++    return { at: parsed.at, url: parsed.url, body: parsed.body };
++  } catch {
++    return null;
++  }
++}
++
++function writeCache(cached: Cached) {
++  try {
++    window.sessionStorage.setItem(CACHE_KEY, JSON.stringify(cached));
++  } catch {
++    // A full or blocked session store only costs the next load one fetch.
++  }
++}
++
++function publish(next: LumenManifest) {
++  manifest = next;
++  emit();
++}
++
++function refresh() {
++  if (inFlight) return inFlight;
++  let url: string;
++  try {
++    url = lumenManifestUrl(serverBase());
++  } catch {
++    return Promise.resolve();
++  }
++  const controller = new AbortController();
++  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
++  inFlight = fetch(url, { headers: { Accept: "application/json" }, signal: controller.signal })
++    .then(async (response) => {
++      if (!response.ok) return;
++      const body: unknown = await response.json();
++      const parsed = parseLumenManifest(body, url);
++      if (!parsed) return;
++      loadedAt = Date.now();
++      writeCache({ at: loadedAt, url, body });
++      if (parsed.version !== manifest?.version || parsed.baseUrl !== manifest?.baseUrl) {
++        publish(parsed);
++      }
++    })
++    .catch(() => {
++      // Offline or a bad file: keep the pictures already shown.
++    })
++    .finally(() => {
++      clearTimeout(timer);
++      inFlight = null;
++    });
++  return inFlight;
++}
++
++function start() {
++  if (started) return;
++  started = true;
++  const cached = readCache();
++  if (cached) {
++    const parsed = parseLumenManifest(cached.body, cached.url);
++    if (parsed) {
++      manifest = parsed;
++      loadedAt = cached.at;
++    }
++  }
++  void refresh();
++}
++
++export function subscribeLumenManifest(listener: () => void): () => void {
++  start();
++  listeners.add(listener);
++  return () => listeners.delete(listener);
++}
++
++export function lumenManifestSnapshot(): LumenManifest | null {
++  return manifest;
++}
++
++export function ensureLumenManifest(): void {
++  start();
++  if (Date.now() - loadedAt > REFRESH_AFTER_MS) void refresh();
++}
++
++/** The browser's own "reduce motion": the manifest then shows the still picture. */
++export function prefersReducedMotion(): boolean {
++  try {
++    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
++  } catch {
++    return false;
++  }
++}
++
++export type WebLumenPicture = { uri: string; drawMainStar: boolean };
++
++/**
++ * The picture a bot shows, with the browser's surface rule: large avatars get the full ignition,
++ * small ones the list loop, and the chief's list row the full ignition too. Sizes stay the DOM
++ * element's own, so a web layout keeps its measurements.
++ */
++export function lumenManifestPictureFor(input: {
++  identity?: string;
++  name?: string;
++  size: number;
++  surface?: LumenManifestSurface;
++}): WebLumenPicture | null {
++  if (!manifest) return null;
++  const picture = lumenManifestPicture(manifest, {
++    identity: input.identity,
++    name: input.name,
++    surface: input.surface ?? "default",
++    size: input.size,
++    dark: isDark(),
++    reducedMotion: prefersReducedMotion(),
++  });
++  if (!picture || picture.uris.length === 0) return null;
++  return { uri: picture.uris[0]!, drawMainStar: picture.drawMainStar };
++}
 diff --git a/packages/ui-web/src/notification-avatar.test.tsx b/packages/ui-web/src/notification-avatar.test.tsx
 index cca4371db..9c095407d 100644
 --- a/packages/ui-web/src/notification-avatar.test.tsx

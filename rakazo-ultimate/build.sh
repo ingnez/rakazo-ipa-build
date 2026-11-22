@@ -391,6 +391,13 @@ grep -q 'NSPhotoLibraryAddUsageDescription' apps/mobile/app.json
 # missing (work/v34/negative-gates.sh, 12/12 mutations exit 1 with an ::error).
 bash "$HERE/gates-v34.sh"
 
+# v35: the avatars read the server's manifest, the viewer swipes off the UI thread, a message's
+# pictures load one at a time, and a folder lead wears a flag. Its own script, so the same file
+# proves each check fails when the work is missing (work/v35 negative run: 2/2 exit 1).
+test -f apps/mobile/lib/lumen/lumen-manifest-store.ts
+grep -q "lumenManifestPicture" apps/mobile/components/bot-avatar.tsx
+bash "$HERE/gates-v35.sh"
+
 npm i -g pnpm@12.18.0
 pnpm install --frozen-lockfile
 

@@ -467,7 +467,7 @@ grep -q 'PhotoPicker' Podfile.lock ||
   { echo "::error::photo-picker was not autolinked"; exit 1; }
 # v36: the update client is native code. Without the pod the app cannot read the channel
 # app.json declares, so the update it was built for would never happen.
-grep -q 'ExpoUpdates' Podfile.lock ||
+grep -q 'EXUpdates (' Podfile.lock ||
   { echo "::error::expo-updates was not autolinked, so the update channel is dead"; exit 1; }
 # A simulator-only check needs the prepared project, not the device build.
 if [ -n "${PREPARE_ONLY:-}" ]; then exit 0; fi

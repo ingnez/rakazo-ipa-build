@@ -170492,10 +170492,10 @@ index 000000000..877956f35
 +  );
 +}
 diff --git a/apps/mobile/components/bot-avatar.tsx b/apps/mobile/components/bot-avatar.tsx
-index a58981051..23014673b 100644
+index a58981051..4d38b3701 100644
 --- a/apps/mobile/components/bot-avatar.tsx
 +++ b/apps/mobile/components/bot-avatar.tsx
-@@ -1,121 +1,21 @@
+@@ -1,121 +1,23 @@
  import { useLingui } from "@lingui/react/macro";
  import type { BotAvatarSet } from "@rakazo/contracts";
 -import type { AvatarEyes, AvatarMotionMode, LogoAvatarActivity } from "@rakazo/core";
@@ -170541,9 +170541,12 @@ index a58981051..23014673b 100644
 +import type { AvatarBadgeCorner, AvatarBadgeSurface } from "../lib/avatar-badges";
 +import { mainBotBadgeLayout, placeAvatarBadges, styleForAvatarBadgeCorner } from "../lib/avatar-badges";
  import { mobileLogoAvatarActivity } from "../lib/logo-avatar-activity";
-+import { lumenLookFor, parseLumenLook } from "../lib/lumen/lumen-avatar";
- import { useMobileTokens } from "../lib/native";
+-import { useMobileTokens } from "../lib/native";
 -import { LogoAvatar } from "./logo-avatar";
++import { lumenLookFor, parseLumenLook } from "../lib/lumen/lumen-avatar";
++import { lumenManifestPicture } from "../lib/lumen/lumen-manifest";
++import { useLumenManifest, useLumenReducedMotion } from "../lib/lumen/lumen-manifest-store";
++import { useMobileTokens, useResolvedAppearance } from "../lib/native";
  import { NativeSymbol } from "./native-symbol";
 -
 -const AnimatedRect = Animated.createAnimatedComponent(Rect);
@@ -170626,7 +170629,7 @@ index a58981051..23014673b 100644
    size?: number;
    status?: string;
    identity?: string;
-@@ -125,68 +25,179 @@ export interface BotAvatarProps {
+@@ -125,68 +27,212 @@ export interface BotAvatarProps {
    motion?: AvatarMotionMode;
    composing?: boolean;
    pokeable?: boolean;
@@ -170703,6 +170706,11 @@ index a58981051..23014673b 100644
 +  const working = isRunWorking(status) && !composing && motion !== "running";
 +  // A photo a bot was given still draws: it is the person's own picture, not one of the retired
 +  // bodies. Everything else is the Lumen body.
++  // The finished Lumen pictures named in the server's avatar manifest: a bot listed there shows
++  // its own still or motion picture; a bot it does not list keeps the drawn body below.
++  const lumenManifest = useLumenManifest();
++  const reducedMotion = useLumenReducedMotion();
++  const appearance = useResolvedAppearance();
 +  const stored = parseLumenLook(color).color ?? color;
 +  if (stored.startsWith("data:image/")) {
 +    return (
@@ -170721,6 +170729,34 @@ index a58981051..23014673b 100644
 +          size={size}
 +          surface={surface}
 +          main={main}
++          working={working}
++          muted={muted}
++        />
++      </View>
++    );
++  }
++  const picture = lumenManifestPicture(lumenManifest, {
++    identity,
++    name,
++    surface,
++    size,
++    dark: appearance === "dark",
++    reducedMotion,
++  });
++  if (picture) {
++    return (
++      <View style={{ width: size, height: size, overflow: "visible" }}>
++        {/* contain: the whole drawing, never cropped; iOS plays the GIF natively. */}
++        <Image
++          source={{ uri: picture.uri }}
++          style={{ width: size, height: size }}
++          resizeMode="contain"
++          accessibilityIgnoresInvertColors
++        />
++        <AvatarStatusBadges
++          size={size}
++          surface={surface}
++          main={main && picture.drawMainStar}
 +          working={working}
 +          muted={muted}
 +        />
@@ -170842,7 +170878,7 @@ index a58981051..23014673b 100644
          width: dot.diameter + dot.ring * 2,
          height: dot.diameter + dot.ring * 2,
          borderRadius: size,
-@@ -198,19 +209,20 @@ function WorkingDot({ size, muted }: { size: number; muted: boolean }) {
+@@ -198,19 +244,20 @@ function WorkingDot({ size, muted }: { size: number; muted: boolean }) {
    );
  }
  
@@ -170868,7 +170904,7 @@ index a58981051..23014673b 100644
          borderRadius: size,
          borderWidth: 2,
          borderColor: tokens.background,
-@@ -240,232 +252,3 @@ function MutedBadge({ size }: { size: number }) {
+@@ -240,232 +287,3 @@ function MutedBadge({ size }: { size: number }) {
      </View>
    );
  }
@@ -212907,6 +212943,451 @@ index 000000000..f0d7509b8
 +  { cat: "common", catName: "通用符号", zone: "neutral" },
 +  { cat: "food", catName: "饮食烹饪", zone: "life" },
 +];
+diff --git a/apps/mobile/lib/lumen/lumen-manifest-store.ts b/apps/mobile/lib/lumen/lumen-manifest-store.ts
+new file mode 100644
+index 000000000..0849b193f
+--- /dev/null
++++ b/apps/mobile/lib/lumen/lumen-manifest-store.ts
+@@ -0,0 +1,173 @@
++import { useSyncExternalStore } from "react";
++import { AccessibilityInfo, AppState } from "react-native";
++import { currentApiBase, subscribeApiBase } from "../api/api";
++import type { LumenManifest } from "./lumen-manifest";
++import { lumenManifestUrl, parseLumenManifest } from "./lumen-manifest";
++
++/**
++ * The manifest the avatars draw from: read from disk at once (so the first frame already has
++ * last launch's pictures), then fetched from the server on every launch, on the way back to the
++ * foreground after a while, and whenever the server address changes. A failed fetch keeps what
++ * the app had; with nothing at all, every avatar keeps the drawn Lumen body.
++ */
++
++const REFRESH_AFTER_MS = 10 * 60 * 1000;
++const FETCH_TIMEOUT_MS = 8_000;
++const MAX_BYTES = 512 * 1024;
++
++let manifest: LumenManifest | null = null;
++let reducedMotion = false;
++let fetchedAt = 0;
++let inFlight = false;
++let started = false;
++const listeners = new Set<() => void>();
++
++// Unit tests render avatars without a phone: no disk, no network, the drawn body.
++const underTest = typeof process !== "undefined" && Boolean(process.env?.VITEST);
++
++type CacheFile = {
++  exists: boolean;
++  textSync(): string;
++  create(options: { overwrite: boolean }): void;
++  writeSync(text: string): void;
++};
++
++function cacheFile(): CacheFile | null {
++  try {
++    // Loaded on first use, so a screen that never shows an avatar never touches the module.
++    // eslint-disable-next-line @typescript-eslint/no-require-imports
++    const fs = require("expo-file-system") as {
++      File: new (dir: unknown, name: string) => CacheFile;
++      Paths: { document: unknown };
++    };
++    return new fs.File(fs.Paths.document, "lumen-manifest.json");
++  } catch {
++    return null;
++  }
++}
++
++function emit() {
++  for (const listener of listeners) listener();
++}
++
++function publish(next: LumenManifest | null) {
++  manifest = next;
++  emit();
++}
++
++function loadFromDisk() {
++  try {
++    const file = cacheFile();
++    if (!file?.exists) return;
++    const saved = JSON.parse(file.textSync()) as { url?: string; body?: unknown };
++    if (typeof saved.url !== "string") return;
++    const parsed = parseLumenManifest(saved.body, saved.url);
++    if (parsed) publish(parsed);
++  } catch {
++    // A torn cache is the same as none.
++  }
++}
++
++async function refresh() {
++  if (inFlight) return;
++  inFlight = true;
++  let url: string;
++  try {
++    url = lumenManifestUrl(currentApiBase());
++  } catch {
++    inFlight = false;
++    return;
++  }
++  const controller = new AbortController();
++  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
++  try {
++    const response = await fetch(url, {
++      signal: controller.signal,
++      headers: { Accept: "application/json", "Cache-Control": "no-cache" },
++    });
++    if (!response.ok) return;
++    const text = await response.text();
++    if (text.length > MAX_BYTES) return;
++    const body: unknown = JSON.parse(text);
++    const parsed = parseLumenManifest(body, url);
++    if (!parsed) return;
++    fetchedAt = Date.now();
++    if (parsed.version !== manifest?.version || parsed.baseUrl !== manifest?.baseUrl) publish(parsed);
++    try {
++      const file = cacheFile();
++      if (file) {
++        file.create({ overwrite: true });
++        file.writeSync(JSON.stringify({ url, body }));
++      }
++    } catch {
++      // Not saving only costs the next cold launch one fetch.
++    }
++  } catch {
++    // Offline or a bad file: keep the pictures already shown.
++  } finally {
++    clearTimeout(timer);
++    inFlight = false;
++  }
++}
++
++function watchReducedMotion() {
++  try {
++    void AccessibilityInfo?.isReduceMotionEnabled?.().then((on) => {
++      if (on !== reducedMotion) {
++        reducedMotion = on;
++        emit();
++      }
++    });
++    AccessibilityInfo?.addEventListener?.("reduceMotionChanged", (on: boolean) => {
++      reducedMotion = on;
++      emit();
++    });
++  } catch {
++    // No accessibility bridge: keep the motion on.
++  }
++}
++
++function start() {
++  if (started) return;
++  started = true;
++  if (underTest) return;
++  loadFromDisk();
++  watchReducedMotion();
++  void refresh();
++  try {
++    AppState.addEventListener("change", (state) => {
++      if (state === "active" && Date.now() - fetchedAt > REFRESH_AFTER_MS) void refresh();
++    });
++  } catch {
++    // Without app-state events the manifest still loads once per launch.
++  }
++  subscribeApiBase(() => {
++    fetchedAt = 0;
++    void refresh();
++  });
++}
++
++function subscribe(listener: () => void) {
++  start();
++  listeners.add(listener);
++  return () => {
++    listeners.delete(listener);
++  };
++}
++
++function snapshot() {
++  return manifest;
++}
++
++function reducedSnapshot() {
++  return reducedMotion;
++}
++
++export function useLumenManifest(): LumenManifest | null {
++  return useSyncExternalStore(subscribe, snapshot, () => null);
++}
++
++/** iOS "Reduce Motion": the manifest's avatars then show their still picture. */
++export function useLumenReducedMotion(): boolean {
++  return useSyncExternalStore(subscribe, reducedSnapshot, () => false);
++}
+diff --git a/apps/mobile/lib/lumen/lumen-manifest.test.ts b/apps/mobile/lib/lumen/lumen-manifest.test.ts
+new file mode 100644
+index 000000000..c99d7d7f6
+--- /dev/null
++++ b/apps/mobile/lib/lumen/lumen-manifest.test.ts
+@@ -0,0 +1,82 @@
++import { describe, expect, it } from "vitest";
++import {
++  lumenManifestBot,
++  lumenManifestKind,
++  lumenManifestPicture,
++  lumenManifestUrl,
++  parseLumenManifest,
++} from "./lumen-manifest";
++
++const BASE = "https://rakazo.163ll.com/lumen-avatars/manifest.json";
++const pics = (key: string, theme: string) => ({
++  static: `assets/static/${key}-${theme}.png`,
++  list: `assets/list/${key}-${theme}.gif`,
++  header: `assets/header/${key}-${theme}.gif`,
++});
++const doc = {
++  schemaVersion: 2,
++  version: "20261122-1000",
++  playback: { headerMinPt: 72, reduceMotion: "static" },
++  bots: [
++    { botId: "chief-id", name: "小猪包", role: "chief", starBaked: true, themes: { dark: pics("chief", "dark"), light: pics("chief", "light") } },
++    { botId: "quiz-id", name: "刷题教练", role: "member", starBaked: false, themes: { dark: pics("quiz", "dark"), light: pics("quiz", "light") } },
++    { botId: "broken", name: "坏行", themes: { dark: { static: "x.png" } } },
++  ],
++  hashes: { "assets/list/quiz-dark.gif": "abc123" },
++};
++
++describe("lumen manifest", () => {
++  it("builds the manifest address from the server address", () => {
++    expect(lumenManifestUrl("https://rakazo.163ll.com")).toBe(BASE);
++    expect(lumenManifestUrl("https://rakazo.163ll.com:9443/")).toBe(
++      "https://rakazo.163ll.com:9443/lumen-avatars/manifest.json",
++    );
++  });
++
++  it("keeps good rows, skips broken ones, refuses files with none", () => {
++    const m = parseLumenManifest(doc, BASE);
++    expect(m?.bots.map((b) => b.name)).toEqual(["小猪包", "刷题教练"]);
++    expect(parseLumenManifest({ ...doc, bots: [doc.bots[2]] }, BASE)).toBeNull();
++    expect(parseLumenManifest({ ...doc, schemaVersion: 1 }, BASE)).toBeNull();
++    expect(parseLumenManifest("nope", BASE)).toBeNull();
++  });
++
++  it("matches a bot by id first, then by exact name", () => {
++    const m = parseLumenManifest(doc, BASE);
++    expect(lumenManifestBot(m, { identity: "quiz-id", name: "别名" })?.name).toBe("刷题教练");
++    expect(lumenManifestBot(m, { identity: "new-id", name: "刷题教练" })?.botId).toBe("quiz-id");
++    expect(lumenManifestBot(m, { identity: "new-id", name: "新来的" })).toBeNull();
++    expect(lumenManifestBot(null, { identity: "quiz-id" })).toBeNull();
++  });
++
++  it("picks header for the big avatar, list for rows, static under reduced motion", () => {
++    const base = { headerMinPt: 72, reduceMotionStatic: true, reducedMotion: false };
++    expect(lumenManifestKind({ ...base, surface: "home-hero", size: 103 })).toBe("header");
++    expect(lumenManifestKind({ ...base, surface: "chat", size: 36 })).toBe("header");
++    expect(lumenManifestKind({ ...base, surface: "home-list", size: 96 })).toBe("list");
++    expect(lumenManifestKind({ ...base, surface: "default", size: 56 })).toBe("list");
++    expect(lumenManifestKind({ ...base, surface: "default", size: 112 })).toBe("header");
++    expect(lumenManifestKind({ ...base, reducedMotion: true, surface: "home-hero", size: 103 })).toBe("static");
++  });
++
++  it("resolves the picture address, theme and star rule", () => {
++    const m = parseLumenManifest(doc, BASE);
++    const quiz = lumenManifestPicture(m, { identity: "quiz-id", surface: "home-list", size: 56, dark: true, reducedMotion: false });
++    expect(quiz).toEqual({
++      uri: "https://rakazo.163ll.com/lumen-avatars/assets/list/quiz-dark.gif?h=abc123",
++      kind: "list",
++      drawMainStar: true,
++    });
++    const chief = lumenManifestPicture(m, { name: "小猪包", surface: "home-hero", size: 103, dark: false, reducedMotion: false });
++    expect(chief?.uri).toBe("https://rakazo.163ll.com/lumen-avatars/assets/header/chief-light.gif");
++    expect(chief?.drawMainStar).toBe(false);
++    expect(lumenManifestPicture(m, { identity: "x", name: "陌生", size: 56, dark: true, reducedMotion: false })).toBeNull();
++  });
++
++  it("refuses picture paths that are not web addresses", () => {
++    const evil = JSON.parse(JSON.stringify(doc));
++    evil.bots[1].themes.dark.list = "javascript:alert(1)";
++    const m = parseLumenManifest(evil, BASE);
++    expect(lumenManifestPicture(m, { identity: "quiz-id", surface: "home-list", size: 56, dark: true, reducedMotion: false })).toBeNull();
++  });
++});
+diff --git a/apps/mobile/lib/lumen/lumen-manifest.ts b/apps/mobile/lib/lumen/lumen-manifest.ts
+new file mode 100644
+index 000000000..96460bc30
+--- /dev/null
++++ b/apps/mobile/lib/lumen/lumen-manifest.ts
+@@ -0,0 +1,172 @@
++/**
++ * The Lumen avatar manifest: a JSON file on the server that names, for every bot, the finished
++ * still and motion pictures to show. The app reads it on every launch, so a new bot only needs
++ * its pictures and one manifest row on the server — no new build.
++ *
++ * Everything here is pure: parse, match a bot, pick the picture for a surface. A bot the
++ * manifest does not know keeps the drawn Lumen body.
++ */
++
++export type LumenManifestTheme = "dark" | "light";
++export type LumenManifestKind = "static" | "list" | "header";
++export type LumenManifestSurface = "home-hero" | "home-list" | "chat" | "default";
++
++export type LumenManifestPictures = { static: string; list: string; header: string };
++
++export type LumenManifestBot = {
++  botId: string;
++  name: string;
++  role: "chief" | "lead" | "member";
++  /** The chief's orange star is drawn inside its pictures: the app must not add a second one. */
++  starBaked: boolean;
++  themes: { dark: LumenManifestPictures; light: LumenManifestPictures };
++};
++
++export type LumenManifest = {
++  version: string;
++  /** The manifest's own address: relative picture paths resolve against it. */
++  baseUrl: string;
++  headerMinPt: number;
++  reduceMotionStatic: boolean;
++  bots: LumenManifestBot[];
++  hashes: Record<string, string>;
++};
++
++/** Where the manifest lives on a server. */
++export const LUMEN_MANIFEST_PATH = "/lumen-avatars/manifest.json";
++
++export function lumenManifestUrl(apiBase: string): string {
++  return new URL(LUMEN_MANIFEST_PATH, apiBase.endsWith("/") ? apiBase : `${apiBase}/`).toString();
++}
++
++const KINDS: readonly LumenManifestKind[] = ["static", "list", "header"];
++
++function str(value: unknown): string | null {
++  return typeof value === "string" && value.trim() ? value.trim() : null;
++}
++
++function pictures(value: unknown): LumenManifestPictures | null {
++  if (!value || typeof value !== "object") return null;
++  const row = value as Record<string, unknown>;
++  const out: Partial<LumenManifestPictures> = {};
++  for (const kind of KINDS) {
++    const path = str(row[kind]);
++    if (!path) return null;
++    out[kind] = path;
++  }
++  return out as LumenManifestPictures;
++}
++
++/**
++ * A manifest from untrusted JSON. A broken row is skipped rather than failing the whole file;
++ * a file with no usable row at all is null, so the app keeps what it had.
++ */
++export function parseLumenManifest(raw: unknown, baseUrl: string): LumenManifest | null {
++  if (!raw || typeof raw !== "object") return null;
++  const doc = raw as Record<string, unknown>;
++  if (typeof doc.schemaVersion !== "number" || doc.schemaVersion < 2) return null;
++  if (!Array.isArray(doc.bots)) return null;
++  const bots: LumenManifestBot[] = [];
++  for (const item of doc.bots) {
++    if (!item || typeof item !== "object") continue;
++    const row = item as Record<string, unknown>;
++    const botId = str(row.botId);
++    const name = str(row.name);
++    const themes = row.themes as Record<string, unknown> | undefined;
++    const dark = pictures(themes?.dark);
++    const light = pictures(themes?.light);
++    if (!botId || !name || !dark || !light) continue;
++    const role = row.role === "chief" || row.role === "lead" ? row.role : "member";
++    bots.push({ botId, name, role, starBaked: row.starBaked === true, themes: { dark, light } });
++  }
++  if (bots.length === 0) return null;
++  const playback = (doc.playback ?? {}) as Record<string, unknown>;
++  const headerMinPt =
++    typeof playback.headerMinPt === "number" && playback.headerMinPt > 0 ? playback.headerMinPt : 72;
++  const hashes: Record<string, string> = {};
++  if (doc.hashes && typeof doc.hashes === "object") {
++    for (const [path, hash] of Object.entries(doc.hashes as Record<string, unknown>)) {
++      if (typeof hash === "string") hashes[path] = hash;
++    }
++  }
++  return {
++    version: str(doc.version) ?? "0",
++    baseUrl,
++    headerMinPt,
++    reduceMotionStatic: playback.reduceMotion !== "animate",
++    bots,
++    hashes,
++  };
++}
++
++/** A bot's row: its id first, its exact name second (a bot recreated under the same name). */
++export function lumenManifestBot(
++  manifest: LumenManifest | null,
++  bot: { identity?: string | null; name?: string | null },
++): LumenManifestBot | null {
++  if (!manifest) return null;
++  const id = (bot.identity ?? "").trim();
++  if (id) {
++    const byId = manifest.bots.find((row) => row.botId === id);
++    if (byId) return byId;
++  }
++  const name = (bot.name ?? "").trim();
++  if (!name) return null;
++  return manifest.bots.find((row) => row.name === name) ?? null;
++}
++
++/** Which picture a surface shows: the big avatar the full ignition, a list row its own loop. */
++export function lumenManifestKind(input: {
++  surface: LumenManifestSurface;
++  size: number;
++  reducedMotion: boolean;
++  headerMinPt: number;
++  reduceMotionStatic: boolean;
++}): LumenManifestKind {
++  if (input.reducedMotion && input.reduceMotionStatic) return "static";
++  if (input.surface === "home-hero" || input.surface === "chat") return "header";
++  if (input.surface === "home-list") return "list";
++  return input.size >= input.headerMinPt ? "header" : "list";
++}
++
++export type LumenManifestPicture = {
++  uri: string;
++  kind: LumenManifestKind;
++  /** False when the art already carries the main-bot star. */
++  drawMainStar: boolean;
++};
++
++export function lumenManifestPicture(
++  manifest: LumenManifest | null,
++  input: {
++    identity?: string | null;
++    name?: string | null;
++    surface?: LumenManifestSurface;
++    size: number;
++    dark: boolean;
++    reducedMotion: boolean;
++  },
++): LumenManifestPicture | null {
++  const bot = lumenManifestBot(manifest, input);
++  if (!manifest || !bot) return null;
++  const kind = lumenManifestKind({
++    surface: input.surface ?? "default",
++    size: input.size,
++    reducedMotion: input.reducedMotion,
++    headerMinPt: manifest.headerMinPt,
++    reduceMotionStatic: manifest.reduceMotionStatic,
++  });
++  const path = bot.themes[input.dark ? "dark" : "light"][kind];
++  let uri: string;
++  try {
++    const url = new URL(path, manifest.baseUrl);
++    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
++    // A changed picture gets a new address, so no cache can keep showing the old one.
++    const hash = manifest.hashes[path];
++    if (hash) url.searchParams.set("h", hash);
++    uri = url.toString();
++  } catch {
++    return null;
++  }
++  return { uri, kind, drawMainStar: !bot.starBaked };
++}
 diff --git a/apps/mobile/lib/main-bot.test.ts b/apps/mobile/lib/main-bot.test.ts
 new file mode 100644
 index 000000000..103276649

@@ -30,6 +30,9 @@ git diff --stat
 
 # The build is worthless without the patch and its assets: fail here, not 25 minutes later.
 test -f apps/mobile/lib/app-font.ts
+# v35: avatars read the server manifest; a patch that lost the reader must fail here.
+test -f apps/mobile/lib/lumen/lumen-manifest-store.ts
+grep -q "lumenManifestPicture" apps/mobile/components/bot-avatar.tsx
 test -f apps/mobile/lib/document-scanner.ts
 test -f apps/mobile/modules/rakazo-document-scanner/ios/RakazoDocumentScannerModule.swift
 # A live call is half native: without this module the phone has no microphone stream to send.

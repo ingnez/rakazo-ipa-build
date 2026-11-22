@@ -57,7 +57,7 @@ for (const bot of m.bots) {
 }
 if (pictures !== 66) throw new Error(`${pictures} pictures named, expected 66`);
 JS
-[ "$(find "$ART" -type f ! -name manifest.json | wc -l)" = "66" ] \
+[ "$(find "$ART" -type f ! -name manifest.json | wc -l | tr -d " ")" = "66" ] \
   || fail "the app does not carry exactly the 66 finished pictures"
 # The art is what makes the avatar instant; a build that quietly lost most of it must not ship.
 size_kb=$(du -sk "$ART" | cut -f1)

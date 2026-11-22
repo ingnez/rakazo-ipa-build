@@ -35,7 +35,7 @@ git diff --stat
 test -d "$HERE/lumen-avatars/assets"
 rm -rf apps/mobile/assets/lumen-avatars
 cp -R "$HERE/lumen-avatars" apps/mobile/assets/lumen-avatars
-[ "$(find apps/mobile/assets/lumen-avatars -type f ! -name manifest.json | wc -l)" = "66" ] \
+[ "$(find apps/mobile/assets/lumen-avatars -type f ! -name manifest.json | wc -l | tr -d " ")" = "66" ] \
   || { echo "::error::the shipped art is not the 66 finished pictures"; exit 1; }
 
 # The build is worthless without the patch and its assets: fail here, not 25 minutes later.

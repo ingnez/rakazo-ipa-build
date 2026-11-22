@@ -213243,13 +213243,13 @@ index 000000000..f0d7509b8
 +];
 diff --git a/apps/mobile/lib/lumen/lumen-manifest-store.ts b/apps/mobile/lib/lumen/lumen-manifest-store.ts
 new file mode 100644
-index 000000000..0849b193f
+index 000000000..bbd241be0
 --- /dev/null
 +++ b/apps/mobile/lib/lumen/lumen-manifest-store.ts
 @@ -0,0 +1,173 @@
 +import { useSyncExternalStore } from "react";
 +import { AccessibilityInfo, AppState } from "react-native";
-+import { currentApiBase, subscribeApiBase } from "../api/api";
++import { currentApiBase, subscribeApiBase } from "../api";
 +import type { LumenManifest } from "./lumen-manifest";
 +import { lumenManifestUrl, parseLumenManifest } from "./lumen-manifest";
 +

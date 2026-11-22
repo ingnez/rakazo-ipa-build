@@ -24041,11 +24041,15 @@ index 000000000..c6783b3b5
 +  });
 +}
 diff --git a/apps/mobile/app.json b/apps/mobile/app.json
-index d0e806932..c2bb3700a 100644
+index d0e806932..c313aa583 100644
 --- a/apps/mobile/app.json
 +++ b/apps/mobile/app.json
-@@ -7,16 +7,30 @@
-     "version": "1.0.14",
+@@ -4,19 +4,33 @@
+     "slug": "rakazo",
+     "owner": "inbox-zero",
+     "scheme": "rakazo",
+-    "version": "1.0.14",
++    "version": "1.0.15",
      "orientation": "default",
      "userInterfaceStyle": "automatic",
 -    "icon": "./assets/icon.png",
@@ -24109,9 +24113,12 @@ index d0e806932..c2bb3700a 100644
          }
        ],
        "./plugins/with-share-extension",
-@@ -104,19 +118,36 @@
+@@ -102,21 +116,38 @@
+     },
+     "ios": {
        "bundleIdentifier": "com.rakazo.app",
-       "buildNumber": "1",
+-      "buildNumber": "1",
++      "buildNumber": "2",
        "supportsTablet": true,
 -      "icon": "../../packages/ui-tokens/assets/Rakazo.icon",
 +      "icon": "./assets/bot-icon.png",
@@ -170571,7 +170578,7 @@ index 000000000..877956f35
 +  );
 +}
 diff --git a/apps/mobile/components/bot-avatar.tsx b/apps/mobile/components/bot-avatar.tsx
-index a58981051..57bba38b5 100644
+index a58981051..b352008d7 100644
 --- a/apps/mobile/components/bot-avatar.tsx
 +++ b/apps/mobile/components/bot-avatar.tsx
 @@ -1,121 +1,23 @@
@@ -170709,7 +170716,7 @@ index a58981051..57bba38b5 100644
    size?: number;
    status?: string;
    identity?: string;
-@@ -125,68 +27,267 @@ export interface BotAvatarProps {
+@@ -125,68 +27,269 @@ export interface BotAvatarProps {
    motion?: AvatarMotionMode;
    composing?: boolean;
    pokeable?: boolean;
@@ -170832,7 +170839,9 @@ index a58981051..57bba38b5 100644
 +  });
 +  const uri = picture?.uris.find((candidate) => !failed.includes(candidate));
 +  if (picture && uri) {
-+    const shown = picture.size ?? size;
++    // The hero is the one surface the finished art fixes a size for (96 pt); every other surface
++    // keeps the size its layout was built around, so a list row does not grow around a picture.
++    const shown = surface === "home-hero" && picture.size ? picture.size : size;
 +    return (
 +      <View style={{ width: shown, height: shown, overflow: "visible" }}>
 +        {/* contain: the whole drawing, never cropped; iOS plays the GIF natively. */}
@@ -171013,7 +171022,7 @@ index a58981051..57bba38b5 100644
          width: dot.diameter + dot.ring * 2,
          height: dot.diameter + dot.ring * 2,
          borderRadius: size,
-@@ -198,19 +299,20 @@ function WorkingDot({ size, muted }: { size: number; muted: boolean }) {
+@@ -198,19 +301,20 @@ function WorkingDot({ size, muted }: { size: number; muted: boolean }) {
    );
  }
  
@@ -171039,7 +171048,7 @@ index a58981051..57bba38b5 100644
          borderRadius: size,
          borderWidth: 2,
          borderColor: tokens.background,
-@@ -240,232 +342,3 @@ function MutedBadge({ size }: { size: number }) {
+@@ -240,232 +344,3 @@ function MutedBadge({ size }: { size: number }) {
      </View>
    );
  }

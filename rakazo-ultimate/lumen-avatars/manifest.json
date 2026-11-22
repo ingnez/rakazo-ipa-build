@@ -1,0 +1,518 @@
+{
+  "schemaVersion": 2,
+  "version": "20261122-transparent",
+  "name": "灯芯·Lumen",
+  "fit": "contain",
+  "clip": false,
+  "playback": {
+    "list": "loop",
+    "header": "loop",
+    "reduceMotion": "static",
+    "headerMinPt": 72,
+    "surfaces": {
+      "home-hero": "header",
+      "chat": "header",
+      "home-list": "list",
+      "default": "auto"
+    }
+  },
+  "bots": [
+    {
+      "botId": "cmwgm49boyweiboib5meju5x7",
+      "key": "chief",
+      "name": "小猪包",
+      "role": "chief",
+      "color": "#D8B878",
+      "emblem": "e000",
+      "emblemName": "五峰光冠",
+      "listVariant": "v3-full",
+      "listSizePt": 96,
+      "heroSizePt": 136,
+      "starBaked": true,
+      "status": "ready",
+      "note": "",
+      "themes": {
+        "dark": {
+          "static": "assets/static/chief-dark.png",
+          "list": "assets/list/chief-dark.gif",
+          "header": "assets/header/chief-dark.gif"
+        },
+        "light": {
+          "static": "assets/static/chief-light.png",
+          "list": "assets/list/chief-light.gif",
+          "header": "assets/header/chief-light.gif"
+        }
+      },
+      "source": {
+        "dark": {
+          "static": "列表正式定稿/01-小猪包-深色.png",
+          "list": "v3动图/小猪包-v3-五峰点火-深色.gif",
+          "header": "v3动图/小猪包-v3-五峰点火-深色.gif"
+        },
+        "light": {
+          "static": "列表正式定稿/01-小猪包-浅色.png",
+          "list": "v3动图/小猪包-v3-五峰点火-浅色.gif",
+          "header": "v3动图/小猪包-v3-五峰点火-浅色.gif"
+        }
+      }
+    },
+    {
+      "botId": "cmwgouca0nk6rwbhk1swaxbi4",
+      "key": "dev",
+      "name": "开发助理",
+      "role": "member",
+      "color": "#3DD6F5",
+      "emblem": "e001",
+      "emblemName": "代码",
+      "listVariant": "B-fx",
+      "listSizePt": 56,
+      "heroSizePt": 56,
+      "starBaked": false,
+      "status": "ready",
+      "note": "",
+      "themes": {
+        "dark": {
+          "static": "assets/static/dev-dark.png",
+          "list": "assets/list/dev-dark.gif",
+          "header": "assets/header/dev-dark.gif"
+        },
+        "light": {
+          "static": "assets/static/dev-light.png",
+          "list": "assets/list/dev-light.gif",
+          "header": "assets/header/dev-light.gif"
+        }
+      },
+      "source": {
+        "dark": {
+          "static": "列表正式定稿/02-开发助理-深色.png",
+          "list": "列表小尺寸试版/光影酷炫试版/全队/开发助理-列表B版-光影酷炫点火-深色.gif",
+          "header": "v3动图/开发助理-v3-耳翼点火-深色.gif"
+        },
+        "light": {
+          "static": "列表正式定稿/02-开发助理-浅色.png",
+          "list": "列表小尺寸试版/光影酷炫试版/全队/开发助理-列表B版-光影酷炫点火-浅色.gif",
+          "header": "v3动图/开发助理-v3-耳翼点火-浅色.gif"
+        }
+      }
+    },
+    {
+      "botId": "cmwgqczzcl435o5ih2kowbtgo",
+      "key": "novel",
+      "name": "小说写手",
+      "role": "member",
+      "color": "#B0415A",
+      "emblem": "e341",
+      "emblemName": "羽毛笔",
+      "listVariant": "B-fx",
+      "listSizePt": 56,
+      "heroSizePt": 56,
+      "starBaked": false,
+      "status": "ready",
+      "note": "",
+      "themes": {
+        "dark": {
+          "static": "assets/static/novel-dark.png",
+          "list": "assets/list/novel-dark.gif",
+          "header": "assets/header/novel-dark.gif"
+        },
+        "light": {
+          "static": "assets/static/novel-light.png",
+          "list": "assets/list/novel-light.gif",
+          "header": "assets/header/novel-light.gif"
+        }
+      },
+      "source": {
+        "dark": {
+          "static": "列表正式定稿/03-小说写手-深色.png",
+          "list": "列表小尺寸试版/光影酷炫试版/全队/小说写手-列表B版-光影酷炫点火-深色.gif",
+          "header": "v3动图/小说写手-v3-耳翼点火-深色.gif"
+        },
+        "light": {
+          "static": "列表正式定稿/03-小说写手-浅色.png",
+          "list": "列表小尺寸试版/光影酷炫试版/全队/小说写手-列表B版-光影酷炫点火-浅色.gif",
+          "header": "v3动图/小说写手-v3-耳翼点火-浅色.gif"
+        }
+      }
+    },
+    {
+      "botId": "cmwgqgor7lb6mlie0sni0t8qw",
+      "key": "ppt",
+      "name": "PPT大师",
+      "role": "member",
+      "color": "#FF8A5B",
+      "emblem": "e071",
+      "emblemName": "版式网格",
+      "listVariant": "B-fx",
+      "listSizePt": 56,
+      "heroSizePt": 56,
+      "starBaked": false,
+      "status": "ready",
+      "note": "列表光影版量值合格（深色最大0.4547，闪白0）",
+      "themes": {
+        "dark": {
+          "static": "assets/static/ppt-dark.png",
+          "list": "assets/list/ppt-dark.gif",
+          "header": "assets/header/ppt-dark.gif"
+        },
+        "light": {
+          "static": "assets/static/ppt-light.png",
+          "list": "assets/list/ppt-light.gif",
+          "header": "assets/header/ppt-light.gif"
+        }
+      },
+      "source": {
+        "dark": {
+          "static": "列表正式定稿/04-PPT大师-深色.png",
+          "list": "列表小尺寸试版/光影酷炫试版/全队/PPT大师-列表B版-光影酷炫点火-深色.gif",
+          "header": "v3动图/PPT大师-v3-耳翼点火-深色.gif"
+        },
+        "light": {
+          "static": "列表正式定稿/04-PPT大师-浅色.png",
+          "list": "列表小尺寸试版/光影酷炫试版/全队/PPT大师-列表B版-光影酷炫点火-浅色.gif",
+          "header": "v3动图/PPT大师-v3-耳翼点火-浅色.gif"
+        }
+      }
+    },
+    {
+      "botId": "cmwgrqwqvki33sqnq1ydesq94",
+      "key": "oracle",
+      "name": "占卜师",
+      "role": "member",
+      "color": "#8E7CFF",
+      "emblem": "e381",
+      "emblemName": "太极",
+      "listVariant": "B-fx",
+      "listSizePt": 56,
+      "heroSizePt": 56,
+      "starBaked": false,
+      "status": "ready",
+      "note": "列表光影版量值合格（深色最大0.4303，闪白0）",
+      "themes": {
+        "dark": {
+          "static": "assets/static/oracle-dark.png",
+          "list": "assets/list/oracle-dark.gif",
+          "header": "assets/header/oracle-dark.gif"
+        },
+        "light": {
+          "static": "assets/static/oracle-light.png",
+          "list": "assets/list/oracle-light.gif",
+          "header": "assets/header/oracle-light.gif"
+        }
+      },
+      "source": {
+        "dark": {
+          "static": "列表正式定稿/05-占卜师-深色.png",
+          "list": "列表小尺寸试版/光影酷炫试版/全队/占卜师-列表B版-光影酷炫点火-深色.gif",
+          "header": "v3动图/占卜师-v3-耳翼点火-深色.gif"
+        },
+        "light": {
+          "static": "列表正式定稿/05-占卜师-浅色.png",
+          "list": "列表小尺寸试版/光影酷炫试版/全队/占卜师-列表B版-光影酷炫点火-浅色.gif",
+          "header": "v3动图/占卜师-v3-耳翼点火-浅色.gif"
+        }
+      }
+    },
+    {
+      "botId": "cmwh5ty5irjaij7vyiivaobb0",
+      "key": "life",
+      "name": "生活助理",
+      "role": "member",
+      "color": "#F2C48D",
+      "emblem": "e201",
+      "emblemName": "家",
+      "listVariant": "B-fx",
+      "listSizePt": 56,
+      "heroSizePt": 56,
+      "starBaked": false,
+      "status": "pending-review",
+      "note": "列表光影版已出图并量值，等主人过目",
+      "themes": {
+        "dark": {
+          "static": "assets/static/life-dark.png",
+          "list": "assets/list/life-dark.gif",
+          "header": "assets/header/life-dark.gif"
+        },
+        "light": {
+          "static": "assets/static/life-light.png",
+          "list": "assets/list/life-light.gif",
+          "header": "assets/header/life-light.gif"
+        }
+      },
+      "source": {
+        "dark": {
+          "static": "列表正式定稿/06-生活助理-深色.png",
+          "list": "列表小尺寸试版/光影酷炫试版/全队/生活助理-列表B版-光影酷炫点火-深色.gif",
+          "header": "v3动图/生活助理-v3-耳翼点火-深色.gif"
+        },
+        "light": {
+          "static": "列表正式定稿/06-生活助理-浅色.png",
+          "list": "列表小尺寸试版/光影酷炫试版/全队/生活助理-列表B版-光影酷炫点火-浅色.gif",
+          "header": "v3动图/生活助理-v3-耳翼点火-浅色.gif"
+        }
+      }
+    },
+    {
+      "botId": "cmwhl6d8i7u3v9znq3dgvo9ge",
+      "key": "quiz",
+      "name": "刷题教练",
+      "role": "member",
+      "color": "#2FBF8F",
+      "emblem": "e081",
+      "emblemName": "对勾",
+      "listVariant": "B-fx",
+      "listSizePt": 56,
+      "heroSizePt": 56,
+      "starBaked": false,
+      "status": "ready",
+      "note": "",
+      "themes": {
+        "dark": {
+          "static": "assets/static/quiz-dark.png",
+          "list": "assets/list/quiz-dark.gif",
+          "header": "assets/header/quiz-dark.gif"
+        },
+        "light": {
+          "static": "assets/static/quiz-light.png",
+          "list": "assets/list/quiz-light.gif",
+          "header": "assets/header/quiz-light.gif"
+        }
+      },
+      "source": {
+        "dark": {
+          "static": "列表正式定稿/07-刷题教练-深色.png",
+          "list": "列表小尺寸试版/光影酷炫试版/刷题教练-列表B版-光影酷炫点火-深色.gif",
+          "header": "v3动图/刷题教练-v3-耳翼点火-深色.gif"
+        },
+        "light": {
+          "static": "列表正式定稿/07-刷题教练-浅色.png",
+          "list": "列表小尺寸试版/光影酷炫试版/刷题教练-列表B版-光影酷炫点火-浅色.gif",
+          "header": "v3动图/刷题教练-v3-耳翼点火-浅色.gif"
+        }
+      }
+    },
+    {
+      "botId": "cmwizss1ym6kxs4lvztbczi57",
+      "key": "memo",
+      "name": "备忘录",
+      "role": "member",
+      "color": "#7FA7C9",
+      "emblem": "e409",
+      "emblemName": "便签",
+      "listVariant": "B-fx",
+      "listSizePt": 56,
+      "heroSizePt": 56,
+      "starBaked": false,
+      "status": "pending-review",
+      "note": "列表光影版已出图并量值，等主人过目",
+      "themes": {
+        "dark": {
+          "static": "assets/static/memo-dark.png",
+          "list": "assets/list/memo-dark.gif",
+          "header": "assets/header/memo-dark.gif"
+        },
+        "light": {
+          "static": "assets/static/memo-light.png",
+          "list": "assets/list/memo-light.gif",
+          "header": "assets/header/memo-light.gif"
+        }
+      },
+      "source": {
+        "dark": {
+          "static": "列表正式定稿/08-备忘录-深色.png",
+          "list": "列表小尺寸试版/光影酷炫试版/全队/备忘录-列表B版-光影酷炫点火-深色.gif",
+          "header": "v3动图/备忘录-v3-耳翼点火-深色.gif"
+        },
+        "light": {
+          "static": "列表正式定稿/08-备忘录-浅色.png",
+          "list": "列表小尺寸试版/光影酷炫试版/全队/备忘录-列表B版-光影酷炫点火-浅色.gif",
+          "header": "v3动图/备忘录-v3-耳翼点火-浅色.gif"
+        }
+      }
+    },
+    {
+      "botId": "cmwkhxq51fbif1b6u7spzp8fs",
+      "key": "ops",
+      "name": "运维助理",
+      "role": "member",
+      "color": "#3A6DF0",
+      "emblem": "e021",
+      "emblemName": "盾牌脉冲",
+      "listVariant": "B-fx",
+      "listSizePt": 56,
+      "heroSizePt": 56,
+      "starBaked": false,
+      "status": "ready",
+      "note": "",
+      "themes": {
+        "dark": {
+          "static": "assets/static/ops-dark.png",
+          "list": "assets/list/ops-dark.gif",
+          "header": "assets/header/ops-dark.gif"
+        },
+        "light": {
+          "static": "assets/static/ops-light.png",
+          "list": "assets/list/ops-light.gif",
+          "header": "assets/header/ops-light.gif"
+        }
+      },
+      "source": {
+        "dark": {
+          "static": "列表正式定稿/09-运维助理-深色.png",
+          "list": "列表小尺寸试版/光影酷炫试版/全队/运维助理-列表B版-光影酷炫点火-深色.gif",
+          "header": "v3动图/运维助理-v3-耳翼点火-深色.gif"
+        },
+        "light": {
+          "static": "列表正式定稿/09-运维助理-浅色.png",
+          "list": "列表小尺寸试版/光影酷炫试版/全队/运维助理-列表B版-光影酷炫点火-浅色.gif",
+          "header": "v3动图/运维助理-v3-耳翼点火-浅色.gif"
+        }
+      }
+    },
+    {
+      "botId": "cmwlu1xlmblhb6cek3rpl5e3d",
+      "key": "cook",
+      "name": "做饭教练",
+      "role": "member",
+      "color": "#E8553D",
+      "emblem": "e421",
+      "emblemName": "厨师帽",
+      "listVariant": "B-fx",
+      "listSizePt": 56,
+      "heroSizePt": 56,
+      "starBaked": false,
+      "status": "ready",
+      "note": "",
+      "themes": {
+        "dark": {
+          "static": "assets/static/cook-dark.png",
+          "list": "assets/list/cook-dark.gif",
+          "header": "assets/header/cook-dark.gif"
+        },
+        "light": {
+          "static": "assets/static/cook-light.png",
+          "list": "assets/list/cook-light.gif",
+          "header": "assets/header/cook-light.gif"
+        }
+      },
+      "source": {
+        "dark": {
+          "static": "列表正式定稿/10-做饭教练-深色.png",
+          "list": "列表小尺寸试版/光影酷炫试版/全队/做饭教练-列表B版-光影酷炫点火-深色.gif",
+          "header": "v3动图/做饭教练-v3-耳翼点火-深色.gif"
+        },
+        "light": {
+          "static": "列表正式定稿/10-做饭教练-浅色.png",
+          "list": "列表小尺寸试版/光影酷炫试版/全队/做饭教练-列表B版-光影酷炫点火-浅色.gif",
+          "header": "v3动图/做饭教练-v3-耳翼点火-浅色.gif"
+        }
+      }
+    },
+    {
+      "botId": "cmwqkb91i3yxl196nxgp38e4k",
+      "key": "lotto",
+      "name": "中奖大师",
+      "role": "member",
+      "color": "#EC5C9A",
+      "emblem": "e090",
+      "emblemName": "奖杯",
+      "listVariant": "B-fx",
+      "listSizePt": 56,
+      "heroSizePt": 56,
+      "starBaked": false,
+      "status": "ready",
+      "note": "09:25 二次复核深色0.4176、浅色0.7866",
+      "themes": {
+        "dark": {
+          "static": "assets/static/lotto-dark.png",
+          "list": "assets/list/lotto-dark.gif",
+          "header": "assets/header/lotto-dark.gif"
+        },
+        "light": {
+          "static": "assets/static/lotto-light.png",
+          "list": "assets/list/lotto-light.gif",
+          "header": "assets/header/lotto-light.gif"
+        }
+      },
+      "source": {
+        "dark": {
+          "static": "列表正式定稿/11-中奖大师-深色.png",
+          "list": "列表小尺寸试版/光影酷炫试版/全队/中奖大师-列表B版-光影酷炫点火-深色.gif",
+          "header": "v3动图/中奖大师-v3-耳翼点火-深色.gif"
+        },
+        "light": {
+          "static": "列表正式定稿/11-中奖大师-浅色.png",
+          "list": "列表小尺寸试版/光影酷炫试版/全队/中奖大师-列表B版-光影酷炫点火-浅色.gif",
+          "header": "v3动图/中奖大师-v3-耳翼点火-浅色.gif"
+        }
+      }
+    }
+  ],
+  "hashes": {
+    "assets/static/chief-dark.png": "d0fb37687db7fdb0",
+    "assets/list/chief-dark.gif": "a7390fec1cfe5d5a",
+    "assets/header/chief-dark.gif": "a7390fec1cfe5d5a",
+    "assets/static/chief-light.png": "b4eb794b672cc2d7",
+    "assets/list/chief-light.gif": "054296539fbe033b",
+    "assets/header/chief-light.gif": "054296539fbe033b",
+    "assets/static/dev-dark.png": "6637077dace6b458",
+    "assets/list/dev-dark.gif": "4deb6eca6e9c800c",
+    "assets/header/dev-dark.gif": "24c636b233399a5e",
+    "assets/static/dev-light.png": "c30ff22cd979a346",
+    "assets/list/dev-light.gif": "ac784fb67321cc50",
+    "assets/header/dev-light.gif": "b5cbfdf438c2e2f3",
+    "assets/static/novel-dark.png": "0d3edfde87fc47da",
+    "assets/list/novel-dark.gif": "de2e48e7a629e8ec",
+    "assets/header/novel-dark.gif": "8f9f99b63f767ccc",
+    "assets/static/novel-light.png": "9dce0efc6df91326",
+    "assets/list/novel-light.gif": "419bef30d30bf0ee",
+    "assets/header/novel-light.gif": "ae2c1cbfd494cae0",
+    "assets/static/ppt-dark.png": "24dd314544a9c88f",
+    "assets/list/ppt-dark.gif": "c64ccaf806925427",
+    "assets/header/ppt-dark.gif": "464eb28a28e837ac",
+    "assets/static/ppt-light.png": "6a1ffa4fdbb33574",
+    "assets/list/ppt-light.gif": "c4913321e99bbea2",
+    "assets/header/ppt-light.gif": "a9f180ef33793763",
+    "assets/static/oracle-dark.png": "92ac5c329078f90c",
+    "assets/list/oracle-dark.gif": "5096c05001167174",
+    "assets/header/oracle-dark.gif": "43f0b8ca68652f72",
+    "assets/static/oracle-light.png": "8f856779fd1a83fe",
+    "assets/list/oracle-light.gif": "48debf79740c3350",
+    "assets/header/oracle-light.gif": "c39a74c6cbf143a3",
+    "assets/static/life-dark.png": "de85150bd890bfc8",
+    "assets/list/life-dark.gif": "d06d51e805132afd",
+    "assets/header/life-dark.gif": "3ecd2b7eafd9c8ab",
+    "assets/static/life-light.png": "cc9e0cca9ad76595",
+    "assets/list/life-light.gif": "f2d083ef9dedd63d",
+    "assets/header/life-light.gif": "0fdd8aeb8fa3998d",
+    "assets/static/quiz-dark.png": "d0e7a72b562bc07a",
+    "assets/list/quiz-dark.gif": "f50551d1ef4608c3",
+    "assets/header/quiz-dark.gif": "9185b1706e552866",
+    "assets/static/quiz-light.png": "10bbb150551945f1",
+    "assets/list/quiz-light.gif": "b993b761d1ef30b2",
+    "assets/header/quiz-light.gif": "3675f0b89d100575",
+    "assets/static/memo-dark.png": "8039a26959536793",
+    "assets/list/memo-dark.gif": "475a9ff132b57554",
+    "assets/header/memo-dark.gif": "d30c0c1557caee25",
+    "assets/static/memo-light.png": "e4fcb7da271a87a8",
+    "assets/list/memo-light.gif": "054e1521acad07b1",
+    "assets/header/memo-light.gif": "7b6bc66c469c193f",
+    "assets/static/ops-dark.png": "d6d9a65ea1418c61",
+    "assets/list/ops-dark.gif": "7fdb53f176f85091",
+    "assets/header/ops-dark.gif": "50c290c6e2eccc4a",
+    "assets/static/ops-light.png": "e54a7fd7826c27b9",
+    "assets/list/ops-light.gif": "de05ba9d623033af",
+    "assets/header/ops-light.gif": "ce5bbf3402c2cac3",
+    "assets/static/cook-dark.png": "80ceebde572d7537",
+    "assets/list/cook-dark.gif": "996dcf1b23a88005",
+    "assets/header/cook-dark.gif": "2878c1d8e7833b02",
+    "assets/static/cook-light.png": "6fe06c5a57d19b18",
+    "assets/list/cook-light.gif": "4e06b5ae5f459ce5",
+    "assets/header/cook-light.gif": "772402653f047d72",
+    "assets/static/lotto-dark.png": "a6fc04965c66079d",
+    "assets/list/lotto-dark.gif": "89f00b0a81b9324a",
+    "assets/header/lotto-dark.gif": "d9f829214c064aaf",
+    "assets/static/lotto-light.png": "5b28d2f49dc406b1",
+    "assets/list/lotto-light.gif": "367032cfc1377b16",
+    "assets/header/lotto-light.gif": "20c6a610edff39d8"
+  }
+}

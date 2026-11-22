@@ -28,6 +28,16 @@ git log -1 --format='upstream %H %s'
 git apply -v "$HERE/client.patch"
 git diff --stat
 
+# The finished Lumen art the app carries (66 transparent pictures, 34 MB): it lives beside the
+# patch rather than inside it, so the patch stays text and the pictures stay byte for byte what
+# the avatar pipeline produced. Without it the hero still draws, but from the network or the
+# fallback body — so a build that lost it fails here, not on the phone.
+test -d "$HERE/lumen-avatars/assets"
+rm -rf apps/mobile/assets/lumen-avatars
+cp -R "$HERE/lumen-avatars" apps/mobile/assets/lumen-avatars
+[ "$(find apps/mobile/assets/lumen-avatars -type f ! -name manifest.json | wc -l)" = "66" ] \
+  || { echo "::error::the shipped art is not the 66 finished pictures"; exit 1; }
+
 # The build is worthless without the patch and its assets: fail here, not 25 minutes later.
 test -f apps/mobile/lib/app-font.ts
 test -f apps/mobile/lib/document-scanner.ts
@@ -137,7 +147,7 @@ grep -q 'refreshModels:' packages/contracts/src/rpc.ts
 # shipped mark is the Bot icon, and a chat shows stacked images plus a composer
 # tray. The Photos/Vision native module has to be in the tree before prebuild.
 test -f apps/mobile/lib/avatar-badges.ts
-grep -q 'export const HERO_AVATAR_SIZE = 103;' apps/mobile/lib/avatar-badges.ts
+grep -q 'export const HERO_AVATAR_SIZE = 136;' apps/mobile/lib/avatar-badges.ts
 test -f packages/core/src/mochi-avatar.ts
 test -f packages/core/src/mochi-avatar.test.ts
 test -f apps/mobile/lib/after-first-paint.ts
@@ -395,8 +405,15 @@ bash "$HERE/gates-v34.sh"
 # pictures load one at a time, and a folder lead wears a flag. Its own script, so the same file
 # proves each check fails when the work is missing (work/v35 negative run: 2/2 exit 1).
 test -f apps/mobile/lib/lumen/lumen-manifest-store.ts
-grep -q "lumenManifestPicture" apps/mobile/components/bot-avatar.tsx
+grep -q "lumenAvatarChoice" apps/mobile/components/bot-avatar.tsx
 bash "$HERE/gates-v35.sh"
+
+# v36: the hero is 136 pt, the art is carried in the bundle, a picture never arrives as a blank
+# square, the app has its own update channel, and the web draws the same hero. Its own script, so
+# the same file proves each check fails when the work is missing (work/v36 negative run: 9/9).
+test -f apps/mobile/lib/lumen/lumen-builtin-avatars.ts
+test -f apps/mobile/lib/lumen/lumen-avatar-source.ts
+bash "$HERE/gates-v36.sh"
 
 npm i -g pnpm@12.18.0
 pnpm install --frozen-lockfile
@@ -429,6 +446,16 @@ if [ -d ios/Bot ] && [ ! -d ios/Rakazo ]; then
 fi
 test -f ios/Rakazo/Info.plist || { echo "::error::prebuild did not write ios/Rakazo/Info.plist"; exit 1; }
 
+# v36: the app checks the self-hosted update channel at launch. Prebuild writes that from
+# app.json — a build where it silently vanished would ship an app that can never be updated
+# without a reinstall, so fail here and name the missing key.
+if ! grep -Rqs 'EXUpdatesURL' ios/Rakazo/Info.plist ios/Rakazo/Supporting/Expo.plist; then
+  echo "::error::prebuild did not write EXUpdatesURL: the app would have no update channel"
+  exit 1
+fi
+grep -Rqs 'https://rakazo.163ll.com/ota/manifest' ios/Rakazo/Info.plist ios/Rakazo/Supporting/Expo.plist \
+  || { echo "::error::the update channel is not the self-hosted one"; exit 1; }
+
 # The typeface has to be in the built bundle, not merely in the source.
 /usr/libexec/PlistBuddy -c 'Print :UIAppFonts' ios/Rakazo/Info.plist | tee /dev/stderr | grep -q 'XVF-Regular.ttf'
 
@@ -438,6 +465,10 @@ grep -q 'MessageImageActions' Podfile.lock ||
   { echo "::error::message-image-actions was not autolinked"; exit 1; }
 grep -q 'PhotoPicker' Podfile.lock ||
   { echo "::error::photo-picker was not autolinked"; exit 1; }
+# v36: the update client is native code. Without the pod the app cannot read the channel
+# app.json declares, so the update it was built for would never happen.
+grep -q 'ExpoUpdates' Podfile.lock ||
+  { echo "::error::expo-updates was not autolinked, so the update channel is dead"; exit 1; }
 # A simulator-only check needs the prepared project, not the device build.
 if [ -n "${PREPARE_ONLY:-}" ]; then exit 0; fi
 xcodebuild -workspace Rakazo.xcworkspace -scheme Rakazo -configuration Release \
@@ -459,8 +490,15 @@ unzip -q -o Rakazo-unsigned.ipa 'Payload/Rakazo.app/Info.plist' -d "$IPA_PLIST"
 /usr/libexec/PlistBuddy -c 'Print :UIAppFonts' "$IPA_PLIST/Payload/Rakazo.app/Info.plist" | grep -q 'XVF-Regular.ttf'
 /usr/libexec/PlistBuddy -c 'Print :CADisableMinimumFrameDurationOnPhone' "$IPA_PLIST/Payload/Rakazo.app/Info.plist" || true
 /usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$IPA_PLIST/Payload/Rakazo.app/Info.plist" | grep -qx Bot
+/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$IPA_PLIST/Payload/Rakazo.app/Info.plist" | grep -qx 1.0.16
 /usr/libexec/PlistBuddy -c 'Print :NSPhotoLibraryAddUsageDescription' "$IPA_PLIST/Payload/Rakazo.app/Info.plist" | grep -q 'photo library'
 unzip -l Rakazo-unsigned.ipa | grep -E 'XVF-Regular.ttf|ping_4_chime_a|RakazoDocumentScanner'
+
+# v36: the finished art has to be in the package itself. A package that lost it would still
+# launch, and every avatar would come off the network.
+art_in_ipa="$(unzip -l Rakazo-unsigned.ipa | grep -c 'lumen-avatars/' || true)"
+[ "$art_in_ipa" -ge 66 ] ||
+  { echo "::error::only $art_in_ipa of the 66 avatar pictures are in the package"; exit 1; }
 
 # The icon that ships is the one in the source tree, byte for byte, and no ghost PNG rides along.
 for icon in monochrome-icon; do

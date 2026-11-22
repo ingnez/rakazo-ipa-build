@@ -24041,7 +24041,7 @@ index 000000000..c6783b3b5
 +  });
 +}
 diff --git a/apps/mobile/app.json b/apps/mobile/app.json
-index d0e806932..c313aa583 100644
+index d0e806932..077e3aac8 100644
 --- a/apps/mobile/app.json
 +++ b/apps/mobile/app.json
 @@ -4,19 +4,33 @@
@@ -24049,7 +24049,7 @@ index d0e806932..c313aa583 100644
      "owner": "inbox-zero",
      "scheme": "rakazo",
 -    "version": "1.0.14",
-+    "version": "1.0.15",
++    "version": "1.0.16",
      "orientation": "default",
      "userInterfaceStyle": "automatic",
 -    "icon": "./assets/icon.png",
@@ -24118,7 +24118,7 @@ index d0e806932..c313aa583 100644
      "ios": {
        "bundleIdentifier": "com.rakazo.app",
 -      "buildNumber": "1",
-+      "buildNumber": "2",
++      "buildNumber": "3",
        "supportsTablet": true,
 -      "icon": "../../packages/ui-tokens/assets/Rakazo.icon",
 +      "icon": "./assets/bot-icon.png",
@@ -24186,14 +24186,18 @@ index d0e806932..c313aa583 100644
                    }
                  },
                  {
-@@ -174,7 +208,9 @@
+@@ -174,7 +208,13 @@
        "policy": "appVersion"
      },
      "updates": {
 -      "url": "https://u.expo.dev/07f7eb04-45e3-47fe-9374-99a2f991131e"
-+      "enabled": false,
-+      "checkAutomatically": "NEVER",
-+      "fallbackToCacheTimeout": 0
++      "url": "https://rakazo.163ll.com/ota/manifest",
++      "enabled": true,
++      "checkAutomatically": "ON_LOAD",
++      "fallbackToCacheTimeout": 0,
++      "requestHeaders": {
++        "expo-channel-name": "production"
++      }
      }
    }
  }
@@ -170578,10 +170582,10 @@ index 000000000..877956f35
 +  );
 +}
 diff --git a/apps/mobile/components/bot-avatar.tsx b/apps/mobile/components/bot-avatar.tsx
-index a58981051..b352008d7 100644
+index a58981051..8c010b24c 100644
 --- a/apps/mobile/components/bot-avatar.tsx
 +++ b/apps/mobile/components/bot-avatar.tsx
-@@ -1,121 +1,23 @@
+@@ -1,121 +1,25 @@
  import { useLingui } from "@lingui/react/macro";
  import type { BotAvatarSet } from "@rakazo/contracts";
 -import type { AvatarEyes, AvatarMotionMode, LogoAvatarActivity } from "@rakazo/core";
@@ -170623,6 +170627,7 @@ index a58981051..b352008d7 100644
 -import { mobileBotAvatarPresentation } from "../lib/bot-avatar";
 +import type { AvatarMotionMode, LogoAvatarActivity } from "@rakazo/core";
 +import { avatarWorkingDot, isRunWorking } from "@rakazo/core";
++import type { ReactNode } from "react";
 +import { memo, useState, useSyncExternalStore } from "react";
 +import { Image, View } from "react-native";
 +import type { AvatarBadgeCorner, AvatarBadgeSurface } from "../lib/avatar-badges";
@@ -170631,7 +170636,8 @@ index a58981051..b352008d7 100644
 -import { useMobileTokens } from "../lib/native";
 -import { LogoAvatar } from "./logo-avatar";
 +import { lumenLookFor, parseLumenLook } from "../lib/lumen/lumen-avatar";
-+import { lumenManifestPicture } from "../lib/lumen/lumen-manifest";
++import type { LumenAvatarCandidate } from "../lib/lumen/lumen-avatar-source";
++import { lumenAvatarChoice } from "../lib/lumen/lumen-avatar-source";
 +import { useLumenManifest, useLumenReducedMotion } from "../lib/lumen/lumen-manifest-store";
 +import { useMobileTokens, useResolvedAppearance } from "../lib/native";
  import { NativeSymbol } from "./native-symbol";
@@ -170716,7 +170722,7 @@ index a58981051..b352008d7 100644
    size?: number;
    status?: string;
    identity?: string;
-@@ -125,68 +27,269 @@ export interface BotAvatarProps {
+@@ -125,68 +29,320 @@ export interface BotAvatarProps {
    motion?: AvatarMotionMode;
    composing?: boolean;
    pokeable?: boolean;
@@ -170829,7 +170835,7 @@ index a58981051..b352008d7 100644
 +      </View>
 +    );
 +  }
-+  const picture = lumenManifestPicture(manifest, {
++  const picture = lumenAvatarChoice(manifest, {
 +    identity,
 +    name,
 +    surface,
@@ -170837,24 +170843,40 @@ index a58981051..b352008d7 100644
 +    dark: appearance === "dark",
 +    reducedMotion,
 +  });
-+  const uri = picture?.uris.find((candidate) => !failed.includes(candidate));
-+  if (picture && uri) {
-+    // The hero is the one surface the finished art fixes a size for (96 pt); every other surface
-+    // keeps the size its layout was built around, so a list row does not grow around a picture.
-+    const shown = surface === "home-hero" && picture.size ? picture.size : size;
++  const shown = surface === "home-hero" && picture?.size ? picture.size : size;
++  const candidate = picture?.candidates.find((entry) => !failed.includes(entry.uri));
++  // The drawn body, drawn still: the one thing behind a picture that is still arriving. It is
++  // never shown as a hole, so a theme switch (a new picture, a new URI) never flashes an empty
++  // square where the character stands.
++  const chiefBody = main || lumenLookFor({ name, identity, value: color }).role === "chief";
++  if (picture && candidate) {
 +    return (
 +      <View style={{ width: shown, height: shown, overflow: "visible" }}>
-+        {/* contain: the whole drawing, never cropped; iOS plays the GIF natively. */}
-+        <Image
-+          source={{ uri }}
-+          style={{ width: shown, height: shown }}
-+          resizeMode="contain"
-+          accessibilityIgnoresInvertColors
-+          onError={() => {
++        <ManifestPicture
++          // A new picture is a new native view: without it, an Image whose URI changed for the
++          // theme can keep painting nothing at all.
++          key={candidate.uri}
++          candidate={candidate}
++          size={shown}
++          underlay={
++            <LumenBotAvatar
++              color={color}
++              name={name}
++              id={identity}
++              size={shown}
++              status={status}
++              identity={identity}
++              activity={activity ?? liveActivity}
++              motion="still"
++              composing={composing}
++              chief={chiefBody}
++            />
++          }
++          onFailed={() =>
 +            setFailed((current) =>
-+              current.includes(uri) ? current : [...current, uri],
-+            );
-+          }}
++              current.includes(candidate.uri) ? current : [...current, candidate.uri],
++            )
++          }
 +        />
 +        <AvatarStatusBadges
 +          size={shown}
@@ -170867,7 +170889,7 @@ index a58981051..b352008d7 100644
 +      </View>
 +    );
 +  }
-+  const chief = main || lumenLookFor({ name, identity, value: color }).role === "chief";
++  const chief = chiefBody;
    return (
 -    <View style={{ width: size, height: size }}>
 -      <LogoAvatar
@@ -170895,12 +170917,47 @@ index a58981051..b352008d7 100644
 +        lead={lead}
 +        working={working}
 +        muted={muted}
-       />
--      {working ? <WorkingDot size={size} muted={muted} /> : null}
--      {muted ? <MutedBadge size={size} /> : null}
++      />
 +    </View>
 +  );
 +});
++
++/**
++ * One manifest picture, with the drawn body standing behind it until it is on screen. The
++ * component is keyed by the picture's address, so a theme switch mounts a fresh view (an Image
++ * whose URI changed in place can keep painting nothing) and its own "not here yet" state.
++ */
++function ManifestPicture({
++  candidate,
++  size,
++  underlay,
++  onFailed,
++}: {
++  candidate: LumenAvatarCandidate;
++  size: number;
++  underlay: ReactNode;
++  onFailed: () => void;
++}) {
++  // A picture in the bundle is ready the moment it is asked for.
++  const [ready, setReady] = useState(candidate.local !== null);
++  return (
++    <>
++      {ready ? null : underlay}
++      {/* contain: the whole drawing, never cropped; iOS plays the GIF natively. */}
++      <Image
++        key={candidate.uri}
++        source={candidate.local !== null ? candidate.local : { uri: candidate.uri }}
++        style={{ width: size, height: size }}
++        resizeMode="contain"
++        accessibilityIgnoresInvertColors
++        onLoad={() => setReady(true)}
++        onError={onFailed}
+       />
+-      {working ? <WorkingDot size={size} muted={muted} /> : null}
+-      {muted ? <MutedBadge size={size} /> : null}
++    </>
++  );
++}
 +
 +export function AvatarStatusBadges({
 +  size,
@@ -171022,7 +171079,7 @@ index a58981051..b352008d7 100644
          width: dot.diameter + dot.ring * 2,
          height: dot.diameter + dot.ring * 2,
          borderRadius: size,
-@@ -198,19 +301,20 @@ function WorkingDot({ size, muted }: { size: number; muted: boolean }) {
+@@ -198,19 +354,20 @@ function WorkingDot({ size, muted }: { size: number; muted: boolean }) {
    );
  }
  
@@ -171048,7 +171105,7 @@ index a58981051..b352008d7 100644
          borderRadius: size,
          borderWidth: 2,
          borderColor: tokens.background,
-@@ -240,232 +344,3 @@ function MutedBadge({ size }: { size: number }) {
+@@ -240,232 +397,3 @@ function MutedBadge({ size }: { size: number }) {
      </View>
    );
  }
@@ -176004,10 +176061,10 @@ index 000000000..6ce9c75a1
 +}
 diff --git a/apps/mobile/components/home-hero-body.tsx b/apps/mobile/components/home-hero-body.tsx
 new file mode 100644
-index 000000000..afe5a72bd
+index 000000000..7fa5c2f26
 --- /dev/null
 +++ b/apps/mobile/components/home-hero-body.tsx
-@@ -0,0 +1,266 @@
+@@ -0,0 +1,260 @@
 +import type { I18n } from "@lingui/core";
 +import { msg } from "@lingui/core/macro";
 +import type { SpaceBot } from "@rakazo/contracts";
@@ -176021,14 +176078,6 @@ index 000000000..afe5a72bd
 +import { FALLBACK_COLOR } from "./inbox-rows";
 +import type { NativeRowMenu, NativeRowMenuItem } from "./native-row";
 +
-+/**
-+ * The main bot's footprint, in points.
-+ *
-+ * A body is drawn at 86% of its footprint (its area is normalised against the other twelve, see
-+ * `BABYGROK_VISUAL_SCALES`), so the reference app's 80 pt body — measured off its own home screen
-+ * against a 402 pt page — needs this footprint. At 88 the white body came out 71 pt and read a
-+ * size small beside it.
-+ */
 +/**
 + * What the home screen's long press on the main bot offers: the same choices its list rows give.
 + * Every callback is optional, so a picker that only opens chats shows none.
@@ -176234,7 +176283,9 @@ index 000000000..afe5a72bd
 +      width: "100%",
 +      alignItems: "center",
 +      // The reference app leaves the main bot this much air above it and this much under its name.
-+      paddingTop: 12,
++      // The hero's own canvas is wider than its body and its glow reaches the top edge, so the room
++      // above it is what keeps that edge from being cropped away at 136 pt.
++      paddingTop: 24,
 +      paddingBottom: 16,
 +      paddingHorizontal: 20,
 +    },
@@ -197583,10 +197634,10 @@ index 000000000..be24df2ee
 +});
 diff --git a/apps/mobile/lib/avatar-badges.ts b/apps/mobile/lib/avatar-badges.ts
 new file mode 100644
-index 000000000..2db304618
+index 000000000..47c7057c7
 --- /dev/null
 +++ b/apps/mobile/lib/avatar-badges.ts
-@@ -0,0 +1,100 @@
+@@ -0,0 +1,104 @@
 +/** Where an avatar badge sits, and which badges a given surface may show.
 +
 +The home header keeps only the orange main-bot star at the avatar's bottom-right.
@@ -197612,8 +197663,12 @@ index 000000000..2db304618
 +  corner: AvatarBadgeCorner;
 +};
 +
-+/** The home hero avatar's footprint, in points. */
-+export const HERO_AVATAR_SIZE = 103;
++/**
++ * The home hero avatar's footprint, in points. The main character is the one thing the home screen
++ * leads with, and the finished art's own canvas carries the ignition's glow, so the footprint is
++ * the size the hero is drawn at (the manifest's `heroSizePt`), not the body inside it.
++ */
++export const HERO_AVATAR_SIZE = 136;
 +
 +/** The official-matching star on a {@link HERO_AVATAR_SIZE} avatar: size includes the ring. */
 +/** Measured off the 440 pt official home recording: 88 pt body, 22 pt star at about 4:30. */
@@ -212011,6 +212066,225 @@ index d2851a4f0..000000000
 -  expect(clock.value % 24000).toBeCloseTo(2000);
 -  expect(vi.getTimerCount()).toBe(0);
 -});
+diff --git a/apps/mobile/lib/lumen/lumen-avatar-source.test.ts b/apps/mobile/lib/lumen/lumen-avatar-source.test.ts
+new file mode 100644
+index 000000000..c6bf82848
+--- /dev/null
++++ b/apps/mobile/lib/lumen/lumen-avatar-source.test.ts
+@@ -0,0 +1,121 @@
++import { describe, expect, it, vi } from "vitest";
++import type { LumenManifest } from "./lumen-manifest";
++import { lumenManifestUrl, parseLumenManifest } from "./lumen-manifest";
++
++/** The art this build ships: every picture in it is in the bundle, at a fake asset id. */
++const SHIPPED_VERSION = "20261122-transparent";
++const BUNDLED_ASSET = 7;
++
++vi.mock("./lumen-builtin-avatars", () => {
++  /** Written out here rather than parsed, because a mock factory may not reach for an import. */
++  const shipped = {
++    version: "20261122-transparent",
++    baseUrl: "https://builtin.rakazo.app/lumen-avatars/manifest.json",
++    headerMinPt: 72,
++    reduceMotionStatic: true,
++    surfaces: { "home-hero": "header", chat: "header", "home-list": "list", default: "auto" },
++    bots: [
++      {
++        botId: "chief-id",
++        name: "小猪包",
++        role: "chief",
++        starBaked: true,
++        listVariant: "v3-full",
++        listSizePt: 96,
++        heroSizePt: 136,
++        themes: {
++          dark: {
++            static: "assets/static/chief-dark.png",
++            list: "assets/list/chief-dark.gif",
++            header: "assets/header/chief-dark.gif",
++          },
++          light: {
++            static: "assets/static/chief-light.png",
++            list: "assets/list/chief-light.gif",
++            header: "assets/header/chief-light.gif",
++          },
++        },
++      },
++    ],
++    hashes: { "assets/header/chief-dark.gif": "abc123" },
++  };
++  return {
++    LUMEN_BUILTIN_BASE_URL: "https://builtin.rakazo.app/lumen-avatars/manifest.json",
++    LUMEN_BUILTIN_MANIFEST: shipped,
++    LUMEN_BUILTIN_VERSION: "20261122-transparent",
++    lumenBuiltinAssets: () => ({}),
++    lumenBuiltinPath: (uri: string) => new URL(uri).pathname.replace(/^\/lumen-avatars\//, ""),
++    lumenBuiltinAssetFor: (uri: string) =>
++      uri.includes("/lumen-avatars/assets/") ? 7 : null,
++    lumenBuiltinVersion: (version: string | null | undefined) =>
++      version === "20261122-transparent",
++  };
++});
++
++const { lumenAvatarChoice } = await import("./lumen-avatar-source");
++
++const manifestOf = (version: string, header: string, extra: Record<string, unknown> = {}) =>
++  parseLumenManifest(
++    {
++      schemaVersion: 2,
++      version,
++      bots: [
++        {
++          botId: "chief-id",
++          name: "小猪包",
++          role: "chief",
++          heroSizePt: 136,
++          themes: { dark: { header }, light: { header: "assets/header/chief-light.gif" } },
++          ...extra,
++        },
++      ],
++    },
++    lumenManifestUrl("https://rakazo.163ll.com"),
++  );
++
++const hero = (manifest: LumenManifest | null, dark = true) =>
++  lumenAvatarChoice(manifest, {
++    identity: "chief-id",
++    surface: "home-hero",
++    size: 136,
++    dark,
++    reducedMotion: false,
++  });
++
++describe("lumen avatar choice", () => {
++  it("draws the shipped art from the bundle when the manifest names it", () => {
++    const choice = hero(manifestOf(SHIPPED_VERSION, "assets/header/chief-dark.gif"));
++    expect(choice?.candidates[0]?.local).toBe(BUNDLED_ASSET);
++    expect(choice?.size).toBe(136);
++    expect(choice?.drawMainStar).toBe(true);
++  });
++
++  it("loads newer art from the server and keeps the shipped copy behind it", () => {
++    const choice = hero(manifestOf("20261201-newer", "assets/header/chief-dark.gif"));
++    // The server's picture first, fetched; the bundle's copy last, drawn if the fetch fails.
++    expect(choice?.candidates[0]?.uri).toContain("rakazo.163ll.com");
++    expect(choice?.candidates[0]?.local).toBeNull();
++    expect(choice?.candidates.at(-1)?.local).toBe(BUNDLED_ASSET);
++    expect(choice?.candidates.length).toBeGreaterThan(1);
++  });
++
++  it("never names the same address twice", () => {
++    const uris =
++      hero(manifestOf(SHIPPED_VERSION, "assets/header/chief-dark.gif"))?.candidates.map(
++        (candidate) => candidate.uri,
++      ) ?? [];
++    expect(new Set(uris).size).toBe(uris.length);
++  });
++
++  it("has nothing to draw for a bot the manifest does not name", () => {
++    expect(
++      lumenAvatarChoice(null, {
++        identity: "stranger",
++        surface: "home-hero",
++        size: 136,
++        dark: true,
++        reducedMotion: false,
++      }),
++    ).toBeNull();
++  });
++});
+diff --git a/apps/mobile/lib/lumen/lumen-avatar-source.ts b/apps/mobile/lib/lumen/lumen-avatar-source.ts
+new file mode 100644
+index 000000000..048f18717
+--- /dev/null
++++ b/apps/mobile/lib/lumen/lumen-avatar-source.ts
+@@ -0,0 +1,86 @@
++/**
++ * Which picture an avatar draws, and where it comes from.
++ *
++ * The app carries the finished Lumen art itself, so the hero is drawn on the first frame after
++ * launch instead of waiting for a 1 MB GIF to arrive. The server's manifest still wins when it
++ * names newer art: the pictures it names are loaded from the server, and the shipped art is kept
++ * as the last resort, so a phone with no network — or a server that has not been given the new
++ * pictures yet — still shows a finished avatar rather than the drawn fallback body.
++ *
++ * Pure on purpose: the choice is a value, and every avatar in the app makes the same one.
++ */
++
++import type {
++  LumenManifest,
++  LumenManifestPicture,
++  LumenManifestSurface,
++} from "./lumen-manifest";
++import { lumenManifestPicture } from "./lumen-manifest";
++import {
++  LUMEN_BUILTIN_MANIFEST,
++  LUMEN_BUILTIN_VERSION,
++  lumenBuiltinAssetFor,
++} from "./lumen-builtin-avatars";
++
++export type LumenAvatarInput = {
++  identity?: string | null;
++  name?: string | null;
++  surface?: LumenManifestSurface;
++  size: number;
++  dark: boolean;
++  reducedMotion: boolean;
++};
++
++export type LumenAvatarCandidate = {
++  /** The pictured address: stable, and what a failed load is remembered by. */
++  uri: string;
++  /** The bundled picture, when this build carries this exact art; otherwise null. */
++  local: number | null;
++};
++
++export type LumenAvatarChoice = {
++  /** The pictures to try in order; the first one that has not already failed is drawn. */
++  candidates: LumenAvatarCandidate[];
++  /** The size the finished art fixes for this surface, in points, or null for the caller's own. */
++  size: number | null;
++  /** False when the art already carries the main bot's star. */
++  drawMainStar: boolean;
++};
++
++/** One manifest picture's addresses, each paired with the copy the bundle carries, if any. */
++function candidatesOf(
++  picture: LumenManifestPicture | null,
++  shipBundled: boolean,
++): LumenAvatarCandidate[] {
++  if (!picture) return [];
++  return picture.uris.map((uri) => ({
++    uri,
++    local: shipBundled ? lumenBuiltinAssetFor(uri) : null,
++  }));
++}
++
++/**
++ * The pictures this avatar may draw, best first: the manifest's own choices, and — when the
++ * manifest names art this build does not carry — the art that is in the bundle. Empty means the
++ * drawn Lumen body.
++ */
++export function lumenAvatarChoice(
++  manifest: LumenManifest | null,
++  input: LumenAvatarInput,
++): LumenAvatarChoice | null {
++  const picture = lumenManifestPicture(manifest, input);
++  if (!picture) return null;
++  // A manifest naming the art this build carries is that art: draw it from the bundle, so a
++  // launch shows the hero at once and a theme switch never waits for the network.
++  const sameArt = Boolean(manifest) && manifest?.version === LUMEN_BUILTIN_VERSION;
++  const candidates = candidatesOf(picture, sameArt);
++  if (!sameArt) {
++    // The server names other art: keep the shipped copy behind it, so a picture that cannot be
++    // fetched (no network, a half-uploaded file) still leaves a finished avatar on screen.
++    for (const fallback of candidatesOf(lumenManifestPicture(LUMEN_BUILTIN_MANIFEST, input), true)) {
++      if (!candidates.some((candidate) => candidate.uri === fallback.uri)) candidates.push(fallback);
++    }
++  }
++  if (candidates.length === 0) return null;
++  return { candidates, size: picture.size, drawMainStar: picture.drawMainStar };
++}
 diff --git a/apps/mobile/lib/lumen/lumen-avatar.test.ts b/apps/mobile/lib/lumen/lumen-avatar.test.ts
 new file mode 100644
 index 000000000..219075192
@@ -212934,6 +213208,158 @@ index 000000000..1d1b965f6
 +  if (action === "idle") return color;
 +  return lumenFrame(action, t, color).c;
 +}
+diff --git a/apps/mobile/lib/lumen/lumen-builtin-avatars.ts b/apps/mobile/lib/lumen/lumen-builtin-avatars.ts
+new file mode 100644
+index 000000000..6347aaae5
+--- /dev/null
++++ b/apps/mobile/lib/lumen/lumen-builtin-avatars.ts
+@@ -0,0 +1,146 @@
++/**
++ * The Lumen pictures the app itself carries, so the first frame after launch already shows the
++ * finished art: no network, no download, no blank avatar. The manifest below is the same file the
++ * server hosts, so a build and a server are read by one parser and pick the same picture.
++ *
++ * Metro only bundles a picture the source names, which is why every one of them has its own
++ * literal require(). Generated from assets/lumen-avatars/manifest.json by
++ * work/v36/gen-lumen-builtin.py — regenerate it whenever that folder changes.
++ */
++
++import type { LumenManifest } from "./lumen-manifest";
++import { parseLumenManifest } from "./lumen-manifest";
++import rawManifest from "../../assets/lumen-avatars/manifest.json";
++
++/**
++ * The address the shipped manifest's own picture paths resolve against. Picture URIs then read
++ * `https://builtin.rakazo.app/lumen-avatars/assets/...`; only the path after `/lumen-avatars/`
++ * is ever used, to find the picture in the bundle.
++ */
++export const LUMEN_BUILTIN_BASE_URL = "https://builtin.rakazo.app/lumen-avatars/manifest.json";
++
++/** Every picture in the bundle, by the path the manifest names it by. */
++function pictures(): Record<string, number> {
++  return {
++    "assets/header/chief-dark.gif": require("../../assets/lumen-avatars/assets/header/chief-dark.gif"),
++    "assets/header/chief-light.gif": require("../../assets/lumen-avatars/assets/header/chief-light.gif"),
++    "assets/header/cook-dark.gif": require("../../assets/lumen-avatars/assets/header/cook-dark.gif"),
++    "assets/header/cook-light.gif": require("../../assets/lumen-avatars/assets/header/cook-light.gif"),
++    "assets/header/dev-dark.gif": require("../../assets/lumen-avatars/assets/header/dev-dark.gif"),
++    "assets/header/dev-light.gif": require("../../assets/lumen-avatars/assets/header/dev-light.gif"),
++    "assets/header/life-dark.gif": require("../../assets/lumen-avatars/assets/header/life-dark.gif"),
++    "assets/header/life-light.gif": require("../../assets/lumen-avatars/assets/header/life-light.gif"),
++    "assets/header/lotto-dark.gif": require("../../assets/lumen-avatars/assets/header/lotto-dark.gif"),
++    "assets/header/lotto-light.gif": require("../../assets/lumen-avatars/assets/header/lotto-light.gif"),
++    "assets/header/memo-dark.gif": require("../../assets/lumen-avatars/assets/header/memo-dark.gif"),
++    "assets/header/memo-light.gif": require("../../assets/lumen-avatars/assets/header/memo-light.gif"),
++    "assets/header/novel-dark.gif": require("../../assets/lumen-avatars/assets/header/novel-dark.gif"),
++    "assets/header/novel-light.gif": require("../../assets/lumen-avatars/assets/header/novel-light.gif"),
++    "assets/header/ops-dark.gif": require("../../assets/lumen-avatars/assets/header/ops-dark.gif"),
++    "assets/header/ops-light.gif": require("../../assets/lumen-avatars/assets/header/ops-light.gif"),
++    "assets/header/oracle-dark.gif": require("../../assets/lumen-avatars/assets/header/oracle-dark.gif"),
++    "assets/header/oracle-light.gif": require("../../assets/lumen-avatars/assets/header/oracle-light.gif"),
++    "assets/header/ppt-dark.gif": require("../../assets/lumen-avatars/assets/header/ppt-dark.gif"),
++    "assets/header/ppt-light.gif": require("../../assets/lumen-avatars/assets/header/ppt-light.gif"),
++    "assets/header/quiz-dark.gif": require("../../assets/lumen-avatars/assets/header/quiz-dark.gif"),
++    "assets/header/quiz-light.gif": require("../../assets/lumen-avatars/assets/header/quiz-light.gif"),
++    "assets/list/chief-dark.gif": require("../../assets/lumen-avatars/assets/list/chief-dark.gif"),
++    "assets/list/chief-light.gif": require("../../assets/lumen-avatars/assets/list/chief-light.gif"),
++    "assets/list/cook-dark.gif": require("../../assets/lumen-avatars/assets/list/cook-dark.gif"),
++    "assets/list/cook-light.gif": require("../../assets/lumen-avatars/assets/list/cook-light.gif"),
++    "assets/list/dev-dark.gif": require("../../assets/lumen-avatars/assets/list/dev-dark.gif"),
++    "assets/list/dev-light.gif": require("../../assets/lumen-avatars/assets/list/dev-light.gif"),
++    "assets/list/life-dark.gif": require("../../assets/lumen-avatars/assets/list/life-dark.gif"),
++    "assets/list/life-light.gif": require("../../assets/lumen-avatars/assets/list/life-light.gif"),
++    "assets/list/lotto-dark.gif": require("../../assets/lumen-avatars/assets/list/lotto-dark.gif"),
++    "assets/list/lotto-light.gif": require("../../assets/lumen-avatars/assets/list/lotto-light.gif"),
++    "assets/list/memo-dark.gif": require("../../assets/lumen-avatars/assets/list/memo-dark.gif"),
++    "assets/list/memo-light.gif": require("../../assets/lumen-avatars/assets/list/memo-light.gif"),
++    "assets/list/novel-dark.gif": require("../../assets/lumen-avatars/assets/list/novel-dark.gif"),
++    "assets/list/novel-light.gif": require("../../assets/lumen-avatars/assets/list/novel-light.gif"),
++    "assets/list/ops-dark.gif": require("../../assets/lumen-avatars/assets/list/ops-dark.gif"),
++    "assets/list/ops-light.gif": require("../../assets/lumen-avatars/assets/list/ops-light.gif"),
++    "assets/list/oracle-dark.gif": require("../../assets/lumen-avatars/assets/list/oracle-dark.gif"),
++    "assets/list/oracle-light.gif": require("../../assets/lumen-avatars/assets/list/oracle-light.gif"),
++    "assets/list/ppt-dark.gif": require("../../assets/lumen-avatars/assets/list/ppt-dark.gif"),
++    "assets/list/ppt-light.gif": require("../../assets/lumen-avatars/assets/list/ppt-light.gif"),
++    "assets/list/quiz-dark.gif": require("../../assets/lumen-avatars/assets/list/quiz-dark.gif"),
++    "assets/list/quiz-light.gif": require("../../assets/lumen-avatars/assets/list/quiz-light.gif"),
++    "assets/static/chief-dark.png": require("../../assets/lumen-avatars/assets/static/chief-dark.png"),
++    "assets/static/chief-light.png": require("../../assets/lumen-avatars/assets/static/chief-light.png"),
++    "assets/static/cook-dark.png": require("../../assets/lumen-avatars/assets/static/cook-dark.png"),
++    "assets/static/cook-light.png": require("../../assets/lumen-avatars/assets/static/cook-light.png"),
++    "assets/static/dev-dark.png": require("../../assets/lumen-avatars/assets/static/dev-dark.png"),
++    "assets/static/dev-light.png": require("../../assets/lumen-avatars/assets/static/dev-light.png"),
++    "assets/static/life-dark.png": require("../../assets/lumen-avatars/assets/static/life-dark.png"),
++    "assets/static/life-light.png": require("../../assets/lumen-avatars/assets/static/life-light.png"),
++    "assets/static/lotto-dark.png": require("../../assets/lumen-avatars/assets/static/lotto-dark.png"),
++    "assets/static/lotto-light.png": require("../../assets/lumen-avatars/assets/static/lotto-light.png"),
++    "assets/static/memo-dark.png": require("../../assets/lumen-avatars/assets/static/memo-dark.png"),
++    "assets/static/memo-light.png": require("../../assets/lumen-avatars/assets/static/memo-light.png"),
++    "assets/static/novel-dark.png": require("../../assets/lumen-avatars/assets/static/novel-dark.png"),
++    "assets/static/novel-light.png": require("../../assets/lumen-avatars/assets/static/novel-light.png"),
++    "assets/static/ops-dark.png": require("../../assets/lumen-avatars/assets/static/ops-dark.png"),
++    "assets/static/ops-light.png": require("../../assets/lumen-avatars/assets/static/ops-light.png"),
++    "assets/static/oracle-dark.png": require("../../assets/lumen-avatars/assets/static/oracle-dark.png"),
++    "assets/static/oracle-light.png": require("../../assets/lumen-avatars/assets/static/oracle-light.png"),
++    "assets/static/ppt-dark.png": require("../../assets/lumen-avatars/assets/static/ppt-dark.png"),
++    "assets/static/ppt-light.png": require("../../assets/lumen-avatars/assets/static/ppt-light.png"),
++    "assets/static/quiz-dark.png": require("../../assets/lumen-avatars/assets/static/quiz-dark.png"),
++    "assets/static/quiz-light.png": require("../../assets/lumen-avatars/assets/static/quiz-light.png"),
++  };
++}
++
++/** The shipped manifest: what every avatar draws from before the server answers. */
++export const LUMEN_BUILTIN_MANIFEST: LumenManifest | null = parseLumenManifest(
++  rawManifest,
++  LUMEN_BUILTIN_BASE_URL,
++);
++
++/** The version of the art this build carries; a manifest naming it names the same picture set. */
++export const LUMEN_BUILTIN_VERSION = LUMEN_BUILTIN_MANIFEST?.version ?? "";
++
++/** The prefix every manifest path sits behind, on any server. */
++const PICTURE_PREFIX = "/lumen-avatars/";
++
++let loaded: Record<string, number> | null = null;
++
++/** The bundled pictures, by the path the manifest names them by, read on the first avatar. */
++export function lumenBuiltinAssets(): Record<string, number> {
++  if (!loaded) loaded = pictures();
++  return loaded;
++}
++
++/**
++ * The picture path a manifest URI names, without the prefix every server puts it behind, or null
++ * when the URI is not a picture address at all.
++ */
++export function lumenBuiltinPath(uri: string): string | null {
++  let path: string;
++  try {
++    path = new URL(uri).pathname;
++  } catch {
++    return null;
++  }
++  return path.startsWith(PICTURE_PREFIX) ? path.slice(PICTURE_PREFIX.length) : null;
++}
++
++/**
++ * The bundled picture a manifest URI names, or null when this build does not carry it. Only the
++ * path matters: the same art is served from the built-in address and from the app's own server.
++ */
++export function lumenBuiltinAssetFor(uri: string): number | null {
++  const path = lumenBuiltinPath(uri);
++  if (!path) return null;
++  try {
++    return lumenBuiltinAssets()[path] ?? null;
++  } catch {
++    // A run with no picture table (a bare unit test, a stripped build) draws the fallback body.
++    return null;
++  }
++}
++
++/** True when a manifest (the cache's or the server's) names the same art this build carries. */
++export function lumenBuiltinVersion(version: string | null | undefined): boolean {
++  return Boolean(LUMEN_BUILTIN_VERSION) && version === LUMEN_BUILTIN_VERSION;
++}
 diff --git a/apps/mobile/lib/lumen/lumen-emblems.ts b/apps/mobile/lib/lumen/lumen-emblems.ts
 new file mode 100644
 index 000000000..f0d7509b8
@@ -213243,28 +213669,30 @@ index 000000000..f0d7509b8
 +];
 diff --git a/apps/mobile/lib/lumen/lumen-manifest-store.ts b/apps/mobile/lib/lumen/lumen-manifest-store.ts
 new file mode 100644
-index 000000000..bbd241be0
+index 000000000..4efc0e963
 --- /dev/null
 +++ b/apps/mobile/lib/lumen/lumen-manifest-store.ts
-@@ -0,0 +1,173 @@
+@@ -0,0 +1,185 @@
 +import { useSyncExternalStore } from "react";
 +import { AccessibilityInfo, AppState } from "react-native";
 +import { currentApiBase, subscribeApiBase } from "../api";
++import { LUMEN_BUILTIN_MANIFEST, lumenBuiltinVersion } from "./lumen-builtin-avatars";
 +import type { LumenManifest } from "./lumen-manifest";
 +import { lumenManifestUrl, parseLumenManifest } from "./lumen-manifest";
 +
 +/**
-+ * The manifest the avatars draw from: read from disk at once (so the first frame already has
-+ * last launch's pictures), then fetched from the server on every launch, on the way back to the
-+ * foreground after a while, and whenever the server address changes. A failed fetch keeps what
-+ * the app had; with nothing at all, every avatar keeps the drawn Lumen body.
++ * The manifest the avatars draw from: the copy the app itself carries (so the first frame after
++ * launch already has the finished art, with no network at all), then last launch's server copy
++ * from disk, then the server itself on every launch, on the way back to the foreground after a
++ * while, and whenever the server address changes. A failed fetch keeps what the app had; with
++ * nothing at all, every avatar keeps the drawn Lumen body.
 + */
 +
 +const REFRESH_AFTER_MS = 10 * 60 * 1000;
 +const FETCH_TIMEOUT_MS = 8_000;
 +const MAX_BYTES = 512 * 1024;
 +
-+let manifest: LumenManifest | null = null;
++let manifest: LumenManifest | null = LUMEN_BUILTIN_MANIFEST;
 +let reducedMotion = false;
 +let fetchedAt = 0;
 +let inFlight = false;
@@ -213311,7 +213739,9 @@ index 000000000..bbd241be0
 +    const saved = JSON.parse(file.textSync()) as { url?: string; body?: unknown };
 +    if (typeof saved.url !== "string") return;
 +    const parsed = parseLumenManifest(saved.body, saved.url);
-+    if (parsed) publish(parsed);
++    // The shipped copy is drawn from the bundle, so it is never replaced by a cached copy of
++    // itself: only a manifest naming other art is worth publishing.
++    if (parsed && !lumenBuiltinVersion(parsed.version)) publish(parsed);
 +  } catch {
 +    // A torn cache is the same as none.
 +  }
@@ -213341,7 +213771,15 @@ index 000000000..bbd241be0
 +    const parsed = parseLumenManifest(body, url);
 +    if (!parsed) return;
 +    fetchedAt = Date.now();
-+    if (parsed.version !== manifest?.version || parsed.baseUrl !== manifest?.baseUrl) publish(parsed);
++    if (lumenBuiltinVersion(parsed.version)) {
++      // The server names the art this build carries: keep drawing it from the bundle.
++      if (manifest && !lumenBuiltinVersion(manifest.version)) publish(LUMEN_BUILTIN_MANIFEST);
++    } else if (
++      parsed.version !== manifest?.version ||
++      parsed.baseUrl !== manifest?.baseUrl
++    ) {
++      publish(parsed);
++    }
 +    try {
 +      const file = cacheFile();
 +      if (file) {
@@ -213422,10 +213860,10 @@ index 000000000..bbd241be0
 +}
 diff --git a/apps/mobile/lib/lumen/lumen-manifest.test.ts b/apps/mobile/lib/lumen/lumen-manifest.test.ts
 new file mode 100644
-index 000000000..7e24a4074
+index 000000000..4adb7ffa1
 --- /dev/null
 +++ b/apps/mobile/lib/lumen/lumen-manifest.test.ts
-@@ -0,0 +1,183 @@
+@@ -0,0 +1,221 @@
 +import { describe, expect, it } from "vitest";
 +import {
 +  lumenManifestBot,
@@ -213457,6 +213895,7 @@ index 000000000..7e24a4074
 +      starBaked: true,
 +      listVariant: "v3-full",
 +      listSizePt: 96,
++      heroSizePt: 136,
 +      themes: { dark: pics("chief", "dark"), light: pics("chief", "light") },
 +    },
 +    {
@@ -213541,7 +213980,7 @@ index 000000000..7e24a4074
 +    });
 +    expect(chief?.uris[0]).toBe("https://rakazo.163ll.com/lumen-avatars/assets/header/chief-light.gif");
 +    expect(chief?.drawMainStar).toBe(false);
-+    expect(chief?.size).toBe(96);
++    expect(chief?.size).toBe(136);
 +  });
 +
 +  it("shows the chief's own list row with the full ignition and its wider size", () => {
@@ -213558,6 +213997,43 @@ index 000000000..7e24a4074
 +      "https://rakazo.163ll.com/lumen-avatars/assets/header/chief-dark.gif",
 +    );
 +    expect(chief?.size).toBe(96);
++  });
++
++  it("takes the hero's size from the manifest, and a member's from the list rule", () => {
++    // The chief names 136 pt; a server that leaves it out keeps the build's own hero size.
++    const named = parseLumenManifest(doc, BASE);
++    expect(
++      lumenManifestPicture(named, {
++        identity: "chief-id",
++        surface: "home-hero",
++        size: 54,
++        dark: true,
++        reducedMotion: false,
++      })?.size,
++    ).toBe(136);
++    const withoutHero = parseLumenManifest(
++      { ...doc, bots: [{ ...doc.bots[0], heroSizePt: undefined }] },
++      BASE,
++    );
++    expect(
++      lumenManifestPicture(withoutHero, {
++        identity: "chief-id",
++        surface: "home-hero",
++        size: 54,
++        dark: true,
++        reducedMotion: false,
++      })?.size,
++    ).toBe(136);
++    // A member is never drawn at hero size: its own row size is its size.
++    expect(
++      lumenManifestPicture(named, {
++        identity: "quiz-id",
++        surface: "home-hero",
++        size: 136,
++        dark: true,
++        reducedMotion: false,
++      })?.size,
++    ).toBe(56);
 +  });
 +
 +  it("falls back through the themes and finally the still", () => {
@@ -213611,10 +214087,10 @@ index 000000000..7e24a4074
 +});
 diff --git a/apps/mobile/lib/lumen/lumen-manifest.ts b/apps/mobile/lib/lumen/lumen-manifest.ts
 new file mode 100644
-index 000000000..0029c4cbb
+index 000000000..71d095638
 --- /dev/null
 +++ b/apps/mobile/lib/lumen/lumen-manifest.ts
-@@ -0,0 +1,23 @@
+@@ -0,0 +1,24 @@
 +/**
 + * The avatar manifest's pure rules live in `@rakazo/core`, so the phone and the web read the same
 + * file the same way. This module is the phone's own name for them.
@@ -213629,6 +214105,7 @@ index 000000000..0029c4cbb
 +  LumenManifestTheme,
 +} from "@rakazo/core";
 +export {
++  LUMEN_CHIEF_LIST_PT,
 +  LUMEN_HERO_PT,
 +  LUMEN_LIST_PT,
 +  LUMEN_MANIFEST_PATH,
@@ -246102,11 +246579,56 @@ index 500c662cd..03f6a6b30 100644
            </p>
          </Disclosure>
        ) : null}
+diff --git a/apps/web/src/pages/shell/avatar-studio-popover.tsx b/apps/web/src/pages/shell/avatar-studio-popover.tsx
+index e506532fd..6e662dcfa 100644
+--- a/apps/web/src/pages/shell/avatar-studio-popover.tsx
++++ b/apps/web/src/pages/shell/avatar-studio-popover.tsx
+@@ -2,6 +2,7 @@ import { t } from "@lingui/core/macro";
+ import { Trans } from "@lingui/react/macro";
+ import type { BotAvatarSet } from "@rakazo/contracts";
+ import { resolveBotAvatarSet } from "@rakazo/contracts";
++import type { LumenManifestSurface } from "@rakazo/core";
+ import {
+   botLookState,
+   botLookWithColor,
+@@ -166,6 +167,8 @@ export interface AvatarStudioPopoverProps {
+   status?: string;
+   avatarSet?: BotAvatarSet;
+   size?: number;
++  /** The surface the trigger stands on: the settings header is the page's hero, at 136 pt. */
++  surface?: LumenManifestSurface;
+   onChange: (value: string, avatarSet?: BotAvatarSet) => void;
+   disabled?: boolean;
+ }
+@@ -176,6 +179,7 @@ export function AvatarStudioPopover({
+   status,
+   avatarSet = "organic",
+   size = 72,
++  surface = "default",
+   onChange,
+   disabled = false,
+ }: AvatarStudioPopoverProps) {
+@@ -258,6 +262,7 @@ export function AvatarStudioPopover({
+           size={size}
+           status={status}
+           avatarSet={avatarSet}
++          surface={surface}
+         />
+         <div className="absolute -right-1 -bottom-1 flex size-6 items-center justify-center rounded-full border-2 border-background bg-secondary text-foreground shadow-md opacity-0 transition group-hover:scale-110 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-100">
+           <Pencil size={12} strokeWidth={2.2} />
 diff --git a/apps/web/src/pages/shell/bot-panel.tsx b/apps/web/src/pages/shell/bot-panel.tsx
-index 26c22ee58..fd66699ef 100644
+index 26c22ee58..c5c1e7e16 100644
 --- a/apps/web/src/pages/shell/bot-panel.tsx
 +++ b/apps/web/src/pages/shell/bot-panel.tsx
-@@ -103,6 +103,7 @@ export function BotSettings({
+@@ -13,6 +13,7 @@ import {
+   chatModelChoices,
+   connectedModelChoices,
+   credentialForModel,
++  LUMEN_HERO_PT,
+   modelOptionKey,
+   modelThinkingLevels,
+   parseModelOptionKey,
+@@ -103,6 +104,7 @@ export function BotSettings({
      memoryScope?: "isolated" | "shared" | null;
      autoSpeak?: boolean;
      fleetManagement?: boolean;
@@ -246114,7 +246636,7 @@ index 26c22ee58..fd66699ef 100644
      replyMode?: ReplyMode;
      crossSpaceCommunication?: boolean;
      dailyCheckIns?: boolean;
-@@ -155,6 +156,9 @@ export function BotSettings({
+@@ -155,6 +157,9 @@ export function BotSettings({
    useEffect(() => setDailyCheckIns(bot.dailyCheckIns ?? true), [bot.dailyCheckIns]);
    const [fleetManagement, setFleetManagement] = useState(bot.fleetManagement);
    useEffect(() => setFleetManagement(bot.fleetManagement), [bot.fleetManagement]);
@@ -246124,7 +246646,7 @@ index 26c22ee58..fd66699ef 100644
    const [replyMode, setReplyMode] = useState(bot.replyMode);
    useEffect(() => setReplyMode(bot.replyMode), [bot.replyMode]);
    const [voiceId, setVoiceId] = useState(bot.voiceId ?? "");
-@@ -470,6 +474,7 @@ export function BotSettings({
+@@ -470,6 +475,7 @@ export function BotSettings({
      avatarSet?: BotAvatarSet;
      notifyOnFinish?: boolean;
      fleetManagement?: boolean;
@@ -246132,7 +246654,19 @@ index 26c22ee58..fd66699ef 100644
      replyMode?: ReplyMode;
      crossSpaceCommunication?: boolean;
      dailyCheckIns?: boolean;
-@@ -624,6 +629,16 @@ export function BotSettings({
+@@ -504,7 +510,10 @@ export function BotSettings({
+             value={color}
+             identity={bot.id}
+             status={bot.status}
+-            size={76}
++            // The settings page's own hero, drawn at the size the finished art fixes for it, so
++            // the web leads with the same 136 pt main character the phone shows on its home.
++            size={LUMEN_HERO_PT}
++            surface="home-hero"
+             avatarSet={avatarSet}
+             onChange={(newColor, nextAvatarSet) => {
+               setColor(newColor);
+@@ -624,6 +633,16 @@ export function BotSettings({
                  setFleetManagement(checked);
                  void enqueueSave({ fleetManagement: checked });
                }}
@@ -258117,10 +258651,10 @@ index 9feb827e1..fbf887e07 100644
  });
 diff --git a/packages/core/src/lumen-manifest.ts b/packages/core/src/lumen-manifest.ts
 new file mode 100644
-index 000000000..7e2c3c03b
+index 000000000..306470a15
 --- /dev/null
 +++ b/packages/core/src/lumen-manifest.ts
-@@ -0,0 +1,260 @@
+@@ -0,0 +1,270 @@
 +/**
 + * The Lumen avatar manifest: a JSON file on the server that names, for every bot, the finished
 + * still and motion pictures to show. The app reads it on every launch, so a new bot only needs
@@ -258147,6 +258681,12 @@ index 000000000..7e2c3c03b
 +  listVariant: "v3-full" | null;
 +  /** The list row's own size, when the art was drawn for it (the chief's is 96 pt). */
 +  listSizePt: number | null;
++  /**
++   * The home hero's own size, when the manifest fixes one (the chief's is 136 pt). A server that
++   * does not name it leaves the hero at {@link LUMEN_HERO_PT}, so a manifest edited for another
++   * reason never shrinks the main character.
++   */
++  heroSizePt: number | null;
 +  themes: Partial<Record<LumenManifestTheme, LumenManifestPictures>>;
 +};
 +
@@ -258164,9 +258704,11 @@ index 000000000..7e2c3c03b
 +/** Where the manifest lives on a server. */
 +export const LUMEN_MANIFEST_PATH = "/lumen-avatars/manifest.json";
 +
-+/** The list row and hero sizes the art was finished at, in points. */
-+export const LUMEN_HERO_PT = 96;
++/** The hero's, the list row's and the chief's row's sizes, in points. */
++export const LUMEN_HERO_PT = 136;
 +export const LUMEN_LIST_PT = 56;
++/** The chief's list row shows the full ignition, drawn for a 96 pt row. */
++export const LUMEN_CHIEF_LIST_PT = 96;
 +
 +export function lumenManifestUrl(apiBase: string): string {
 +  return new URL(LUMEN_MANIFEST_PATH, apiBase.endsWith("/") ? apiBase : `${apiBase}/`).toString();
@@ -258233,6 +258775,7 @@ index 000000000..7e2c3c03b
 +    if (!dark && !light) continue;
 +    const role = row.role === "chief" || row.role === "lead" ? row.role : "member";
 +    const listSize = typeof row.listSizePt === "number" && row.listSizePt > 0 ? row.listSizePt : null;
++    const heroSize = typeof row.heroSizePt === "number" && row.heroSizePt > 0 ? row.heroSizePt : null;
 +    bots.push({
 +      botId,
 +      name,
@@ -258240,6 +258783,7 @@ index 000000000..7e2c3c03b
 +      starBaked: row.starBaked === true,
 +      listVariant: row.listVariant === "v3-full" ? "v3-full" : null,
 +      listSizePt: listSize,
++      heroSizePt: heroSize,
 +      themes: {
 +        ...(dark ? { dark } : {}),
 +        ...(light ? { light } : {}),
@@ -258369,15 +258913,15 @@ index 000000000..7e2c3c03b
 +    if (uri && !uris.includes(uri)) uris.push(uri);
 +  }
 +  if (uris.length === 0) return null;
-+  // The finished art fixes two sizes: the chief's hero at 96 pt, and the list rows (the chief's
-+  // own row is the wider full ignition). Every other surface keeps the size its caller asked for.
++  // The finished art fixes three sizes: the hero (the manifest's `heroSizePt`, 136 pt for the
++  // chief), the list rows (the chief's own row is the wider full ignition), and nothing else.
++  // Every other surface keeps the size its caller asked for.
++  const chief = bot.role === "chief";
 +  const size =
 +    surface === "home-hero"
-+      ? bot.role === "chief"
-+        ? LUMEN_HERO_PT
-+        : null
++      ? (bot.heroSizePt ?? (chief ? LUMEN_HERO_PT : LUMEN_LIST_PT))
 +      : surface === "home-list"
-+        ? (bot.listSizePt ?? (bot.role === "chief" ? LUMEN_HERO_PT : LUMEN_LIST_PT))
++        ? (bot.listSizePt ?? (chief ? LUMEN_CHIEF_LIST_PT : LUMEN_LIST_PT))
 +        : null;
 +  return { uris, kind, size, drawMainStar: !bot.starBaked };
 +}
@@ -262523,10 +263067,18 @@ index 25445d099..a52af95b2 100644
    });
  
 diff --git a/packages/ui-web/src/bot-avatar.tsx b/packages/ui-web/src/bot-avatar.tsx
-index f0319929f..dc814dda5 100644
+index f0319929f..70b3dde38 100644
 --- a/packages/ui-web/src/bot-avatar.tsx
 +++ b/packages/ui-web/src/bot-avatar.tsx
-@@ -12,10 +12,14 @@ import {
+@@ -1,6 +1,6 @@
+ import type { BotAvatarSet, BotColorDef } from "@rakazo/contracts";
+ import { BOT_COLOR_LIST, BOT_COLORS } from "@rakazo/contracts";
+-import type { AvatarEyes, LogoAvatarActivity } from "@rakazo/core";
++import type { AvatarEyes, LogoAvatarActivity, LumenManifestSurface } from "@rakazo/core";
+ import {
+   ACTIVE_RUN_STATUSES,
+   avatarEyeRects,
+@@ -12,18 +12,27 @@ import {
    organicAvatarEyeTilt,
    organicAvatarPath,
    resolvePersonaColorDef,
@@ -262542,7 +263094,9 @@ index f0319929f..dc814dda5 100644
    shippedBotAvatarShapePath,
  } from "@rakazo/core";
  import type { ComponentProps, CSSProperties } from "react";
-@@ -24,6 +28,11 @@ import { useBotAvatarActivity } from "./bot-avatar-activity.js";
+-import { memo, useEffect, useId, useMemo, useSyncExternalStore } from "react";
++import { memo, useEffect, useId, useMemo, useState, useSyncExternalStore } from "react";
+ import { useBotAvatarActivity } from "./bot-avatar-activity.js";
  import { useAvatarMotionVisibility } from "./hooks/use-avatar-motion-visibility.js";
  import { cn } from "./lib/utils.js";
  import { LogoAvatar } from "./logo-avatar.js";
@@ -262554,7 +263108,7 @@ index f0319929f..dc814dda5 100644
  import "./styles.css";
  
  export type { BotColorDef };
-@@ -83,6 +92,10 @@ export interface BotAvatarProps {
+@@ -83,6 +92,16 @@ export interface BotAvatarProps {
    size?: number;
    status?: string;
    identity?: string;
@@ -262562,19 +263116,26 @@ index f0319929f..dc814dda5 100644
 +  name?: string;
 +  /** The bot leads its folder: a small flag badge, as on the phone. */
 +  lead?: boolean;
++  /**
++   * Which surface this avatar is on, the same names the phone uses: the home hero is drawn at the
++   * size the finished art fixes for it (136 pt), a list row at its own size, everything else at the
++   * layout's.
++   */
++  surface?: LumenManifestSurface;
    className?: string;
  }
  
-@@ -93,6 +106,8 @@ export const BotAvatar = memo(function BotAvatar({
+@@ -93,6 +112,9 @@ export const BotAvatar = memo(function BotAvatar({
    size = 36,
    status,
    identity = "",
 +  name,
 +  lead,
++  surface = "default",
    className,
  }: BotAvatarProps) {
    const id = useId().replace(/[^a-zA-Z0-9-_]/g, "");
-@@ -100,12 +115,40 @@ export const BotAvatar = memo(function BotAvatar({
+@@ -100,12 +122,38 @@ export const BotAvatar = memo(function BotAvatar({
  
    const parsed = useMemo(() => parseBotAvatar(color, identity), [color, identity]);
    const effectiveId = identity || parsed.color || "agent";
@@ -262590,25 +263151,23 @@ index f0319929f..dc814dda5 100644
 +  const picture = useMemo(
 +    () =>
 +      manifest && !parsed.imageUrl
-+        ? lumenManifestPictureFor({ identity: effectiveId, name, size })
++        ? lumenManifestPictureFor({ identity: effectiveId, name, size, surface })
 +        : null,
-+    [manifest, parsed.imageUrl, effectiveId, name, size],
++    [manifest, parsed.imageUrl, effectiveId, name, size, surface],
 +  );
 +  if (picture) {
++    // The hero is drawn at the size the art was finished at; every other surface keeps the size
++    // its layout was built around, so a list row does not grow around a picture.
++    const shown = surface === "home-hero" && picture.size ? picture.size : size;
 +    return (
 +      <div
 +        className={cn("rakazo-bot-avatar relative shrink-0 select-none", className)}
 +        data-working={isWorking ? true : undefined}
-+        style={{ width: size, height: size }}
++        style={{ width: shown, height: shown }}
 +      >
-+        <img
-+          src={picture.uri}
-+          alt=""
-+          draggable={false}
-+          className="h-full w-full select-none object-contain"
-+        />
-+        {lead ? <LeadFlag size={size} /> : null}
-+        {isWorking ? <WorkingRing size={size} /> : null}
++        <ManifestPicture src={picture.uri} size={shown} />
++        {lead ? <LeadFlag size={shown} /> : null}
++        {isWorking ? <WorkingRing size={shown} /> : null}
 +      </div>
 +    );
 +  }
@@ -262616,7 +263175,7 @@ index f0319929f..dc814dda5 100644
    if (parsed.isImage && parsed.imageUrl) {
      return (
        <div
-@@ -116,6 +159,7 @@ export const BotAvatar = memo(function BotAvatar({
+@@ -116,6 +164,7 @@ export const BotAvatar = memo(function BotAvatar({
          <div className="rakazo-bot-avatar-picture relative flex h-full w-full items-center justify-center overflow-hidden rounded-full border border-border bg-secondary">
            <img src={parsed.imageUrl} alt="" className="h-full w-full object-cover" />
          </div>
@@ -262624,7 +263183,7 @@ index f0319929f..dc814dda5 100644
          {isWorking ? (
            <svg
              className="rakazo-bot-avatar-ring rakazo-bot-avatar-ring-working absolute pointer-events-none"
-@@ -156,90 +200,121 @@ export const BotAvatar = memo(function BotAvatar({
+@@ -156,90 +205,167 @@ export const BotAvatar = memo(function BotAvatar({
        />
      );
    }
@@ -262652,6 +263211,54 @@ index f0319929f..dc814dda5 100644
 +
 +
 +/** Only live Rakazo consumers subscribe to public activity updates. */
++
++/**
++ * The manifest's picture, with the last one kept on screen until the next has decoded. The
++ * browser throws away the <img> it was painting the moment `src` changes, so a theme switch would
++ * otherwise blink an empty square where the character stands: here the old picture stays under
++ * the new one until the new one is ready, then it is dropped.
++ */
++function ManifestPicture({ src, size }: { src: string; size: number }) {
++  const [shown, setShown] = useState(src);
++  const [pending, setPending] = useState<string | null>(null);
++
++  useEffect(() => {
++    if (src === shown) {
++      setPending(null);
++      return;
++    }
++    setPending(src);
++  }, [src, shown]);
++
++  return (
++    <div className="relative" style={{ width: size, height: size }} data-lumen-picture={src}>
++      <img
++        src={shown}
++        alt=""
++        draggable={false}
++        data-lumen-picture-frame="shown"
++        className="absolute inset-0 h-full w-full select-none object-contain"
+       />
+-    );
+-  }
++      {pending ? (
++        <img
++          key={pending}
++          src={pending}
++          alt=""
++          draggable={false}
++          data-lumen-picture-frame="loading"
++          className="absolute inset-0 h-full w-full select-none object-contain"
++          onLoad={() => {
++            setShown(pending);
++            setPending(null);
++          }}
++          onError={() => setPending(null)}
++        />
++      ) : null}
++    </div>
++  );
++}
 +
 +/** The folder leader's flag, at the corner the star leaves free. */
 +function LeadFlag({ size }: { size: number }) {
@@ -262688,13 +263295,11 @@ index f0319929f..dc814dda5 100644
 +        strokeWidth="3.2"
 +        strokeLinecap="round"
 +        strokeDasharray="45 80"
-       />
--    );
--  }
++      />
 +    </svg>
 +  );
 +}
-+
+ 
 +function mochiWebShape(shapeIndex: number | undefined, color: string, identity: string): string {
 +  if (shapeIndex === undefined) return officialFaceBodyKeyForColor(color, identity);
 +  const key =
@@ -262704,7 +263309,7 @@ index f0319929f..dc814dda5 100644
 +    ] ?? "blob";
 +  return officialFaceBodyKey(key);
 +}
- 
++
 +function MochiWebAvatar({
 +  shape,
 +  color,
@@ -262820,7 +263425,7 @@ index f0319929f..dc814dda5 100644
  function LiveLogoAvatar({
    status,
    ...props
-@@ -396,12 +471,20 @@ export function BotShapePreview({
+@@ -396,12 +522,20 @@ export function BotShapePreview({
        {shapeIndex === undefined ? (
          <BotAvatar color={color} identity={identity} size={32} />
        ) : (
@@ -262849,10 +263454,10 @@ index f0319929f..dc814dda5 100644
    );
 diff --git a/packages/ui-web/src/lumen-manifest.ts b/packages/ui-web/src/lumen-manifest.ts
 new file mode 100644
-index 000000000..dcd1b7cd1
+index 000000000..49f55c0d4
 --- /dev/null
 +++ b/packages/ui-web/src/lumen-manifest.ts
-@@ -0,0 +1,159 @@
+@@ -0,0 +1,164 @@
 +import type { LumenManifest, LumenManifestSurface } from "@rakazo/core";
 +import { lumenManifestPicture, lumenManifestUrl, parseLumenManifest } from "@rakazo/core";
 +
@@ -262987,7 +263592,12 @@ index 000000000..dcd1b7cd1
 +  }
 +}
 +
-+export type WebLumenPicture = { uri: string; drawMainStar: boolean };
++export type WebLumenPicture = {
++  uri: string;
++  /** The size the finished art fixes for this surface (the hero's 136 pt), or null. */
++  size: number | null;
++  drawMainStar: boolean;
++};
 +
 +/**
 + * The picture a bot shows, with the browser's surface rule: large avatars get the full ignition,
@@ -263010,7 +263620,7 @@ index 000000000..dcd1b7cd1
 +    reducedMotion: prefersReducedMotion(),
 +  });
 +  if (!picture || picture.uris.length === 0) return null;
-+  return { uri: picture.uris[0]!, drawMainStar: picture.drawMainStar };
++  return { uri: picture.uris[0]!, size: picture.size, drawMainStar: picture.drawMainStar };
 +}
 diff --git a/packages/ui-web/src/notification-avatar.test.tsx b/packages/ui-web/src/notification-avatar.test.tsx
 index cca4371db..9c095407d 100644

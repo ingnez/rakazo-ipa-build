@@ -38,7 +38,7 @@ want "subscribeApiBase" "$APPS/lib/lumen/lumen-manifest-store.ts" "the store ign
 test -f "$APPS/lib/lumen/lumen-manifest.test.ts" || fail "the manifest has no tests"
 
 # --- 2. Every avatar draws from it, and a broken picture falls back --------------------------
-want "lumenManifestPicture" "$APPS/components/bot-avatar.tsx" "BotAvatar ignores the manifest"
+want "lumenAvatarChoice" "$APPS/components/bot-avatar.tsx" "BotAvatar ignores the manifest"
 want "useLumenReducedMotion" "$APPS/components/bot-avatar.tsx" "BotAvatar ignores Reduce Motion"
 want "onError" "$APPS/components/bot-avatar.tsx" "a picture that fails to load does not fall back"
 want "LumenBotAvatar" "$APPS/components/bot-avatar.tsx" "the drawn body is gone (nothing to fall back to)"

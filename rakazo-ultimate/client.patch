@@ -1,3 +1,11 @@
+diff --git a/.vitest/json/output.json b/.vitest/json/output.json
+new file mode 100644
+index 000000000..7fca78fee
+--- /dev/null
++++ b/.vitest/json/output.json
+@@ -0,0 +1 @@
++{"numTotalTestSuites":13,"numPassedTestSuites":13,"numFailedTestSuites":0,"numPendingTestSuites":0,"numTotalTests":37,"numPassedTests":37,"numFailedTests":0,"numPendingTests":0,"numTodoTests":0,"snapshot":{"added":0,"failure":false,"filesAdded":0,"filesRemoved":0,"filesRemovedList":[],"filesUnmatched":0,"filesUpdated":0,"matched":0,"total":0,"unchecked":0,"uncheckedKeysByFile":[],"unmatched":0,"updated":0,"didUpdate":false},"startTime":1795623194630,"success":true,"testResults":[{"assertionResults":[{"ancestorTitles":["BotAvatar"],"fullName":"BotAvatar draws the OpenMinis body for a named role, not a raster picture","status":"passed","title":"draws the OpenMinis body for a named role, not a raster picture","duration":27.148413000000346,"failureMessages":[],"meta":{},"tags":[],"benchmarks":[]},{"ancestorTitles":["BotAvatar"],"fullName":"BotAvatar gives two roster bots different shapes","status":"passed","title":"gives two roster bots different shapes","duration":6.9616000000000895,"failureMessages":[],"meta":{},"tags":[],"benchmarks":[]},{"ancestorTitles":["BotAvatar"],"fullName":"BotAvatar adds exactly one overlay star on the chief and does not bake one into the svg","status":"passed","title":"adds exactly one overlay star on the chief and does not bake one into the svg","duration":6.285347000000002,"failureMessages":[],"meta":{},"tags":[],"benchmarks":[]},{"ancestorTitles":["BotAvatar"],"fullName":"BotAvatar keeps a photo","status":"passed","title":"keeps a photo","duration":3.427238999999645,"failureMessages":[],"meta":{},"tags":[],"benchmarks":[]},{"ancestorTitles":["BotAvatar"],"fullName":"BotAvatar still offers a poke target when asked","status":"passed","title":"still offers a poke target when asked","duration":2.757360999999946,"failureMessages":[],"meta":{},"tags":[],"benchmarks":[]},{"ancestorTitles":["BotAvatar"],"fullName":"BotAvatar draws the muted badge with the light theme tokens for data:image/png;base64,abc","status":"passed","title":"draws the muted badge with the light theme tokens for data:image/png;base64,abc","duration":3.5195220000000518,"failureMessages":[],"meta":{},"tags":[],"benchmarks":[]},{"ancestorTitles":["BotAvatar"],"fullName":"BotAvatar draws the muted badge with the dark theme tokens for data:image/png;base64,abc","status":"passed","title":"draws the muted badge with the dark theme tokens for data:image/png;base64,abc","duration":1.9908529999997882,"failureMessages":[],"meta":{},"tags":[],"benchmarks":[]},{"ancestorTitles":["BotAvatar"],"fullName":"BotAvatar draws the muted badge with the light theme tokens for #3EC5A8","status":"passed","title":"draws the muted badge with the light theme tokens for #3EC5A8","duration":3.0363420000003316,"failureMessages":[],"meta":{},"tags":[],"benchmarks":[]},{"ancestorTitles":["BotAvatar"],"fullName":"BotAvatar draws the muted badge with the dark theme tokens for #3EC5A8","status":"passed","title":"draws the muted badge with the dark theme tokens for #3EC5A8","duration":2.478754999999637,"failureMessages":[],"meta":{},"tags":[],"benchmarks":[]}],"startTime":1795623197563,"endTime":1795623197621.4788,"status":"passed","message":"","name":"/workspace/rakazo-review/wt-v36-openminis/apps/mobile/lib/bot-avatar-render.test.tsx"},{"assertionResults":[{"ancestorTitles":["placeAvatarBadges"],"fullName":"placeAvatarBadges puts only the main-bot star at bottom-end on the home hero, even when the bot is working, unread, or muted","status":"passed","title":"puts only the main-bot star at bottom-end on the home hero, even when the bot is working, unread, or muted","duration":2.047918999999993,"failureMessages":[],"meta":{},"tags":[],"benchmarks":[]},{"ancestorTitles":["placeAvatarBadges"],"fullName":"placeAvatarBadges shows no working/online dot on home list rows; a muted badge keeps bottom-end","status":"passed","title":"shows no working/online dot on home list rows; a muted badge keeps bottom-end","duration":0.2573799999999977,"failureMessages":[],"meta":{},"tags":[],"benchmarks":[]},{"ancestorTitles":["placeAvatarBadges"],"fullName":"placeAvatarBadges keeps the working dot at bottom-end on chat and other surfaces, and moves it when muted occupies that corner","status":"passed","title":"keeps the working dot at bottom-end on chat and other surfaces, and moves it when muted occupies that corner","duration":0.22109000000000378,"failureMessages":[],"meta":{},"tags":[],"benchmarks":[]},{"ancestorTitles":["placeAvatarBadges"],"fullName":"placeAvatarBadges never places two badges in the same corner","status":"passed","title":"never places two badges in the same corner","duration":0.26143899999999576,"failureMessages":[],"meta":{},"tags":[],"benchmarks":[]},{"ancestorTitles":["home hero chrome"],"fullName":"home hero chrome never returns a state dot to sit after the name","status":"passed","title":"never returns a state dot to sit after the name","duration":0.15711200000001213,"failureMessages":[],"meta":{},"tags":[],"benchmarks":[]},{"ancestorTitles":["home hero chrome"],"fullName":"home hero chrome keeps the yellow star at the lower right of a hero-sized avatar","status":"passed","title":"keeps the yellow star at the lower right of a hero-sized avatar","duration":0.557259000000002,"failureMessages":[],"meta":{},"tags":[],"benchmarks":[]}],"startTime":1795623195429,"endTime":1795623195433.5574,"status":"passed","message":"","name":"/workspace/rakazo-review/wt-v36-openminis/apps/mobile/lib/avatar-badges.test.ts"},{"assertionResults":[{"ancestorTitles":["mobile bot avatar presentation"],"fullName":"mobile bot avatar presentation keeps the stored body instead of dropping it to a color fill","status":"passed","title":"keeps the stored body instead of dropping it to a color fill","duration":2.230454000000009,"failureMessages":[],"meta":{},"tags":[],"benchmarks":[]},{"ancestorTitles":["mobile bot avatar presentation"],"fullName":"mobile bot avatar presentation keeps the picker's own order for the thirteen official bodies","status":"passed","title":"keeps the picker's own order for the thirteen official bodies","duration":0.2607989999999063,"failureMessages":[],"meta":{},"tags":[],"benchmarks":[]},{"ancestorTitles":["mobile bot avatar presentation"],"fullName":"mobile bot avatar presentation draws an older Rakazo body as the official one that stands in for it","status":"passed","title":"draws an older Rakazo body as the official one that stands in for it","duration":1.5308880000000045,"failureMessages":[],"meta":{},"tags":[],"benchmarks":[]},{"ancestorTitles":["mobile bot avatar presentation"],"fullName":"mobile bot avatar presentation draws a color saved as its earlier value as the current one","status":"passed","title":"draws a color saved as its earlier value as the current one","duration":1.0239610000000994,"failureMessages":[],"meta":{},"tags":[],"benchmarks":[]},{"ancestorTitles":["mobile bot avatar presentation"],"fullName":"mobile bot avatar presentation gives a bot that never picked a body one of its own, and keeps it","status":"passed","title":"gives a bot that never picked a body one of its own, and keeps it","duration":0.3317739999999958,"failureMessages":[],"meta":{},"tags":[],"benchmarks":[]},{"ancestorTitles":["mobile bot avatar presentation"],"fullName":"mobile bot avatar presentation keeps the reference's white as the circle, for the bot at the top of the home screen","status":"passed","title":"keeps the reference's white as the circle, for the bot at the top of the home screen","duration":0.18683500000020103,"failureMessages":[],"meta":{},"tags":[],"benchmarks":[]},{"ancestorTitles":["mobile bot avatar presentation"],"fullName":"mobile bot avatar presentation spreads colour-only bots over the thirteen bodies instead of one circle","status":"passed","title":"spreads colour-only bots over the thirteen bodies instead of one circle","duration":0.4512839999999869,"failureMessages":[],"meta":{},"tags":[],"benchmarks":[]},{"ancestorTitles":["mobile bot avatar presentation"],"fullName":"mobile bot avatar presentation still treats data images and remote URLs as before","status":"passed","title":"still treats data images and remote URLs as before","duration":0.1798799999999119,"failureMessages":[],"meta":{},"tags":[],"benchmarks":[]}],"startTime":1795623196876,"endTime":1795623196882.4512,"status":"passed","message":"","name":"/workspace/rakazo-review/wt-v36-openminis/apps/mobile/lib/bot-avatar.test.ts"},{"assertionResults":[{"ancestorTitles":["openminis palette and hash defaults"],"fullName":"openminis palette and hash defaults has twelve colours and thirteen shapes","status":"passed","title":"has twelve colours and thirteen shapes","duration":2.034975000000003,"failureMessages":[],"meta":{},"tags":[],"benchmarks":[]},{"ancestorTitles":["openminis palette and hash defaults"],"fullName":"openminis palette and hash defaults turns black into graphite in the dark theme and leaves indigo alone","status":"passed","title":"turns black into graphite in the dark theme and leaves indigo alone","duration":0.894543000000013,"failureMessages":[],"meta":{},"tags":[],"benchmarks":[]},{"ancestorTitles":["openminis palette and hash defaults"],"fullName":"openminis palette and hash defaults matches OpenMinis template defaults for the hashed ids","status":"passed","title":"matches OpenMinis template defaults for the hashed ids","duration":0.37390800000000013,"failureMessages":[],"meta":{},"tags":[],"benchmarks":[]},{"ancestorTitles":["openminis role mapping"],"fullName":"openminis role mapping gives the chief the circle body and does not bake or suppress the overlay star","status":"passed","title":"gives the chief the circle body and does not bake or suppress the overlay star","duration":0.6368719999999826,"failureMessages":[],"meta":{},"tags":[],"benchmarks":[]},{"ancestorTitles":["openminis role mapping"],"fullName":"openminis role mapping uses OpenMinis template defaults where a counterpart exists","status":"passed","title":"uses OpenMinis template defaults where a counterpart exists","duration":0.31927500000000464,"failureMessages":[],"meta":{},"tags":[],"benchmarks":[]},{"ancestorTitles":["openminis role mapping"],"fullName":"openminis role mapping gives every one of the twelve roles a mapped look, matched by name, key or id","status":"passed","title":"gives every one of the twelve roles a mapped look, matched by name, key or id","duration":0.5168639999999982,"failureMessages":[],"meta":{},"tags":[],"benchmarks":[]},{"ancestorTitles":["openminis role mapping"],"fullName":"openminis role mapping hashes an unknown bot instead of falling back to the chief","status":"passed","title":"hashes an unknown bot instead of falling back to the chief","duration":0.2362410000000068,"failureMessages":[],"meta":{},"tags":[],"benchmarks":[]},{"ancestorTitles":["openminis moods"],"fullName":"openminis moods maps working, waiting, errors and long idleness","status":"passed","title":"maps working, waiting, errors and long idleness","duration":0.25627399999999056,"failureMessages":[],"meta":{},"tags":[],"benchmarks":[]},{"ancestorTitles":["openminis body paths"],"fullName":"openminis body paths returns a closed path for every shape","status":"passed","title":"returns a closed path for every shape","duration":7.557102000000015,"failureMessages":[],"meta":{},"tags":[],"benchmarks":[]},{"ancestorTitles":["openminis body paths"],"fullName":"openminis body paths builds clover, cloud and flower as a single union, covering their discs","status":"passed","title":"builds clover, cloud and flower as a single union, covering their discs","duration":0.735810000000015,"failureMessages":[],"meta":{},"tags":[],"benchmarks":[]},{"ancestorTitles":["openminis body paths"],"fullName":"openminis body paths draws a teardrop whose bulb sits at the bottom","status":"passed","title":"draws a teardrop whose bulb sits at the bottom","duration":0.2121050000000082,"failureMessages":[],"meta":{},"tags":[],"benchmarks":[]},{"ancestorTitles":["openminis body paths"],"fullName":"openminis body paths emits an svg with the body fill and white eyes","status":"passed","title":"emits an svg with the body fill and white eyes","duration":0.4693329999999776,"failureMessages":[],"meta":{},"tags":[],"benchmarks":[]},{"ancestorTitles":["chief official face"],"fullName":"chief official face inks the chief white with black eyes in dark mode, near-black with white eyes in light mode","status":"passed","title":"inks the chief white with black eyes in dark mode, near-black with white eyes in light mode","duration":0.29494600000001014,"failureMessages":[],"meta":{},"tags":[],"benchmarks":[]},{"ancestorTitles":["chief official face"],"fullName":"chief official face uses the screenshot backslash tilt, up-right placement and asymmetric eyes","status":"passed","title":"uses the screenshot backslash tilt, up-right placement and asymmetric eyes","duration":0.26006000000000995,"failureMessages":[],"meta":{},"tags":[],"benchmarks":[]}],"startTime":1795623195425,"endTime":1795623195440.26,"status":"passed","message":"","name":"/workspace/rakazo-review/wt-v36-openminis/packages/core/src/openminis-avatar.test.ts"}]}
+\ No newline at end of file
 diff --git a/AGENTS.md b/AGENTS.md
 index 816e1fbe4..b13e64e65 100644
 --- a/AGENTS.md
@@ -191014,7 +191022,7 @@ index 722969faa..a295b5635 100644
            activityAvatarSet={activityBot?.avatarSet}
            activityStatus={activityStatus}
 diff --git a/apps/mobile/components/thread/thread-screen.tsx b/apps/mobile/components/thread/thread-screen.tsx
-index c3c0cfd9b..48db4bc88 100644
+index c3c0cfd9b..42b2a24b3 100644
 --- a/apps/mobile/components/thread/thread-screen.tsx
 +++ b/apps/mobile/components/thread/thread-screen.tsx
 @@ -1,9 +1,9 @@
@@ -191203,8 +191211,20 @@ index c3c0cfd9b..48db4bc88 100644
    const workingRoutine = workingRoutineName(snap?.activeRuns ?? (snap?.run ? [snap.run] : []));
    const userBubble = useMemo(
      () =>
-@@ -365,6 +424,88 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -344,6 +403,8 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+     speakFinishedReplyRef,
+   });
+ 
++  const route = useRoute();
++  const ledger = useLedger(route.key);
+   const { isCurrentTarget, refresh, applyMessageJump, showLatest } = useThreadSync({
+     history,
+     scroll,
+@@ -363,8 +424,76 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+     onRefreshed: feedback.refreshed,
+     refreshMentionBots,
      markReadIfVisible,
++    ledgerOpen: ledger.open,
    });
  
 +  // A caller that kept the place in the chat but not the message id — a stage diary's start —
@@ -191225,8 +191245,6 @@ index c3c0cfd9b..48db4bc88 100644
 +  // The server's own ledger rows are the source — what the front desk handed to the back office,
 +  // with the desk, the model and the step it is on — and only a server that publishes none leaves
 +  // the running cards in the transcript as the thing to read.
-+  const route = useRoute();
-+  const ledger = useLedger(route.key);
 +  const frontDeskLedger = snap?.frontDeskTasks;
 +  const runningTasks = useMemo(
 +    () =>
@@ -191273,26 +191291,13 @@ index c3c0cfd9b..48db4bc88 100644
 +    },
 +    [refresh],
 +  );
-+  // While the panel is open the work keeps moving, and the ledger is not part of the chat's own
-+  // event stream: it is read again every few seconds so a step, a model or a finish shows up.
-+  useEffect(() => {
-+    if (!ledger.open || readOnly) return;
-+    const timer = setInterval(() => void refresh(), 4_000);
-+    return () => clearInterval(timer);
-+  }, [ledger.open, readOnly, refresh]);
-+  // The same rows feed the working line under the chat, so the chat reads them at the same pace
-+  // while the back office has work in hand: the line follows the step the task is on, and stops
-+  // with the work, without the panel having to be open.
-+  useEffect(() => {
-+    if (!background.working || readOnly) return;
-+    const timer = setInterval(() => void refresh(), 4_000);
-+    return () => clearInterval(timer);
-+  }, [background.working, readOnly, refresh]);
++  // The ledger panel and the working line are kept fresh by the one snapshot timer in
++  // useThreadSync (snapshotPollActive): three timers used to read the same snapshot every 4 s.
 +
    const paging = useThreadPaging({
      history,
      scroll,
-@@ -402,6 +543,7 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -402,6 +531,7 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
    useIncomingShareImport({
      attachments,
      composerRef: composer.composerRef,
@@ -191300,7 +191305,7 @@ index c3c0cfd9b..48db4bc88 100644
      readOnly,
      threadKey,
      uploadConfig,
-@@ -447,7 +589,8 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -447,7 +577,8 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
        setReplyQuote(null);
      },
      quote: setQuoteTarget,
@@ -191310,7 +191315,7 @@ index c3c0cfd9b..48db4bc88 100644
      speak,
      react: composer.react,
      markUnread: markUnreadFrom,
-@@ -457,11 +600,44 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -457,11 +588,44 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
      // A chat attachment opens the version it was sent with, not the newest.
      previewFile: (artifactId) =>
        router.push({ pathname: "/artifact", params: { artifactId, exact: "1" } }),
@@ -191357,7 +191362,7 @@ index c3c0cfd9b..48db4bc88 100644
      jump: (messageId) => {
        void applyMessageJump({
          botId,
-@@ -508,14 +684,19 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -508,14 +672,19 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
    });
  
    const workingBots =
@@ -191379,7 +191384,7 @@ index c3c0cfd9b..48db4bc88 100644
            },
          ]
        : inGroup
-@@ -527,6 +708,19 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -527,6 +696,19 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
              status: bot.status,
            }))
          : [];
@@ -191399,7 +191404,7 @@ index c3c0cfd9b..48db4bc88 100644
    const workingFooter = (
      <ThreadWorkingFooter
        bots={workingBots.map((bot) => ({
-@@ -535,7 +729,8 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -535,7 +717,8 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
        }))}
        atBottom={!scroll.state.detached}
        label={
@@ -191409,7 +191414,7 @@ index c3c0cfd9b..48db4bc88 100644
        }
      />
    );
-@@ -572,23 +767,20 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -572,23 +755,20 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
    );
  
    return (
@@ -191446,7 +191451,7 @@ index c3c0cfd9b..48db4bc88 100644
          <View style={{ flex: 1 }}>
            <NewestPageCards.Provider value={newestPages}>
              <ThreadMessageList
-@@ -610,46 +802,22 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -610,46 +790,22 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
                showLatest={showLatest}
              />
            </NewestPageCards.Provider>
@@ -191499,7 +191504,7 @@ index c3c0cfd9b..48db4bc88 100644
                draftScope={draftScope}
                agentSkills={agentSkills}
                composerMentionTargets={composerMentionTargets}
-@@ -657,9 +825,46 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -657,9 +813,46 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
                composerPrompt={composerPrompt}
                replyTargetId={replyTarget?.id}
                replyQuote={replyQuote}
@@ -191546,7 +191551,7 @@ index c3c0cfd9b..48db4bc88 100644
                botId={botId}
                onCall={onCall}
                sending={attachments.shareImporting}
-@@ -673,27 +878,51 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -673,27 +866,51 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
              />
            </ThreadComposerDock>
          </View>
@@ -212486,10 +212491,10 @@ index 000000000..c5e089fe8
 +}
 diff --git a/apps/mobile/lib/ledger-tasks.test.ts b/apps/mobile/lib/ledger-tasks.test.ts
 new file mode 100644
-index 000000000..85466a541
+index 000000000..f9d473012
 --- /dev/null
 +++ b/apps/mobile/lib/ledger-tasks.test.ts
-@@ -0,0 +1,216 @@
+@@ -0,0 +1,231 @@
 +import type { FrontDeskTask } from "@rakazo/contracts";
 +import { describe, expect, it } from "vitest";
 +import { activityStep } from "./activity-label";
@@ -212500,6 +212505,7 @@ index 000000000..85466a541
 +  ledgerModelLabel,
 +  ledgerSummary,
 +  ledgerTasks,
++  snapshotPollActive,
 +} from "./ledger-tasks";
 +import type { MobileMessage } from "./mobile-types";
 +
@@ -212706,12 +212712,26 @@ index 000000000..85466a541
 +    expect(activity.line).toBe("搜索历史报错");
 +  });
 +});
++
++describe("one snapshot timer for the chat on screen (z30)", () => {
++  const on = { backgroundRunning: false, ledgerOpen: false, readOnly: false, foreground: true, focused: true };
++  it("reads while back-office work runs or the ledger panel is open", () => {
++    expect(snapshotPollActive(on)).toBe(false);
++    expect(snapshotPollActive({ ...on, backgroundRunning: true })).toBe(true);
++    expect(snapshotPollActive({ ...on, ledgerOpen: true })).toBe(true);
++    expect(snapshotPollActive({ ...on, ledgerOpen: true, readOnly: true })).toBe(false);
++  });
++  it("never reads in the background or off screen", () => {
++    expect(snapshotPollActive({ ...on, backgroundRunning: true, foreground: false })).toBe(false);
++    expect(snapshotPollActive({ ...on, ledgerOpen: true, focused: false })).toBe(false);
++  });
++});
 diff --git a/apps/mobile/lib/ledger-tasks.ts b/apps/mobile/lib/ledger-tasks.ts
 new file mode 100644
-index 000000000..ff998cefa
+index 000000000..708c126ca
 --- /dev/null
 +++ b/apps/mobile/lib/ledger-tasks.ts
-@@ -0,0 +1,235 @@
+@@ -0,0 +1,252 @@
 +import type { FrontDeskTask } from "@rakazo/contracts";
 +import type { LiveThreadRun } from "@rakazo/core";
 +import { activityStep } from "./activity-label";
@@ -212931,6 +212951,23 @@ index 000000000..ff998cefa
 + * working line follows the step that row is on rather than waiting for a run to finish.
 + */
 +export const FRONT_DESK_STEP_POLL_MS = 4_000;
++
++/**
++ * Whether the chat on screen re-reads its snapshot on that timer: while a back-office row is
++ * running (the working line follows its step), or while the ledger panel is open in a chat this
++ * person can act in. One timer covers both; there used to be three reading the same snapshot,
++ * 1759 calls in 23 minutes on 2026-11-25. Never in the background or off screen.
++ */
++export function snapshotPollActive(input: {
++  backgroundRunning: boolean;
++  ledgerOpen: boolean;
++  readOnly: boolean;
++  foreground: boolean;
++  focused: boolean;
++}): boolean {
++  if (!input.foreground || !input.focused) return false;
++  return input.backgroundRunning || (input.ledgerOpen && !input.readOnly);
++}
 +
 +/**
 + * The step a row is on, picked the way the working line reads it: a clean Chinese action wins over
@@ -227263,7 +227300,7 @@ index 064498cc9..393349fb7 100644
  
  /** A group chat's members in its order, once the chat or its group list has loaded them. */
 diff --git a/apps/mobile/lib/thread-sync.ts b/apps/mobile/lib/thread-sync.ts
-index d9f46950d..ca8cd68e0 100644
+index d9f46950d..f4cc124e7 100644
 --- a/apps/mobile/lib/thread-sync.ts
 +++ b/apps/mobile/lib/thread-sync.ts
 @@ -2,10 +2,11 @@ import { useLingui } from "@lingui/react/macro";
@@ -227275,11 +227312,28 @@ index d9f46950d..ca8cd68e0 100644
  import { rpc, selectedSpaceId } from "./api";
  import { onConversationCleared } from "./conversation-cleared";
  import { isIntegrationsScopeCurrent } from "./integrations-cache";
-+import { FRONT_DESK_STEP_POLL_MS } from "./ledger-tasks";
++import { FRONT_DESK_STEP_POLL_MS, snapshotPollActive } from "./ledger-tasks";
  import { mobileThreadRefreshResult } from "./mobile-types";
  import { threadRefreshDelayMs } from "./refresh";
  import {
-@@ -217,6 +218,21 @@ export function useThreadSync({
+@@ -50,6 +51,7 @@ export function useThreadSync({
+   onRefreshed,
+   refreshMentionBots,
+   markReadIfVisible,
++  ledgerOpen = false,
+ }: {
+   history: ThreadHistory;
+   scroll: ThreadListScroll;
+@@ -72,6 +74,8 @@ export function useThreadSync({
+   onRefreshed: (threadKey: string | undefined) => void;
+   refreshMentionBots: () => Promise<unknown>;
+   markReadIfVisible: () => void;
++  /** The ledger panel is open: its rows are read at the same pace while it is on screen. */
++  ledgerOpen?: boolean;
+ }) {
+   const { t } = useLingui();
+   const {
+@@ -217,6 +221,22 @@ export function useThreadSync({
  
    useEffect(() => () => pendingSave.current?.(), [botId, groupId]);
  
@@ -227290,13 +227344,14 @@ index d9f46950d..ca8cd68e0 100644
 +  const backgroundRunning = (snap?.frontDeskTasks ?? []).some((task) => task.status === "running");
 +  const refreshLatest = useRef(refresh);
 +  refreshLatest.current = refresh;
++  const polling = snapshotPollActive({ backgroundRunning, ledgerOpen, readOnly, foreground, focused });
 +  useEffect(() => {
-+    if (!backgroundRunning || !foreground || !focused) return;
++    if (!polling) return;
 +    const timer = setInterval(() => {
 +      void refreshLatest.current().catch(() => undefined);
 +    }, FRONT_DESK_STEP_POLL_MS);
 +    return () => clearInterval(timer);
-+  }, [backgroundRunning, foreground, focused]);
++  }, [polling]);
 +
    // A save still waiting when the chat is cleared would write the old messages back.
    useEffect(() => {
@@ -263301,6 +263356,83 @@ index 000000000..18a3dd609
 +export function openminisBlinkWait(working: boolean): { min: number; max: number } {
 +  return working ? { min: 0.45, max: 1.1 } : { min: 1.2, max: 3.2 };
 +}
+diff --git a/packages/core/src/run-error.test.ts b/packages/core/src/run-error.test.ts
+index 5568c4e3a..fad51944d 100644
+--- a/packages/core/src/run-error.test.ts
++++ b/packages/core/src/run-error.test.ts
+@@ -1000,3 +1000,26 @@ describe("the one action that fixes a failed run", () => {
+     },
+   );
+ });
++
++describe("the app's own failures in the person's words (z30)", () => {
++  it("summarises them as app failures, not the model provider's, and keeps the original", async () => {
++    const { APP_FAILURE_SUMMARIES, normalizeRunError } = await import("./run-error");
++    const cases = [
++      ["Could not prepare Team Computer folders: bash: fork: Resource temporarily unavailable", 0],
++      ["Bot has no computer", 1],
++      ["Unsupported state or unable to authenticate data", 2],
++      ["A tool this paused task was using is not available, so it cannot continue. Start the task again.", 3],
++      ["The provider rejected this API key again. The saved credential was not changed. Check the key and try again later.", 4],
++    ] as const;
++    for (const [raw, index] of cases) {
++      const seen: string[] = [];
++      const error = normalizeRunError(raw, (message) => {
++        seen.push(message);
++        return `zh:${message}`;
++      });
++      expect(error.summary).toBe(`zh:${APP_FAILURE_SUMMARIES[index]![1]}`);
++      expect(error.details).toBe(raw);
++      expect(error.recovery).toBeUndefined();
++    }
++  });
++});
+diff --git a/packages/core/src/run-error.ts b/packages/core/src/run-error.ts
+index 05071beb1..aa3a31843 100644
+--- a/packages/core/src/run-error.ts
++++ b/packages/core/src/run-error.ts
+@@ -135,6 +135,30 @@ const APP_RUN_ERRORS = new Set([
+   ...stuckWorkStatusMessages(),
+ ]);
+ 
++/**
++ * Failures the app itself words, matched on the server's English and summarised for the person;
++ * the original stays in the details. Each summary is a message the translator knows.
++ */
++export const APP_FAILURE_SUMMARIES: ReadonlyArray<readonly [RegExp, string]> = [
++  [
++    /^Could not prepare Team Computer folders\b/,
++    "The computer was too busy to prepare its folders. Try again in a moment.",
++  ],
++  [/^Bot has no computer\b/, "This bot has no computer. Turn on its computer, then try again."],
++  [
++    /Unsupported state or unable to authenticate data/,
++    "A saved secret could not be unlocked. Save it again, then try again.",
++  ],
++  [
++    /^A tool this paused task was using is not available\b/,
++    "A tool this paused task was using is not available, so it cannot continue. Start the task again.",
++  ],
++  [
++    /^The provider rejected this API key again\./,
++    "The provider rejected this API key again. The saved credential was not changed. Check the key and try again later.",
++  ],
++];
++
+ export const RUN_ERROR_LIMIT_MESSAGES = {
+   key: {
+     none: "{provider} key hit its limit.",
+@@ -294,6 +318,10 @@ export function normalizeRunError(
+     };
+   }
+   if (isComputerAllowanceUsed(trimmed)) return { summary: details, details, recovery: "plan" };
++  // The app's own failures say what happened in words the person's language has (z30): these
++  // reached the chat as raw English, or were blamed on the model provider.
++  const appFailure = APP_FAILURE_SUMMARIES.find(([pattern]) => pattern.test(trimmed));
++  if (appFailure) return { summary: translate(appFailure[1]), details };
+   // Preserve only known recovery advice: provider diagnostics can also be plain text.
+   if (APP_RUN_ERRORS.has(trimmed)) {
+     return MODEL_OUTPUT_RUN_ERRORS.has(trimmed)
 diff --git a/packages/core/src/status-line.test.ts b/packages/core/src/status-line.test.ts
 new file mode 100644
 index 000000000..5c7f9cdf2
@@ -264534,7 +264666,7 @@ index 73652a3c4..4bdf91d87 100644
 +msgid "Image support unknown"
 +msgstr "Görsel desteği bilinmiyor"
 diff --git a/packages/i18n/locales/zh-CN/messages.po b/packages/i18n/locales/zh-CN/messages.po
-index 422c5af1e..faedbe862 100644
+index 422c5af1e..28aadb789 100644
 --- a/packages/i18n/locales/zh-CN/messages.po
 +++ b/packages/i18n/locales/zh-CN/messages.po
 @@ -281,7 +281,7 @@ msgstr "{count} 个需要处理"
@@ -264674,7 +264806,7 @@ index 422c5af1e..faedbe862 100644
  #. js-lingui-explicit-id
  #: packages/i18n/src/run-error.ts
  msgid "The model hit its output limit before finishing its reply."
-@@ -11755,3 +11807,394 @@ msgstr "你的语音提供商拒绝了该密钥。"
+@@ -11755,3 +11807,414 @@ msgstr "你的语音提供商拒绝了该密钥。"
  #: apps/web/src/components/vault/VaultItemEditor.tsx
  msgid "ZIP or postal code"
  msgstr "邮政编码"
@@ -265069,8 +265201,28 @@ index 422c5af1e..faedbe862 100644
 +#: apps/mobile/app/server.tsx
 +msgid "Could not remove the server"
 +msgstr "无法移除这个服务器"
++
++#: packages/core/src/run-error.ts
++msgid "The computer was too busy to prepare its folders. Try again in a moment."
++msgstr "电脑这会儿太忙，没能准备好文件夹。请稍后再试。"
++
++#: packages/core/src/run-error.ts
++msgid "This bot has no computer. Turn on its computer, then try again."
++msgstr "这个机器人还没有电脑。先打开它的电脑，再试一次。"
++
++#: packages/core/src/run-error.ts
++msgid "A saved secret could not be unlocked. Save it again, then try again."
++msgstr "一条保存的密钥没能解开。请重新保存后再试。"
++
++#: packages/core/src/run-error.ts
++msgid "A tool this paused task was using is not available, so it cannot continue. Start the task again."
++msgstr "这个暂停的任务要用的工具现在不可用，没法接着做。请重新开始这个任务。"
++
++#: packages/core/src/run-error.ts
++msgid "The provider rejected this API key again. The saved credential was not changed. Check the key and try again later."
++msgstr "服务商再次拒绝了这个 API 密钥。已保存的凭据没有改动。请检查密钥，稍后再试。"
 diff --git a/packages/i18n/locales/zh-TW/messages.po b/packages/i18n/locales/zh-TW/messages.po
-index 796df8775..4a72e1251 100644
+index 796df8775..4be8b0388 100644
 --- a/packages/i18n/locales/zh-TW/messages.po
 +++ b/packages/i18n/locales/zh-TW/messages.po
 @@ -4854,6 +4854,10 @@ msgid "Drag, drop, or paste an image"
@@ -265095,7 +265247,7 @@ index 796df8775..4a72e1251 100644
  
  #: apps/web/src/pages/shell/agent-import.tsx
  msgid "Paste the reply"
-@@ -11756,3 +11760,226 @@ msgstr "你的語音供應商拒絕了該金鑰。"
+@@ -11756,3 +11760,246 @@ msgstr "你的語音供應商拒絕了該金鑰。"
  #: apps/web/src/components/vault/VaultItemEditor.tsx
  msgid "ZIP or postal code"
  msgstr "郵遞區號"
@@ -265322,6 +265474,67 @@ index 796df8775..4a72e1251 100644
 +#: apps/web/src/pages/model-settings/provider-page.tsx
 +msgid "Image support unknown"
 +msgstr "是否支援圖片未知"
++
++#: packages/core/src/run-error.ts
++msgid "The computer was too busy to prepare its folders. Try again in a moment."
++msgstr "電腦這會兒太忙，沒能準備好資料夾。請稍後再試。"
++
++#: packages/core/src/run-error.ts
++msgid "This bot has no computer. Turn on its computer, then try again."
++msgstr "這個機器人還沒有電腦。先打開它的電腦，再試一次。"
++
++#: packages/core/src/run-error.ts
++msgid "A saved secret could not be unlocked. Save it again, then try again."
++msgstr "一條儲存的密鑰沒能解開。請重新儲存後再試。"
++
++#: packages/core/src/run-error.ts
++msgid "A tool this paused task was using is not available, so it cannot continue. Start the task again."
++msgstr "這個暫停的任務要用的工具現在不可用，沒法接著做。請重新開始這個任務。"
++
++#: packages/core/src/run-error.ts
++msgid "The provider rejected this API key again. The saved credential was not changed. Check the key and try again later."
++msgstr "服務商再次拒絕了這個 API 金鑰。已儲存的憑據沒有改動。請檢查金鑰，稍後再試。"
+diff --git a/packages/i18n/src/run-error.ts b/packages/i18n/src/run-error.ts
+index 68d790e5c..ee578962a 100644
+--- a/packages/i18n/src/run-error.ts
++++ b/packages/i18n/src/run-error.ts
+@@ -224,6 +224,36 @@ export const translateRunError: RunErrorTranslator = (message, values) => {
+         message: "Something went wrong. Try again.",
+         values,
+       });
++    case "The computer was too busy to prepare its folders. Try again in a moment.":
++      return i18n._({
++        id: "The computer was too busy to prepare its folders. Try again in a moment.",
++        message: "The computer was too busy to prepare its folders. Try again in a moment.",
++        values,
++      });
++    case "This bot has no computer. Turn on its computer, then try again.":
++      return i18n._({
++        id: "This bot has no computer. Turn on its computer, then try again.",
++        message: "This bot has no computer. Turn on its computer, then try again.",
++        values,
++      });
++    case "A saved secret could not be unlocked. Save it again, then try again.":
++      return i18n._({
++        id: "A saved secret could not be unlocked. Save it again, then try again.",
++        message: "A saved secret could not be unlocked. Save it again, then try again.",
++        values,
++      });
++    case "A tool this paused task was using is not available, so it cannot continue. Start the task again.":
++      return i18n._({
++        id: "A tool this paused task was using is not available, so it cannot continue. Start the task again.",
++        message: "A tool this paused task was using is not available, so it cannot continue. Start the task again.",
++        values,
++      });
++    case "The provider rejected this API key again. The saved credential was not changed. Check the key and try again later.":
++      return i18n._({
++        id: "The provider rejected this API key again. The saved credential was not changed. Check the key and try again later.",
++        message: "The provider rejected this API key again. The saved credential was not changed. Check the key and try again later.",
++        values,
++      });
+     default:
+       return message;
+   }
 diff --git a/packages/logging/src/monitoring.ts b/packages/logging/src/monitoring.ts
 index 4a4ea6293..e3e682f96 100644
 --- a/packages/logging/src/monitoring.ts

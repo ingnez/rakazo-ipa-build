@@ -197585,10 +197585,10 @@ index 000000000..efe2ce1d6
 +}
 diff --git a/apps/mobile/lib/avatar-badges.test.ts b/apps/mobile/lib/avatar-badges.test.ts
 new file mode 100644
-index 000000000..be24df2ee
+index 000000000..5a05ed4bb
 --- /dev/null
 +++ b/apps/mobile/lib/avatar-badges.test.ts
-@@ -0,0 +1,81 @@
+@@ -0,0 +1,80 @@
 +import { describe, expect, it } from "vitest";
 +import {
 +  HERO_AVATAR_SIZE,
@@ -197647,15 +197647,14 @@ index 000000000..be24df2ee
 +    expect(homeHeroNameStateDot()).toBeNull();
 +  });
 +
-+  it("keeps the star at the lower right of a hero-sized avatar", () => {
-+    expect(mainBotBadgeLayout(HERO_AVATAR_SIZE)).toMatchObject({
-+      size: 22,
-+      icon: 11,
-+      ring: 2.5,
-+      end: 6,
-+      bottom: 4,
-+      color: "#FF9500",
-+    });
++  it("keeps the yellow star at the lower right of a hero-sized avatar", () => {
++    const badge = mainBotBadgeLayout(HERO_AVATAR_SIZE);
++    expect(badge.color.toLowerCase()).toBe("#ffd600");
++    expect(badge.size).toBeGreaterThan(30);
++    expect(badge.size).toBeLessThan(42);
++    expect(badge.end).toBeLessThan(2);
++    expect(badge.bottom).toBeLessThan(0);
++    expect(badge.icon).toBeGreaterThan(10);
 +    expect(styleForAvatarBadgeCorner("bottom-end", { end: 6, start: 0, bottom: 4 })).toEqual({
 +      end: 6,
 +      bottom: 4,
@@ -197672,13 +197671,13 @@ index 000000000..be24df2ee
 +});
 diff --git a/apps/mobile/lib/avatar-badges.ts b/apps/mobile/lib/avatar-badges.ts
 new file mode 100644
-index 000000000..47c7057c7
+index 000000000..139511638
 --- /dev/null
 +++ b/apps/mobile/lib/avatar-badges.ts
-@@ -0,0 +1,104 @@
+@@ -0,0 +1,120 @@
 +/** Where an avatar badge sits, and which badges a given surface may show.
 +
-+The home header keeps only the orange main-bot star at the avatar's bottom-right.
++The home header keeps only the yellow main-bot star at the avatar's bottom-right.
 +It never shows a green working/online dot on the avatar, and never a second dot
 +after the name. List rows also have no online/working dots. Every other surface
 +places at most one badge in a corner, and shows working/online at most once.
@@ -197708,26 +197707,42 @@ index 000000000..47c7057c7
 + */
 +export const HERO_AVATAR_SIZE = 136;
 +
-+/** The official-matching star on a {@link HERO_AVATAR_SIZE} avatar: size includes the ring. */
-+/** Measured off the 440 pt official home recording: 88 pt body, 22 pt star at about 4:30. */
++/**
++ * The official-matching yellow star on a {@link HERO_AVATAR_SIZE} avatar.
++ * Measured from the owner's dark-mode home screenshot of the main bot.
++ * `innerRatio` / `relX` / `relY` are in body-diameter or body-radius units of
++ * the OpenMinis drawing (the SVG viewBox pads the body by 0.08 on each side).
++ */
++export const OPENMINIS_SVG_VIEWBOX_SPAN = 1.16;
++
 +export const HERO_MAIN_BADGE = {
-+  size: 22,
-+  icon: 11,
-+  ring: 2.5,
-+  end: 6,
-+  bottom: 4,
-+  /** iOS system orange; the star itself is a system symbol, not an imported asset. */
-+  color: "#FF9500",
++  /** Yellow fill diameter as a fraction of the drawn body diameter. */
++  innerRatio: 0.2496,
++  /** Badge centre relative to the body centre, in body-radius units. */
++  relX: 0.8642,
++  relY: 0.9882,
++  /** Ring thickness as a fraction of the drawn body diameter. */
++  ringRatio: 0.031,
++  /** Star icon size as a fraction of the drawn body diameter. */
++  iconRatio: 0.18,
++  /** Screenshot yellow (close to iOS dark systemYellow), not the older orange. */
++  color: "#FFD600",
 +} as const;
 +
 +export function mainBotBadgeLayout(avatarSize: number) {
-+  const scale = avatarSize / HERO_AVATAR_SIZE;
++  const body = avatarSize / OPENMINIS_SVG_VIEWBOX_SPAN;
++  const radius = body / 2;
++  const inner = HERO_MAIN_BADGE.innerRatio * body;
++  const ring = Math.max(1.5, HERO_MAIN_BADGE.ringRatio * body);
++  const size = inner + 2 * ring;
++  const cx = avatarSize / 2 + HERO_MAIN_BADGE.relX * radius;
++  const cy = avatarSize / 2 + HERO_MAIN_BADGE.relY * radius;
 +  return {
-+    size: HERO_MAIN_BADGE.size * scale,
-+    icon: HERO_MAIN_BADGE.icon * scale,
-+    ring: HERO_MAIN_BADGE.ring * scale,
-+    end: HERO_MAIN_BADGE.end * scale,
-+    bottom: HERO_MAIN_BADGE.bottom * scale,
++    size,
++    icon: HERO_MAIN_BADGE.iconRatio * body,
++    ring,
++    end: avatarSize - (cx + size / 2),
++    bottom: avatarSize - (cy + size / 2),
 +    color: HERO_MAIN_BADGE.color,
 +  };
 +}
@@ -197988,7 +198003,7 @@ index 8a24afe91..ff7539157 100644
        easing: Easing.inOut(Easing.cubic),
      });
 diff --git a/apps/mobile/lib/bot-avatar-render.test.tsx b/apps/mobile/lib/bot-avatar-render.test.tsx
-index 33a71724b..4476ab12f 100644
+index 33a71724b..815561595 100644
 --- a/apps/mobile/lib/bot-avatar-render.test.tsx
 +++ b/apps/mobile/lib/bot-avatar-render.test.tsx
 @@ -1,33 +1,19 @@
@@ -198003,7 +198018,7 @@ index 33a71724b..4476ab12f 100644
 -  seededLogoAvatarColor,
 -  shippedBotAvatarShapePath,
 -} from "@rakazo/core";
-+import { openminisBodyPath, openminisHex, openminisSpecFor } from "@rakazo/core";
++import { openminisBodyPath, openminisSpecFor } from "@rakazo/core";
  import type { ColorTokens } from "@rakazo/ui-tokens";
  import { tokensForAppearance } from "@rakazo/ui-tokens";
  import type { ReactNode } from "react";
@@ -198209,7 +198224,7 @@ index 33a71724b..4476ab12f 100644
    let root: Root | undefined;
    let container: HTMLDivElement | undefined;
  
-@@ -192,165 +136,61 @@ describe("BotAvatar", () => {
+@@ -192,165 +136,64 @@ describe("BotAvatar", () => {
      root = undefined;
      container = undefined;
      vi.unstubAllGlobals();
@@ -198326,9 +198341,9 @@ index 33a71724b..4476ab12f 100644
 +    const svg = view.querySelector("svg");
 +    expect(svg).not.toBeNull();
 +    const fill = svg?.querySelector("path")?.getAttribute("fill")?.toLowerCase();
-+    expect(fill).toBe(openminisHex(10, false).toLowerCase());
++    expect(fill).toBe("#111111");
 +    expect(svg?.querySelector("path")?.getAttribute("d")).toBe(openminisBodyPath(0));
-+    expect(svg?.innerHTML).toContain("#ffffff");
++    expect(svg?.innerHTML.toLowerCase()).toContain("#ffffff");
    });
  
 -  it("keeps a picture", () => {
@@ -198360,10 +198375,13 @@ index 33a71724b..4476ab12f 100644
 -    expect(view.querySelector("img, image")).toBeNull();
 -    expect(view.querySelectorAll("ellipse")).toHaveLength(2);
 -    expect(view.querySelector("radialGradient")).not.toBeNull();
-+  it("does not add an extra star on the chief", () => {
++  it("adds exactly one overlay star on the chief and does not bake one into the svg", () => {
 +    const view = render("#D8B878", { name: "小猪包", main: true });
-+    expect(view.querySelector('[aria-label="Main bot"]')).toBeNull();
-+    expect(openminisSpecFor({ name: "小猪包", chief: true }).suppressMainStar).toBe(true);
++    const stars = view.querySelectorAll('[aria-label="Main bot"]');
++    expect(stars).toHaveLength(1);
++    expect(stars[0]?.getAttribute("data-background")?.toLowerCase()).toBe("#ffd600");
++    expect(view.querySelector("svg")?.innerHTML.toLowerCase()).not.toContain("star");
++    expect(openminisSpecFor({ name: "小猪包", chief: true }).suppressMainStar).toBe(false);
    });
  
 -  it("keeps a custom picture when the stored set is Rakazo", () => {
@@ -198405,7 +198423,7 @@ index 33a71724b..4476ab12f 100644
    });
  
    it.each([
-@@ -361,10 +201,9 @@ describe("BotAvatar", () => {
+@@ -361,10 +204,9 @@ describe("BotAvatar", () => {
    ] as const)("draws the muted badge with the %s theme tokens for %s", (appearance, color) => {
      const tokens = tokensForAppearance(appearance);
      mobileTokens.current = tokens;
@@ -260709,10 +260727,10 @@ index d2e0ae8db..91bc0b65c 100644
  }
 diff --git a/packages/core/src/openminis-avatar.test.ts b/packages/core/src/openminis-avatar.test.ts
 new file mode 100644
-index 000000000..3d8f6db08
+index 000000000..18173891f
 --- /dev/null
 +++ b/packages/core/src/openminis-avatar.test.ts
-@@ -0,0 +1,128 @@
+@@ -0,0 +1,167 @@
 +import { describe, expect, it } from "vitest";
 +import {
 +  OPENMINIS_CLOVER,
@@ -260725,6 +260743,9 @@ index 000000000..3d8f6db08
 +  openminisBodyPath,
 +  openminisContains,
 +  openminisHashedSpec,
++  OPENMINIS_CHIEF_LOOK,
++  openminisBodyHex,
++  openminisEyeHex,
 +  openminisHex,
 +  openminisMoodFor,
 +  openminisRgb,
@@ -260755,12 +260776,12 @@ index 000000000..3d8f6db08
 +});
 +
 +describe("openminis role mapping", () => {
-+  it("gives the chief the indigo circle and suppresses an extra star", () => {
++  it("gives the chief the circle body and does not bake or suppress the overlay star", () => {
 +    expect(openminisSpecFor({ name: "小猪包" })).toMatchObject({
 +      shape: 0,
 +      color: 10,
 +      role: "chief",
-+      suppressMainStar: true,
++      suppressMainStar: false,
 +    });
 +    expect(openminisSpecFor({ chief: true, name: "someone" }).role).toBe("chief");
 +    expect(openminisSpecFor({ identity: "cmwgm49boyweiboib5meju5x7" }).role).toBe("chief");
@@ -260841,14 +260862,51 @@ index 000000000..3d8f6db08
 +    expect(dark).toContain(openminisHex(0, true).toLowerCase());
 +  });
 +});
++
++describe("chief official face", () => {
++  it("inks the chief white with black eyes in dark mode, near-black with white eyes in light mode", () => {
++    const chief = openminisSpecFor({ name: "小猪包" });
++    expect(openminisBodyHex(chief, true).toLowerCase()).toBe("#ffffff");
++    expect(openminisEyeHex(chief, true).toLowerCase()).toBe("#000000");
++    expect(openminisBodyHex(chief, false).toLowerCase()).toBe("#111111");
++    expect(openminisEyeHex(chief, false).toLowerCase()).toBe("#ffffff");
++    const dark = openminisSvg(chief, { size: 136, dark: true, eyeOpen: 1, mood: "calm" });
++    expect(dark.toLowerCase()).toContain('fill="#ffffff"');
++    expect(dark.toLowerCase()).toContain('fill="#000000"');
++    expect(dark.toLowerCase()).not.toContain("#6366f2");
++    expect(dark).not.toContain("omGlow");
++    expect(dark).not.toContain("star");
++    const light = openminisSvg(chief, { size: 136, dark: false, eyeOpen: 1, mood: "calm" });
++    expect(light.toLowerCase()).toContain('fill="#111111"');
++    expect(light.toLowerCase()).not.toContain("#6366f2");
++  });
++
++  it("uses the screenshot backslash tilt, up-right placement and asymmetric eyes", () => {
++    expect(OPENMINIS_CHIEF_LOOK.rotate).toBeCloseTo(-33.4, 1);
++    const [left, right] = OPENMINIS_CHIEF_LOOK.eyes;
++    expect(left.x).toBeLessThan(right.x);
++    expect(right.y).toBeLessThan(left.y);
++    expect(right.width).toBeLessThan(left.width);
++    const svg = openminisSvg(openminisSpecFor({ name: "小猪包" }), {
++      size: 136,
++      dark: true,
++      eyeOpen: 1,
++      mood: "calm",
++    });
++    expect(svg).toContain("rotate(-33.4)");
++    expect(svg).toContain(`translate(${left.x} ${left.y})`);
++    expect(svg).toContain(`translate(${right.x} ${right.y})`);
++  });
++});
 diff --git a/packages/core/src/openminis-avatar.ts b/packages/core/src/openminis-avatar.ts
 new file mode 100644
-index 000000000..7fc2a2135
+index 000000000..18a3dd609
 --- /dev/null
 +++ b/packages/core/src/openminis-avatar.ts
-@@ -0,0 +1,752 @@
+@@ -0,0 +1,814 @@
 +/**
-+ * OpenMinis-style bot avatars: 13 shapes × 12 colours, white capsule eyes, blink and moods.
++ * OpenMinis-style bot avatars: 13 shapes × 12 colours, capsule eyes, blink and moods.
++ * The main bot uses the official black/white face (white in dark mode, near-black in light).
 + *
 + * Geometry, palette and default mapping follow the OpenMinis CloudBotAvatar drawing
 + * (ingnez/OpenMinis, GPLv3). The owner chose this look after being told about that licence.
@@ -260932,7 +260990,11 @@ index 000000000..7fc2a2135
 +  shape: number;
 +  color: number;
 +  role: OpenMinisRole | "custom";
-+  /** The drawn chief has no star in its body: the app must not add one. */
++  /**
++   * When true, BotAvatar must not add the yellow star (the body already has one).
++   * The OpenMinis chief has no baked star, so this is false: the home-hero overlay
++   * shows exactly one yellow star, matching the official screenshot.
++   */
 +  suppressMainStar: boolean;
 +};
 +
@@ -260994,6 +261056,46 @@ index 000000000..7fc2a2135
 +  return `#${ch(r)}${ch(g)}${ch(b)}`;
 +}
 +
++/** Near-black body in the light theme: a white body would vanish on the cream home screen. */
++export const OPENMINIS_CHIEF_BODY_LIGHT = "#111111";
++/** White body in the dark theme, matching the owner's home-hero screenshot. */
++export const OPENMINIS_CHIEF_BODY_DARK = "#ffffff";
++export const OPENMINIS_CHIEF_EYE_LIGHT = "#ffffff";
++export const OPENMINIS_CHIEF_EYE_DARK = "#000000";
++
++export function openminisIsChief(spec: { role?: string | null }): boolean {
++  return spec.role === "chief";
++}
++
++/**
++ * Fill for the body. The main bot is the official black/white face, not palette indigo:
++ * near-black in light mode, white in dark mode. Every other bot uses the 12-colour palette.
++ */
++export function openminisBodyHex(spec: { color: number; role?: string | null }, dark: boolean): string {
++  if (openminisIsChief(spec)) return dark ? OPENMINIS_CHIEF_BODY_DARK : OPENMINIS_CHIEF_BODY_LIGHT;
++  return openminisHex(spec.color, dark);
++}
++
++/** Eye (and dozing-z) ink. Only the chief in dark mode uses black eyes, for contrast on white. */
++export function openminisEyeHex(spec: { role?: string | null }, dark: boolean): string {
++  if (openminisIsChief(spec) && dark) return OPENMINIS_CHIEF_EYE_DARK;
++  return "#ffffff";
++}
++
++/**
++ * The main-bot expression measured from the owner's dark-mode home screenshot:
++ * two capsules tilted like a backslash (top leans left), looking up-right, the right
++ * eye a bit thinner and higher. Unit square = the body diameter. Other bots keep the
++ * OpenMinis defaults in {@link openminisFaceTransform} (−14°, offset 0.06, −0.08).
++ */
++export const OPENMINIS_CHIEF_LOOK = {
++  rotate: -33.4,
++  eyes: [
++    { x: 0.5555, y: 0.3363, width: 0.123, height: 0.271 },
++    { x: 0.791, y: 0.2317, width: 0.082, height: 0.274 },
++  ],
++} as const;
++
 +/** djb2 as in OpenMinis CloudBotAvatarSpec.default: 32-bit, times 33 plus each UTF-8 byte. */
 +export function openminisDjb2(text: string): number {
 +  let h = 5381;
@@ -261017,7 +261119,7 @@ index 000000000..7fc2a2135
 +}): OpenMinisSpec {
 +  if (input.chief) {
 +    const chief = ROLE_BY_KEY.get("chief")!;
-+    return { shape: chief.shape, color: chief.color, role: "chief", suppressMainStar: true };
++    return { shape: chief.shape, color: chief.color, role: "chief", suppressMainStar: false };
 +  }
 +  const id = (input.identity ?? "").trim();
 +  const name = (input.name ?? "").trim();
@@ -261027,7 +261129,7 @@ index 000000000..7fc2a2135
 +      shape: row.shape,
 +      color: row.color,
 +      role: row.role,
-+      suppressMainStar: row.role === "chief",
++      suppressMainStar: false,
 +    };
 +  }
 +  const hashed = openminisHashedSpec(id || name || "bot", false);
@@ -261543,41 +261645,58 @@ index 000000000..7fc2a2135
 +};
 +
 +/** A complete SVG (unit viewBox) for one avatar: the review sheet and SvgXml both use this. */
-+export function openminisSvg(spec: { shape: number; color: number }, options: OpenMinisDrawOptions): string {
++export function openminisSvg(
++  spec: { shape: number; color: number; role?: OpenMinisRole | "custom" | null },
++  options: OpenMinisDrawOptions,
++): string {
 +  const size = options.size;
 +  const dark = options.dark;
 +  const eyeOpen = options.eyeOpen ?? 1;
 +  const mood = options.mood ?? "calm";
 +  const gaze = options.gaze ?? { x: 0, y: 0 };
 +  const showsFace = options.showsFace !== false;
-+  const fill = openminisHex(spec.color, dark);
++  const fill = openminisBodyHex(spec, dark);
++  const ink = openminisEyeHex(spec, dark);
 +  const body = openminisBodyPath(spec.shape);
-+  const glow = dark
++  const chief = openminisIsChief(spec);
++  // A white body already reads on black; skip the pale glow that would halo it.
++  const glow = dark && !chief
 +    ? `<g filter="url(#omGlow)" opacity="0.28"><path d="${body}" fill="#ffffff"/></g>`
 +    : "";
 +  const blur = Math.max(0.5, size * 0.02) / size;
-+  const defs = dark
++  const defs = dark && !chief
 +    ? `<defs><filter id="omGlow" x="-0.2" y="-0.2" width="1.4" height="1.4"><feGaussianBlur stdDeviation="${fmt(blur)}"/></filter></defs>`
 +    : "";
 +  let face = "";
 +  if (showsFace) {
 +    const eye = openminisEyeMetrics(mood, eyeOpen, size);
-+    const tr = openminisFaceTransform(mood, gaze);
-+    const gap = tr.spacing + eye.width;
-+    const left = -gap / 2;
-+    const right = gap / 2;
-+    const eyeMarkup = (cx: number) => {
++    const glyph = (cx: number, cy: number, width: number, height: number, rotate: number) => {
 +      if (eye.kind === "happy" || eye.kind === "frown") {
-+        const d = happyEyePath(eye.width, eye.height, eye.kind === "frown");
++        const d = happyEyePath(width, height, eye.kind === "frown");
 +        const sw = eye.stroke ?? 0.07;
-+        return `<path d="${d}" transform="translate(${fmt(cx)} 0)" fill="none" stroke="#ffffff" stroke-width="${fmt(sw)}" stroke-linecap="round"/>`;
++        return `<path d="${d}" transform="translate(${fmt(cx)} ${fmt(cy)}) rotate(${fmt(rotate)})" fill="none" stroke="${ink}" stroke-width="${fmt(sw)}" stroke-linecap="round"/>`;
 +      }
-+      const x = cx - eye.width / 2;
-+      const y = -eye.height / 2;
-+      const rr = Math.min(eye.width, eye.height) / 2;
-+      return `<rect x="${fmt(x)}" y="${fmt(y)}" width="${fmt(eye.width)}" height="${fmt(eye.height)}" rx="${fmt(rr)}" fill="#ffffff"/>`;
++      const x = -width / 2;
++      const y = -height / 2;
++      const rr = Math.min(width, height) / 2;
++      return `<rect x="${fmt(x)}" y="${fmt(y)}" width="${fmt(width)}" height="${fmt(height)}" rx="${fmt(rr)}" fill="${ink}" transform="translate(${fmt(cx)} ${fmt(cy)}) rotate(${fmt(rotate)})"/>`;
 +    };
-+    face = `<g transform="translate(${fmt(0.5 + tr.x)} ${fmt(0.5 + tr.y)}) rotate(${fmt(tr.rotate)})">${eyeMarkup(left)}${eyeMarkup(right)}</g>`;
++    if (chief) {
++      const open = Math.max(eyeOpen, 0.12);
++      face = OPENMINIS_CHIEF_LOOK.eyes
++        .map((slot) => {
++          const width = eye.kind === "capsule" ? slot.width : eye.width;
++          const height = eye.kind === "capsule" ? slot.height * open : eye.height;
++          return glyph(slot.x, slot.y, width, height, OPENMINIS_CHIEF_LOOK.rotate);
++        })
++        .join("");
++    } else {
++      const tr = openminisFaceTransform(mood, gaze);
++      const gap = tr.spacing + eye.width;
++      const left = -gap / 2;
++      const right = gap / 2;
++      face = `<g transform="translate(${fmt(0.5 + tr.x)} ${fmt(0.5 + tr.y)}) rotate(${fmt(tr.rotate)})">${glyph(left, 0, eye.width, eye.height, 0)}${glyph(right, 0, eye.width, eye.height, 0)}</g>`;
++    }
 +    if (mood === "shy") {
 +      face += `<g transform="translate(${fmt(0.5 + 0.06)} ${fmt(0.5 + 0.08)})" opacity="0.75">
 +        <ellipse cx="${fmt(-0.15)}" cy="0" rx="${fmt(0.55 / 4)}" ry="${fmt(0.04)}" fill="#ff69b4" filter="url(#omBlush)"/>
@@ -261585,7 +261704,7 @@ index 000000000..7fc2a2135
 +      </g>`;
 +    }
 +    if (mood === "dozing") {
-+      face += `<text x="${fmt(0.5 + 0.3)}" y="${fmt(0.5 - 0.3)}" fill="#ffffff" fill-opacity="0.9" font-size="0.22" font-weight="700" font-family="system-ui, sans-serif" text-anchor="middle" dominant-baseline="central">z</text>`;
++      face += `<text x="${fmt(0.5 + 0.3)}" y="${fmt(0.5 - 0.3)}" fill="${ink}" fill-opacity="0.9" font-size="0.22" font-weight="700" font-family="system-ui, sans-serif" text-anchor="middle" dominant-baseline="central">z</text>`;
 +    }
 +  }
 +  const blushDef =
@@ -264688,10 +264807,10 @@ index 2bec7b3ac..5606d5389 100644
      logLevel: "warning",
 diff --git a/scripts/render-openminis-port.ts b/scripts/render-openminis-port.ts
 new file mode 100644
-index 000000000..af640f36b
+index 000000000..8e8a0cbab
 --- /dev/null
 +++ b/scripts/render-openminis-port.ts
-@@ -0,0 +1,201 @@
+@@ -0,0 +1,216 @@
 +import { writeFileSync, mkdirSync } from "node:fs";
 +import { dirname } from "node:path";
 +import {
@@ -264710,7 +264829,13 @@ index 000000000..af640f36b
 +  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 +}
 +
-+function tile(spec: { shape: number; color: number }, size: number, dark: boolean, mood: OpenMinisMood = "calm", eyeOpen = 1): string {
++function tile(
++  spec: { shape: number; color: number; role?: (typeof OPENMINIS_ROLE_ROWS)[number]["role"] | "custom" },
++  size: number,
++  dark: boolean,
++  mood: OpenMinisMood = "calm",
++  eyeOpen = 1,
++): string {
 +  return openminisSvg(spec, { size, dark, mood, eyeOpen, showsFace: true });
 +}
 +
@@ -264719,7 +264844,7 @@ index 000000000..af640f36b
 +  dark: boolean;
 +  size: number;
 +  labelSize?: number;
-+  rows: { label: string; shape: number; color: number; mood?: OpenMinisMood; eyeOpen?: number }[];
++  rows: { label: string; shape: number; color: number; role?: (typeof OPENMINIS_ROLE_ROWS)[number]["role"] | "custom"; mood?: OpenMinisMood; eyeOpen?: number }[];
 +  tileGap?: number;
 +}): string {
 +  const { title, dark, size, rows } = opts;
@@ -264760,6 +264885,7 @@ index 000000000..af640f36b
 +  label: `${row.role}  ${row.name}`,
 +  name: row.name,
 +  key: row.role,
++  role: row.role,
 +  shape: row.shape,
 +  color: row.color,
 +}));
@@ -264818,7 +264944,7 @@ index 000000000..af640f36b
 +};
 +
 +// Moods + blink for the chief
-+const chief = { shape: 0, color: 10 };
++const chief = { shape: 0, color: 10, role: "chief" as const };
 +const moods: OpenMinisMood[] = ["calm", "focused", "curious", "happy", "frown", "dozing", "shy"];
 +sheets["moods-light.svg"] = panel({
 +  title: "Chief moods + blink · light",
@@ -264888,6 +265014,14 @@ index 000000000..af640f36b
 +</svg>`;
 +writeFileSync(`${OUT}/sheet.svg`, master);
 +console.log("wrote sheet.svg", width, "x", y);
++
++// Standalone main-bot home hero (136 pt), used for the screenshot comparison.
++for (const dark of [true, false]) {
++  const name = dark ? "chief-hero-dark.svg" : "chief-hero-light.svg";
++  const svg = openminisSvg(chief, { size: 136, dark, mood: "calm", eyeOpen: 1, showsFace: true });
++  writeFileSync(`${OUT}/${name}`, svg);
++  console.log("wrote", name);
++}
 +
 +// unused import keep hashed available for debugging
 +void openminisHashedSpec;

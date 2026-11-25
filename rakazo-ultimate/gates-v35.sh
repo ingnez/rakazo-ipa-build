@@ -30,27 +30,19 @@ wantF 'export * from "./lumen-manifest.js";' packages/core/src/index.ts "core do
 
 test -f "$APPS/lib/lumen/lumen-manifest.ts" || fail "the phone's manifest module is missing"
 want "@rakazo/core" "$APPS/lib/lumen/lumen-manifest.ts" "the phone reimplements the manifest rules"
-test -f "$APPS/lib/lumen/lumen-manifest-store.ts" || fail "the manifest store is missing"
-want "/lumen-avatars/manifest.json" "$CORE" "the manifest path changed"
-want "lumen-manifest.json" "$APPS/lib/lumen/lumen-manifest-store.ts" "the store keeps no on-disk copy"
+test -f "$APPS/lib/lumen/lumen-manifest-store.ts" || fail "the reduce-motion store is missing"
 want "reduceMotionChanged" "$APPS/lib/lumen/lumen-manifest-store.ts" "the store ignores Reduce Motion"
-want "subscribeApiBase" "$APPS/lib/lumen/lumen-manifest-store.ts" "the store ignores a server change"
 test -f "$APPS/lib/lumen/lumen-manifest.test.ts" || fail "the manifest has no tests"
 
-# --- 2. Every avatar draws from it, and a broken picture falls back --------------------------
-want "lumenAvatarChoice" "$APPS/components/bot-avatar.tsx" "BotAvatar ignores the manifest"
-want "useLumenReducedMotion" "$APPS/components/bot-avatar.tsx" "BotAvatar ignores Reduce Motion"
-want "onError" "$APPS/components/bot-avatar.tsx" "a picture that fails to load does not fall back"
-want "LumenBotAvatar" "$APPS/components/bot-avatar.tsx" "the drawn body is gone (nothing to fall back to)"
-want "drawMainStar" "$APPS/components/bot-avatar.tsx" "the chief's baked star would be drawn twice"
-# A bot with no name and no id is a placeholder: it must wear a mark, never a question mark.
-want 'LUMEN_EMBLEM_BY_ID.get("e012")' "$APPS/lib/lumen/lumen-avatar.ts" "the placeholder has no default emblem"
-goneF 'look.initial ?? "?"' "$APPS/components/lumen-bot-avatar.tsx" "the placeholder still draws a question mark"
+# --- 2. Avatars are drawn in the client; a photo still wins; the chief has no extra star ------
+want "OpenMinisBotAvatar" "$APPS/components/bot-avatar.tsx" "BotAvatar does not draw the OpenMinis body"
+want "useLumenReducedMotion" "$APPS/components/openminis-bot-avatar.tsx" "the avatar ignores Reduce Motion"
+want "data:image/" "$APPS/components/bot-avatar.tsx" "a photo a bot was given no longer draws"
+want "suppressMainStar" "$APPS/components/bot-avatar.tsx" "the chief could get an extra star"
 
 # --- 3. The avatar adds no Reanimated worklets to the body ----------------------------------
-# v34's crash came from SVG props animated on the UI thread; the body draws on the JS clock.
-gone "useAnimatedProps" "$APPS/components/lumen-bot-avatar.tsx" "the avatar body animates SVG props on the UI thread"
-gone "createAnimatedComponent" "$APPS/components/lumen-bot-avatar.tsx" "the avatar body wraps SVG in an animated component"
+gone "useAnimatedProps" "$APPS/components/openminis-bot-avatar.tsx" "the avatar body animates SVG props on the UI thread"
+gone "createAnimatedComponent" "$APPS/components/openminis-bot-avatar.tsx" "the avatar body wraps SVG in an animated component"
 
 # --- 4. The viewer's swipe runs on the JS thread, and the strip fills around the current one --
 V="$APPS/components/image-artifact-viewer.tsx"

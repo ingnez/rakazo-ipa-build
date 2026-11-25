@@ -170458,7 +170458,7 @@ index e29608bdd..59ba82a51 100644
                android="chevron-expand"
 diff --git a/apps/mobile/components/avatar-review-gallery.tsx b/apps/mobile/components/avatar-review-gallery.tsx
 new file mode 100644
-index 000000000..877956f35
+index 000000000..a8ae3983a
 --- /dev/null
 +++ b/apps/mobile/components/avatar-review-gallery.tsx
 @@ -0,0 +1,119 @@
@@ -170470,10 +170470,10 @@ index 000000000..877956f35
 +import { LUMEN_PALETTE, LUMEN_TEAM, lumenLookValue } from "../lib/lumen/lumen-avatar";
 +import { useMobileTokens } from "../lib/native";
 +import { BotLookPicker } from "./bot-look-picker";
-+import { LumenBotAvatar } from "./lumen-bot-avatar";
++import { OpenMinisBotAvatar } from "./openminis-bot-avatar";
 +
 +/**
-+ * A single still page of the Lumen avatar system, drawn by the app's own renderer: the team with
++ * A single still page of the OpenMinis avatar system, drawn by the app's own renderer: the team with
 + * the emblems their names earn, the palette, the seven states and a slice of the 247-emblem
 + * library. Only a review build compiled with `EXPO_PUBLIC_AVATAR_REVIEW=1` shows it (the CI
 + * simulator job photographs it in light and dark); a shipped build never does.
@@ -170497,16 +170497,16 @@ index 000000000..877956f35
 +  return (
 +    <GestureHandlerRootView style={{ flex: 1, backgroundColor: tokens.background }}>
 +      <ScrollView contentContainerStyle={{ paddingTop: 64, paddingHorizontal: 20, paddingBottom: 40 }}>
-+        <Text style={{ color: tokens.foreground, fontSize: 28, fontWeight: "700" }}>Lumen</Text>
++        <Text style={{ color: tokens.foreground, fontSize: 28, fontWeight: "700" }}>OpenMinis</Text>
 +        <Text style={{ color: tokens.mutedForeground, fontSize: 13, marginTop: 4 }}>
-+          灯芯 · 团队 {LUMEN_TEAM.length} 只 · 徽记 {LUMEN_EMBLEMS.length} 枚
++          形状与颜色 · 团队 {LUMEN_TEAM.length} 只
 +        </Text>
 +
 +        <Text style={label}>Team</Text>
 +        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
 +          {LUMEN_TEAM.map((bot) => (
 +            <View key={bot.name} style={{ alignItems: "center", width: 58 }}>
-+              <LumenBotAvatar
++              <OpenMinisBotAvatar
 +                color={bot.color}
 +                name={bot.name}
 +                id={`gallery-${bot.name}`}
@@ -170525,7 +170525,7 @@ index 000000000..877956f35
 +        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
 +          {states.map((state) => (
 +            <View key={state.key} style={{ alignItems: "center", width: 56 }}>
-+              <LumenBotAvatar
++              <OpenMinisBotAvatar
 +                color="#D8B878"
 +                name="小猪包"
 +                id={`state-${state.key}`}
@@ -170541,14 +170541,14 @@ index 000000000..877956f35
 +
 +        <Text style={label}>Edit appearance · 同一套真实组件</Text>
 +        <View style={{ alignItems: "center", paddingVertical: 6 }}>
-+          <LumenBotAvatar color={look} name="咖啡师" id="picker-preview" size={112} motion="live" entrance />
++          <OpenMinisBotAvatar color={look} name="咖啡师" id="picker-preview" size={112} motion="live" />
 +        </View>
 +        <BotLookPicker compact value={look} name="咖啡师" identity="picker-preview" onChange={setLook} />
 +
 +        <Text style={label}>Palette · {LUMEN_PALETTE.length}</Text>
 +        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
 +          {LUMEN_PALETTE.map((color, index) => (
-+            <LumenBotAvatar
++            <OpenMinisBotAvatar
 +              key={color}
 +              color={color}
 +              name={LUMEN_TEAM[index]?.name ?? "Bot"}
@@ -170568,7 +170568,7 @@ index 000000000..877956f35
 +          { id: "review-bot-5", name: "Notes", note: "Saved", color: "#7FA7C9" },
 +        ].map((row) => (
 +          <View key={row.id} style={{ flexDirection: "row", alignItems: "center", paddingVertical: 8, gap: 12 }}>
-+            <LumenBotAvatar color={row.color} name={row.name} id={row.id} size={44} motion="lazy" />
++            <OpenMinisBotAvatar color={row.color} name={row.name} id={row.id} size={44} motion="lazy" />
 +            <View style={{ flex: 1 }}>
 +              <Text style={{ color: tokens.foreground, fontSize: 16, fontWeight: "600" }}>{row.name}</Text>
 +              <Text style={{ color: tokens.mutedForeground, fontSize: 14 }} numberOfLines={1}>
@@ -170582,10 +170582,10 @@ index 000000000..877956f35
 +  );
 +}
 diff --git a/apps/mobile/components/bot-avatar.tsx b/apps/mobile/components/bot-avatar.tsx
-index a58981051..8c010b24c 100644
+index a58981051..347f0ce5b 100644
 --- a/apps/mobile/components/bot-avatar.tsx
 +++ b/apps/mobile/components/bot-avatar.tsx
-@@ -1,121 +1,25 @@
+@@ -1,121 +1,21 @@
  import { useLingui } from "@lingui/react/macro";
  import type { BotAvatarSet } from "@rakazo/contracts";
 -import type { AvatarEyes, AvatarMotionMode, LogoAvatarActivity } from "@rakazo/core";
@@ -170614,7 +170614,9 @@ index a58981051..8c010b24c 100644
 -  SHIPPED_BOT_AVATAR_VIEWBOX,
 -  usesLogoAvatar,
 -} from "@rakazo/core";
--import { memo, useSyncExternalStore } from "react";
++import type { AvatarMotionMode, LogoAvatarActivity } from "@rakazo/core";
++import { avatarWorkingDot, isRunWorking, openminisSpecFor } from "@rakazo/core";
+ import { memo, useSyncExternalStore } from "react";
 -import { Image, Pressable, View } from "react-native";
 -import Animated, {
 -  useAnimatedProps,
@@ -170625,21 +170627,13 @@ index a58981051..8c010b24c 100644
 -import type { AvatarLife } from "../lib/avatar-life";
 -import { useAvatarOnScreen, useLife, usePoke, useSettling } from "../lib/avatar-life";
 -import { mobileBotAvatarPresentation } from "../lib/bot-avatar";
-+import type { AvatarMotionMode, LogoAvatarActivity } from "@rakazo/core";
-+import { avatarWorkingDot, isRunWorking } from "@rakazo/core";
-+import type { ReactNode } from "react";
-+import { memo, useState, useSyncExternalStore } from "react";
 +import { Image, View } from "react-native";
 +import type { AvatarBadgeCorner, AvatarBadgeSurface } from "../lib/avatar-badges";
 +import { mainBotBadgeLayout, placeAvatarBadges, styleForAvatarBadgeCorner } from "../lib/avatar-badges";
  import { mobileLogoAvatarActivity } from "../lib/logo-avatar-activity";
--import { useMobileTokens } from "../lib/native";
++import { parseLumenLook } from "../lib/lumen/lumen-avatar";
+ import { useMobileTokens } from "../lib/native";
 -import { LogoAvatar } from "./logo-avatar";
-+import { lumenLookFor, parseLumenLook } from "../lib/lumen/lumen-avatar";
-+import type { LumenAvatarCandidate } from "../lib/lumen/lumen-avatar-source";
-+import { lumenAvatarChoice } from "../lib/lumen/lumen-avatar-source";
-+import { useLumenManifest, useLumenReducedMotion } from "../lib/lumen/lumen-manifest-store";
-+import { useMobileTokens, useResolvedAppearance } from "../lib/native";
  import { NativeSymbol } from "./native-symbol";
 -
 -const AnimatedRect = Animated.createAnimatedComponent(Rect);
@@ -170713,7 +170707,7 @@ index a58981051..8c010b24c 100644
 -  const { frame, grow } = liveFrame(life);
 -  return { x: frame.eyeX, y: frame.eyeY, lid: frame.lid, hidden: grow >= 0.5 };
 -}
-+import { LumenBotAvatar } from "./lumen-bot-avatar";
++import { OpenMinisBotAvatar } from "./openminis-bot-avatar";
  
  export interface BotAvatarProps {
    color: string;
@@ -170722,7 +170716,7 @@ index a58981051..8c010b24c 100644
    size?: number;
    status?: string;
    identity?: string;
-@@ -125,68 +29,320 @@ export interface BotAvatarProps {
+@@ -125,68 +25,221 @@ export interface BotAvatarProps {
    motion?: AvatarMotionMode;
    composing?: boolean;
    pokeable?: boolean;
@@ -170746,9 +170740,9 @@ index a58981051..8c010b24c 100644
  
 -/** Missing set metadata deliberately preserves every existing avatar. */
 +/**
-+ * The one bot avatar the app draws: 灯芯 · Lumen. A frosted pebble around a breathing light, a
-+ * visor with two light slits, a metal ring, and — for the main bot — the five-peak crown. Every
-+ * bot is the same body, told apart by its colour and its emblem.
++ * The one bot avatar the app draws: the OpenMinis shapes and colours, with white capsule eyes.
++ * A photo a person uploaded still wins; the twelve roster roles have a fixed shape and colour,
++ * and anyone else is hashed the same way OpenMinis hashed an unsaved bot.
 + */
  export const BotAvatar = memo(function BotAvatar(props: BotAvatarProps) {
 -  if (usesLogoAvatar(props)) {
@@ -170779,7 +170773,6 @@ index a58981051..8c010b24c 100644
 +    muted = false,
 +    activity,
 +    pokeable = false,
-+    entrance = false,
 +    surface = "default",
 +    main = false,
 +    lead = false,
@@ -170800,17 +170793,10 @@ index a58981051..8c010b24c 100644
 +  // The working dot marks a bot at work, not one writing its reply; a running avatar is itself
 +  // that sign, so it carries none.
 +  const working = isRunWorking(status) && !composing && motion !== "running";
-+  // The finished Lumen pictures the server's manifest names: a bot listed there shows its own
-+  // still or motion picture; a bot it does not list keeps the drawn body below.
-+  const manifest = useLumenManifest();
-+  const reducedMotion = useLumenReducedMotion();
-+  const appearance = useResolvedAppearance();
-+  // The pictures to try, and the ones this run already failed to load (offline, a 404, a torn
-+  // file). A failure falls to the next picture, then to the drawn body — never a blank box.
-+  const [failed, setFailed] = useState<readonly string[]>([]);
-+  // A photo a bot was given still draws: it is the person's own picture, not one of the retired
-+  // bodies. Everything else is the Lumen body.
++  // A photo a bot was given still draws: it is the person's own picture, not a role body.
 +  const stored = parseLumenLook(color).color ?? color;
++  const spec = openminisSpecFor({ name, identity, chief: main });
++  const showMainStar = main && !spec.suppressMainStar;
 +  if (stored.startsWith("data:image/")) {
 +    return (
 +      <View style={{ width: size, height: size, overflow: "visible" }}>
@@ -170835,66 +170821,11 @@ index a58981051..8c010b24c 100644
 +      </View>
 +    );
 +  }
-+  const picture = lumenAvatarChoice(manifest, {
-+    identity,
-+    name,
-+    surface,
-+    size,
-+    dark: appearance === "dark",
-+    reducedMotion,
-+  });
-+  const shown = surface === "home-hero" && picture?.size ? picture.size : size;
-+  const candidate = picture?.candidates.find((entry) => !failed.includes(entry.uri));
-+  // The drawn body, drawn still: the one thing behind a picture that is still arriving. It is
-+  // never shown as a hole, so a theme switch (a new picture, a new URI) never flashes an empty
-+  // square where the character stands.
-+  const chiefBody = main || lumenLookFor({ name, identity, value: color }).role === "chief";
-+  if (picture && candidate) {
-+    return (
-+      <View style={{ width: shown, height: shown, overflow: "visible" }}>
-+        <ManifestPicture
-+          // A new picture is a new native view: without it, an Image whose URI changed for the
-+          // theme can keep painting nothing at all.
-+          key={candidate.uri}
-+          candidate={candidate}
-+          size={shown}
-+          underlay={
-+            <LumenBotAvatar
-+              color={color}
-+              name={name}
-+              id={identity}
-+              size={shown}
-+              status={status}
-+              identity={identity}
-+              activity={activity ?? liveActivity}
-+              motion="still"
-+              composing={composing}
-+              chief={chiefBody}
-+            />
-+          }
-+          onFailed={() =>
-+            setFailed((current) =>
-+              current.includes(candidate.uri) ? current : [...current, candidate.uri],
-+            )
-+          }
-+        />
-+        <AvatarStatusBadges
-+          size={shown}
-+          surface={surface}
-+          main={main && picture.drawMainStar}
-+          lead={lead}
-+          working={working}
-+          muted={muted}
-+        />
-+      </View>
-+    );
-+  }
-+  const chief = chiefBody;
    return (
 -    <View style={{ width: size, height: size }}>
 -      <LogoAvatar
 +    <View style={{ width: size, height: size, overflow: "visible" }}>
-+      <LumenBotAvatar
++      <OpenMinisBotAvatar
          color={color}
 -        identity={identity}
 +        name={name}
@@ -170907,57 +170838,21 @@ index a58981051..8c010b24c 100644
          motion={motion}
 +        composing={composing}
          pokeable={pokeable}
-+        chief={chief}
-+        entrance={entrance}
++        chief={spec.role === "chief"}
 +      />
 +      <AvatarStatusBadges
 +        size={size}
 +        surface={surface}
-+        main={main}
++        main={showMainStar}
 +        lead={lead}
 +        working={working}
 +        muted={muted}
-+      />
-+    </View>
-+  );
-+});
-+
-+/**
-+ * One manifest picture, with the drawn body standing behind it until it is on screen. The
-+ * component is keyed by the picture's address, so a theme switch mounts a fresh view (an Image
-+ * whose URI changed in place can keep painting nothing) and its own "not here yet" state.
-+ */
-+function ManifestPicture({
-+  candidate,
-+  size,
-+  underlay,
-+  onFailed,
-+}: {
-+  candidate: LumenAvatarCandidate;
-+  size: number;
-+  underlay: ReactNode;
-+  onFailed: () => void;
-+}) {
-+  // A picture in the bundle is ready the moment it is asked for.
-+  const [ready, setReady] = useState(candidate.local !== null);
-+  return (
-+    <>
-+      {ready ? null : underlay}
-+      {/* contain: the whole drawing, never cropped; iOS plays the GIF natively. */}
-+      <Image
-+        key={candidate.uri}
-+        source={candidate.local !== null ? candidate.local : { uri: candidate.uri }}
-+        style={{ width: size, height: size }}
-+        resizeMode="contain"
-+        accessibilityIgnoresInvertColors
-+        onLoad={() => setReady(true)}
-+        onError={onFailed}
        />
 -      {working ? <WorkingDot size={size} muted={muted} /> : null}
 -      {muted ? <MutedBadge size={size} /> : null}
-+    </>
-+  );
-+}
+     </View>
+   );
++});
 +
 +export function AvatarStatusBadges({
 +  size,
@@ -170990,10 +170885,11 @@ index a58981051..8c010b24c 100644
 +      )}
 +    </>
 +  );
-+}
-+
+ }
+ 
+-function WorkingDot({ size, muted }: { size: number; muted: boolean }) {
 +function MainBotBadge({ size }: { size: number }) {
-+  const tokens = useMobileTokens();
+   const tokens = useMobileTokens();
 +  const { t } = useLingui();
 +  const badge = mainBotBadgeLayout(size);
 +  return (
@@ -171016,17 +170912,16 @@ index a58981051..8c010b24c 100644
 +      }}
 +    >
 +      <NativeSymbol ios="star.fill" android="star" size={badge.icon} color="#FFFFFF" />
-     </View>
-   );
- }
- 
--function WorkingDot({ size, muted }: { size: number; muted: boolean }) {
++    </View>
++  );
++}
++
 +/** The folder leader's flag: the app's own blue, legible on both themes. */
 +const LEAD_BADGE_COLOR = "#0A84FF";
 +
 +/** The folder leader: a small flag where the star and the working dot leave room. */
 +function LeadBadge({ size, corner }: { size: number; corner: AvatarBadgeCorner }) {
-   const tokens = useMobileTokens();
++  const tokens = useMobileTokens();
 +  const { t } = useLingui();
 +  const badge = Math.max(14, Math.round(size * 0.32));
 +  return (
@@ -171079,7 +170974,7 @@ index a58981051..8c010b24c 100644
          width: dot.diameter + dot.ring * 2,
          height: dot.diameter + dot.ring * 2,
          borderRadius: size,
-@@ -198,19 +354,20 @@ function WorkingDot({ size, muted }: { size: number; muted: boolean }) {
+@@ -198,19 +251,20 @@ function WorkingDot({ size, muted }: { size: number; muted: boolean }) {
    );
  }
  
@@ -171105,7 +171000,7 @@ index a58981051..8c010b24c 100644
          borderRadius: size,
          borderWidth: 2,
          borderColor: tokens.background,
-@@ -240,232 +397,3 @@ function MutedBadge({ size }: { size: number }) {
+@@ -240,232 +294,3 @@ function MutedBadge({ size }: { size: number }) {
      </View>
    );
  }
@@ -183811,6 +183706,149 @@ index 000000000..17996e3e0
 +    routine: { color: tokens.mutedForeground, fontSize: 13, marginTop: 2 },
 +  });
 +}
+diff --git a/apps/mobile/components/openminis-bot-avatar.tsx b/apps/mobile/components/openminis-bot-avatar.tsx
+new file mode 100644
+index 000000000..679013b28
+--- /dev/null
++++ b/apps/mobile/components/openminis-bot-avatar.tsx
+@@ -0,0 +1,137 @@
++import type { AvatarMotionMode } from "@rakazo/core";
++import {
++  openminisBlinkWait,
++  openminisMoodFor,
++  openminisSpecFor,
++  openminisSvg,
++} from "@rakazo/core";
++import { memo, useEffect, useState } from "react";
++import { Pressable, View } from "react-native";
++import { SvgXml } from "react-native-svg";
++import { useAfterFirstPaint } from "../lib/after-first-paint";
++import { useAvatarOnScreen } from "../lib/avatar-life";
++import { hapticImpact } from "../lib/haptics";
++import { useLumenReducedMotion } from "../lib/lumen/lumen-manifest-store";
++import { useResolvedAppearance } from "../lib/native";
++
++export type OpenMinisBotAvatarProps = {
++  color?: string;
++  name?: string;
++  id?: string;
++  size?: number;
++  status?: string;
++  identity?: string;
++  activity?: string;
++  motion?: AvatarMotionMode | "still";
++  composing?: boolean;
++  pokeable?: boolean;
++  chief?: boolean;
++  unread?: boolean;
++};
++
++function sleep(ms: number): Promise<void> {
++  return new Promise((resolve) => {
++    setTimeout(resolve, ms);
++  });
++}
++
++function rand(min: number, max: number): number {
++  return min + Math.random() * (max - min);
++}
++
++/**
++ * The OpenMinis avatar: a coloured shape with two white capsule eyes, drawn in SVG at the size
++ * it is shown. It blinks on its own unless motion is reduced, the avatar is off-screen, or the
++ * caller asked for a still frame.
++ */
++export const OpenMinisBotAvatar = memo(function OpenMinisBotAvatar({
++  name,
++  id,
++  size = 54,
++  status,
++  identity,
++  activity,
++  motion = "live",
++  composing = false,
++  pokeable = false,
++  chief = false,
++  unread = false,
++}: OpenMinisBotAvatarProps) {
++  const dark = useResolvedAppearance() === "dark";
++  const onScreen = useAvatarOnScreen();
++  const afterFirstPaint = useAfterFirstPaint();
++  const reducedMotion = useLumenReducedMotion();
++  const spec = openminisSpecFor({ name, identity: id ?? identity, chief });
++  const [shy, setShy] = useState(false);
++  const mood = openminisMoodFor({ status, activity, composing, unread, shy });
++  const working = mood === "focused";
++  const still =
++    reducedMotion ||
++    !afterFirstPaint ||
++    !onScreen ||
++    motion === "still" ||
++    motion === "static" ||
++    (motion === "lazy" && mood === "calm") ||
++    size < 22;
++  const [eyeOpen, setEyeOpen] = useState(1);
++
++  useEffect(() => {
++    if (still) {
++      setEyeOpen(1);
++      return;
++    }
++    let cancelled = false;
++    const run = async () => {
++      await sleep(rand(300, 1600));
++      while (!cancelled) {
++        const wait = openminisBlinkWait(working);
++        await sleep(rand(wait.min, wait.max) * 1000);
++        if (cancelled) return;
++        setEyeOpen(0.1);
++        await sleep(120);
++        if (cancelled) return;
++        setEyeOpen(1);
++        if (Math.random() < 0.2) {
++          await sleep(180);
++          if (cancelled) return;
++          setEyeOpen(0.1);
++          await sleep(100);
++          if (cancelled) return;
++          setEyeOpen(1);
++        }
++      }
++    };
++    void run();
++    return () => {
++      cancelled = true;
++    };
++  }, [still, working]);
++
++  const xml = openminisSvg(spec, {
++    size,
++    dark,
++    eyeOpen: still ? 1 : eyeOpen,
++    mood,
++    showsFace: true,
++  });
++
++  const body = (
++    <View style={{ width: size, height: size }} pointerEvents={pokeable ? "box-only" : "none"}>
++      <SvgXml xml={xml} width={size} height={size} />
++    </View>
++  );
++
++  if (!pokeable) return body;
++  return (
++    <Pressable
++      onPressIn={() => {
++        setShy(true);
++        hapticImpact();
++      }}
++      onPressOut={() => setShy(false)}
++      accessibilityRole="button"
++    >
++      {body}
++    </Pressable>
++  );
++});
 diff --git a/apps/mobile/components/peer-receipt-line.tsx b/apps/mobile/components/peer-receipt-line.tsx
 index 77d119d46..fa3aefeef 100644
 --- a/apps/mobile/components/peer-receipt-line.tsx
@@ -197950,25 +197988,159 @@ index 8a24afe91..ff7539157 100644
        easing: Easing.inOut(Easing.cubic),
      });
 diff --git a/apps/mobile/lib/bot-avatar-render.test.tsx b/apps/mobile/lib/bot-avatar-render.test.tsx
-index 33a71724b..7e9d5457b 100644
+index 33a71724b..4476ab12f 100644
 --- a/apps/mobile/lib/bot-avatar-render.test.tsx
 +++ b/apps/mobile/lib/bot-avatar-render.test.tsx
-@@ -2,12 +2,13 @@
+@@ -1,33 +1,19 @@
+ // @vitest-environment jsdom
  
- import {
-   avatarIdentitySeed,
-+  BABYGROK_BODIES,
-+  BABYGROK_VERTICES,
-   LOGO_BODY_PATH,
-   logoAvatarFrame,
-   logoAvatarTraits,
-   organicAvatarPath,
-   seededLogoAvatarColor,
+-import {
+-  avatarIdentitySeed,
+-  LOGO_BODY_PATH,
+-  logoAvatarFrame,
+-  logoAvatarTraits,
+-  organicAvatarPath,
+-  seededLogoAvatarColor,
 -  shippedBotAvatarShapePath,
- } from "@rakazo/core";
+-} from "@rakazo/core";
++import { openminisBodyPath, openminisHex, openminisSpecFor } from "@rakazo/core";
  import type { ColorTokens } from "@rakazo/ui-tokens";
  import { tokensForAppearance } from "@rakazo/ui-tokens";
-@@ -134,6 +135,7 @@ vi.mock("../components/native-symbol", () => ({
+ import type { ReactNode } from "react";
+-import { act, createElement, useRef } from "react";
++import { act, createElement } from "react";
+ import type { Root } from "react-dom/client";
+ import { createRoot } from "react-dom/client";
+ import { afterEach, describe, expect, it, vi } from "vitest";
+ import type { BotAvatarProps } from "../components/bot-avatar";
+ import { BotAvatar } from "../components/bot-avatar";
+-import { AvatarScreenFocus } from "./avatar-life";
+ import { mobileLogoAvatarActivity } from "./logo-avatar-activity";
+ 
+-const nativeProps = vi.hoisted(() => [] as Array<() => Record<string, unknown>>);
+ const mobileTokens = vi.hoisted(() => ({ current: undefined as ColorTokens | undefined }));
+-const nativeMotion = vi.hoisted(() => ({
+-  reduced: true,
+-  styles: [] as Array<() => { transform: unknown[] }>,
+-  timings: [] as number[],
+-}));
++const reducedMotion = vi.hoisted(() => ({ current: false }));
+ 
+ vi.mock("react-native", () => ({
+   View: ({
+@@ -52,88 +38,68 @@ vi.mock("react-native", () => ({
+   Pressable: ({
+     children,
+     onPress,
++    onPressIn,
++    onPressOut,
+     accessible,
+   }: {
+     children?: ReactNode;
+     onPress?: () => void;
++    onPressIn?: () => void;
++    onPressOut?: () => void;
+     accessible?: boolean;
+   }) =>
+     createElement(
+       "button",
+-      { type: "button", onClick: onPress, "data-accessible": String(accessible) },
++      {
++        type: "button",
++        onClick: onPress,
++        onMouseDown: onPressIn,
++        onMouseUp: onPressOut,
++        "data-accessible": String(accessible),
++      },
+       children,
+     ),
+   Image: ({ source }: { source: { uri: string } }) => createElement("img", { src: source.uri }),
++  AccessibilityInfo: {
++    isReduceMotionEnabled: async () => false,
++    addEventListener: () => ({ remove: () => undefined }),
++  },
+ }));
+ 
+ vi.mock("react-native-reanimated", () => {
+   const passthrough = ({ children }: { children?: ReactNode }) =>
+     createElement("div", null, children);
+   return {
+-    default: {
+-      View: passthrough,
+-      createAnimatedComponent: (component: unknown) => component,
+-    },
++    default: { View: passthrough, createAnimatedComponent: (component: unknown) => component },
+     cancelAnimation: () => undefined,
+     Easing: { linear: (value: number) => value, inOut: (value: unknown) => value, cubic: 0 },
+     ReduceMotion: { Never: "never" },
+     withSpring: (value: unknown) => value,
+-    useAnimatedProps: (sample: () => Record<string, unknown>) => {
+-      nativeProps.push(sample);
+-      return {};
+-    },
++    useAnimatedProps: () => ({}),
+     useDerivedValue: (sample: () => unknown) => ({ value: sample() }),
+-    useAnimatedStyle: (sample: () => { transform: unknown[] }) => {
+-      nativeMotion.styles.push(sample);
+-      return {};
+-    },
+-    useReducedMotion: () => nativeMotion.reduced,
+-    useSharedValue: <T,>(value: T) => useRef({ value }).current,
++    useAnimatedStyle: () => ({}),
++    useReducedMotion: () => reducedMotion.current,
++    useSharedValue: <T,>(value: T) => ({ value }),
+     withRepeat: (value: unknown) => value,
+-    withTiming: (value: unknown, options?: { duration: number }) => {
+-      const duration = options?.duration ?? 0;
+-      nativeMotion.timings.push(duration);
+-      return value === 1 && duration > 0 && duration < 1000 ? 0.4 : value;
+-    },
++    withTiming: (value: unknown) => value,
+   };
+ });
+ 
+-vi.mock("react-native-svg", () => {
+-  const element =
+-    (tag: string) =>
+-    ({
+-      children,
+-      ...props
+-    }: {
+-      children?: ReactNode;
+-      d?: string;
+-      fill?: string;
+-      stopColor?: string;
+-    }) =>
+-      createElement(
+-        tag,
+-        { "data-d": props.d, "data-fill": props.fill, "data-stop-color": props.stopColor },
+-        children,
+-      );
+-  return {
+-    default: element("svg"),
+-    Ellipse: element("ellipse"),
+-    G: element("g"),
+-    Path: element("path"),
+-    Rect: element("rect"),
+-    Defs: element("defs"),
+-    ClipPath: element("clipPath"),
+-    Mask: element("mask"),
+-    LinearGradient: element("linearGradient"),
+-    RadialGradient: element("radialGradient"),
+-    Stop: element("stop"),
+-  };
+-});
++vi.mock("react-native-svg", () => ({
++  SvgXml: ({ xml, width, height }: { xml: string; width: number; height: number }) =>
++    createElement("div", {
++      "data-svgxml": "1",
++      "data-width": String(width),
++      "data-height": String(height),
++      dangerouslySetInnerHTML: { __html: xml },
++    }),
++}));
+ 
+ vi.mock("../components/native-symbol", () => ({
    NativeSymbol: ({ color }: { color: string }) => createElement("i", { "data-color": color }),
  }));
  vi.mock("./native", () => ({
@@ -197976,106 +198148,275 @@ index 33a71724b..7e9d5457b 100644
    useMobileTokens: () =>
      mobileTokens.current ?? {
        background: "#FFF",
-@@ -229,6 +231,25 @@ describe("BotAvatar", () => {
+@@ -144,45 +110,23 @@ vi.mock("./native", () => ({
+       secondary: "#7676801F",
+     },
+ }));
++vi.mock("./after-first-paint", () => ({
++  useAfterFirstPaint: () => true,
++}));
++vi.mock("./avatar-life", () => ({
++  useAvatarOnScreen: () => true,
++  useSettling: () => false,
++  AvatarScreenFocus: ({ children }: { children?: ReactNode }) => children,
++}));
++vi.mock("./lumen/lumen-manifest-store", () => ({
++  useLumenManifest: () => null,
++  useLumenReducedMotion: () => reducedMotion.current,
++}));
++vi.mock("./haptics", () => ({
++  hapticImpact: () => undefined,
++}));
  
-   const bodies = (view: HTMLElement) =>
-     Array.from(view.querySelectorAll("path"), (path) => path.dataset.d);
-+  // A body's outline is drawn by an animated prop, so the shape it wears is read from the
-+  // samples the canvas receives rather than from the static markup.
-+  const drawnBodies = () =>
-+    nativeProps
-+      .map((sample) => sample())
-+      .map((props) => props.d)
-+      .filter((d): d is string => typeof d === "string" && d.startsWith("M") && d.endsWith("Z"))
-+      .at(-1);
-+  const allClosedPaths = () =>
-+    nativeProps
-+      .map((sample) => sample())
-+      .map((props) => props.d)
-+      .filter((d): d is string => typeof d === "string" && d.startsWith("M") && d.endsWith("Z"))
-+      .join("|");
-+  const drawnEyes = () =>
-+    nativeProps
-+      .map((sample) => sample())
-+      .filter((props) => typeof props.strokeWidth === "number")
-+      .at(-1);
+ describe("BotAvatar", () => {
+-  it("renders the thinking pose only while the production mobile store has a genuine marker", () => {
+-    mobileLogoAvatarActivity.hydrate("native-test", {
+-      threadId: "native-thread",
+-      cursor: 0,
+-      botId: "bot-1",
+-      run: { id: "native-run", botId: "bot-1", status: "running", trigger: "user" },
+-    });
+-    render("#10B981", "rakazo");
+-    const latestEye = () =>
+-      nativeProps
+-        .map((sample) => sample())
+-        .filter((props) => typeof props.cx === "number")
+-        .slice(-2)[0]!;
+-    const send = (seq: number, thinking: boolean) =>
+-      act(() =>
+-        mobileLogoAvatarActivity.apply("native-test", {
+-          threadId: "native-thread",
+-          seq,
+-          botId: "bot-1",
+-          runId: "native-run",
+-          type: "thread.meta",
+-          payload: { activity: { thinking } },
+-        }),
+-      );
+-    send(1, true);
+-    const frame = logoAvatarFrame("thinking", logoAvatarTraits("bot-1", "#10B981"), 0, true);
+-    expect(latestEye()).toMatchObject({ cx: 40.5 + frame.eyeX, cy: 49 + frame.eyeY });
+-    send(2, false);
+-    expect(latestEye()).toMatchObject({ cx: 40.5, cy: 49 });
+-  });
+-
+-  it("uses the same shared seed colour as SSR for a bot without a saved colour", () => {
+-    const node = render("", "rakazo");
+-    expect(
+-      node.querySelector(`stop[data-stop-color="${seededLogoAvatarColor("bot-1").toLowerCase()}"]`),
+-    ).not.toBeNull();
+-  });
+   let root: Root | undefined;
+   let container: HTMLDivElement | undefined;
  
-   it("preserves the shared native tap reactions on the Rakazo set", () => {
-     nativeMotion.reduced = false;
-@@ -287,14 +308,12 @@ describe("BotAvatar", () => {
-     expect(nativeMotion.timings.filter((ms) => ms > 0 && ms < 1000)).toEqual([]);
+@@ -192,165 +136,61 @@ describe("BotAvatar", () => {
+     root = undefined;
+     container = undefined;
+     vi.unstubAllGlobals();
+-    nativeProps.length = 0;
+-    nativeMotion.reduced = true;
+-    nativeMotion.styles.length = 0;
+-    nativeMotion.timings.length = 0;
++    reducedMotion.current = false;
+     mobileLogoAvatarActivity.clear();
+     mobileTokens.current = undefined;
    });
  
+-  function render(
+-    color: string,
+-    avatarSet?: "organic" | "rakazo",
+-    props: Partial<BotAvatarProps> = {},
+-    focused = true,
+-  ) {
++  function render(color: string, props: Partial<BotAvatarProps> = {}) {
+     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+     container = document.createElement("div");
+     document.body.append(container);
+     root = createRoot(container);
+-    const avatar = (
+-      <BotAvatar color={color} avatarSet={avatarSet} identity="bot-1" size={42} {...props} />
+-    );
+     act(() =>
+       root?.render(
+-        focused ? (
+-          avatar
+-        ) : (
+-          <AvatarScreenFocus navigation={{ isFocused: () => false, addListener: () => () => {} }}>
+-            {avatar}
+-          </AvatarScreenFocus>
+-        ),
++        <BotAvatar color={color} identity={props.identity ?? "bot-1"} size={42} {...props} />,
+       ),
+     );
+     return container;
+   }
+ 
+-  const bodies = (view: HTMLElement) =>
+-    Array.from(view.querySelectorAll("path"), (path) => path.dataset.d);
+-
+-  it("preserves the shared native tap reactions on the Rakazo set", () => {
+-    nativeMotion.reduced = false;
+-    const view = render("#3EC5A8", "rakazo", { pokeable: true, motion: "running" });
+-    const button = view.querySelector("button");
+-    expect(button).not.toBeNull();
+-    expect(button!.dataset.accessible).toBe("false");
+-    act(() => button!.click());
+-    expect(nativeMotion.timings.filter((ms) => ms < 1000)).toEqual([800]);
+-    expect(nativeMotion.styles.at(-1)!().transform).not.toEqual([
+-      { translateY: 0 },
+-      { rotate: "0deg" },
+-      { scaleY: 1 },
+-    ]);
+-    act(() => button!.click());
+-    expect(nativeMotion.timings.filter((ms) => ms < 1000)).toEqual([800, 700]);
+-    expect(nativeMotion.timings.filter((ms) => ms >= 1000)).toEqual([24_000]);
+-  });
+-
+-  it("settles an active tap when reduced motion becomes enabled", () => {
+-    nativeMotion.reduced = false;
+-    const view = render("#3EC5A8", "rakazo", { pokeable: true, motion: "running" });
+-    act(() => view.querySelector("button")!.click());
+-    nativeMotion.reduced = true;
+-    act(() =>
+-      root?.render(
+-        <BotAvatar
+-          color="#3EC5A8"
+-          avatarSet="rakazo"
+-          identity="bot-1"
+-          size={42}
+-          status="running"
+-          pokeable
+-          motion="running"
+-        />,
+-      ),
+-    );
+-    expect(nativeMotion.styles.at(-1)!().transform).toEqual([
+-      { translateY: 0 },
+-      { rotate: "0deg" },
+-      { scaleY: 1 },
+-    ]);
+-  });
+-
+-  it.each(["reduced", "offscreen", "static"])("keeps tap motion still when %s", (condition) => {
+-    nativeMotion.reduced = condition === "reduced";
+-    const view = render(
+-      "#3EC5A8",
+-      "rakazo",
+-      { pokeable: true, motion: condition === "static" ? "static" : "running" },
+-      condition !== "offscreen",
+-    );
+-    const button = view.querySelector("button");
+-    expect(button).not.toBeNull();
+-    act(() => button!.click());
+-    expect(nativeMotion.timings.filter((ms) => ms > 0 && ms < 1000)).toEqual([]);
+-  });
+-
 -  it("draws a plain-colour bot with the organic body for its identity", () => {
-+  it("draws a plain-colour bot with an official body, never an organic blob", () => {
-     const view = render("#3EC5A8");
+-    const view = render("#3EC5A8");
 -    expect(bodies(view)).toEqual([organicAvatarPath(avatarIdentitySeed("bot-1"))]);
 -    // A pale body keeps dark eyes on a light page, the same as a group title's still faces.
 -    expect(Array.from(view.querySelectorAll("rect"), (eye) => eye.dataset.fill)).toEqual([
 -      "#141414",
 -      "#141414",
 -    ]);
-+    // A bot with no studio shape wears the reference app's first body in its colour.
-+    expect(bodies(view)).not.toContain(organicAvatarPath(avatarIdentitySeed("bot-1")));
-+    // The body and its two eyes are drawn as paths; nothing is a raster picture.
-+    expect(view.querySelectorAll("path").length).toBeGreaterThanOrEqual(2);
++  it("draws the OpenMinis body for a named role, not a raster picture", () => {
++    const view = render("#3EC5A8", { name: "小猪包", identity: "chief" });
      expect(view.querySelector("img")).toBeNull();
-     expect(view.querySelector("ellipse")).toBeNull();
-   });
-@@ -306,12 +325,37 @@ describe("BotAvatar", () => {
+-    expect(view.querySelector("ellipse")).toBeNull();
++    const svg = view.querySelector("svg");
++    expect(svg).not.toBeNull();
++    const fill = svg?.querySelector("path")?.getAttribute("fill")?.toLowerCase();
++    expect(fill).toBe(openminisHex(10, false).toLowerCase());
++    expect(svg?.querySelector("path")?.getAttribute("d")).toBe(openminisBodyPath(0));
++    expect(svg?.innerHTML).toContain("#ffffff");
    });
  
-   it("keeps a shape picked in Avatar Studio", () => {
+-  it("keeps a picture", () => {
+-    const view = render("data:image/png;base64,abc");
+-    expect(view.querySelector("img")?.getAttribute("src")).toBe("data:image/png;base64,abc");
+-    expect(bodies(view)).toEqual([]);
++  it("gives two roster bots different shapes", () => {
++    const chief = render("#000", { name: "小猪包" });
++    const chiefPath = chief.querySelector("path")?.getAttribute("d");
++    act(() => root?.unmount());
++    container?.remove();
++    const dev = render("#000", { name: "开发助理" });
++    const devPath = dev.querySelector("path")?.getAttribute("d");
++    expect(devPath).toBe(openminisBodyPath(7));
++    expect(devPath).not.toBe(chiefPath);
+   });
+ 
+-  it("keeps a shape picked in Avatar Studio", () => {
 -    const view = render("#8B5CF6::shape_3");
 -    expect(bodies(view)).toEqual([shippedBotAvatarShapePath(3)]);
 -    // Studio shapes wear the same bar eyes as organic bodies.
 -    expect(view.querySelectorAll("rect")).toHaveLength(2);
 -    expect(view.querySelector("ellipse")).toBeNull();
-+    render("#8B5CF6::shape_3");
-+    // The tablet, drawn from the reference app's own ring: every body carries the same 64
-+    // vertices, in the same order, which is what lets one morph into another.
-+    const outline = drawnBodies() ?? "";
-+    const points = outline
-+      .slice(1, -1)
-+      .split("L")
-+      .map((pair) => pair.split(" ").map(Number));
-+    expect(points).toHaveLength(BABYGROK_VERTICES);
-+    const ring = BABYGROK_BODIES.tablet!.ring;
-+    points.forEach(([x, y], index) => {
-+      expect(x).toBeCloseTo(ring[index * 2]!, 1);
-+      expect(y).toBeCloseTo(ring[index * 2 + 1]!, 1);
-+    });
-+    // The eyes are one stroked, round-capped line each, so a pleased face can bend them.
-+    const eyes = drawnEyes();
-+    expect(eyes?.d).toEqual(expect.stringContaining("M"));
-+    expect(eyes?.strokeWidth).toBeGreaterThan(0);
-+  });
-+
-+  it("gives every shape its own body", () => {
-+    // Two bodies may wear the same fitted eyes, so compare every outline drawn, not the last one.
-+    render("#8B5CF6::shape_3");
-+    const tablet = allClosedPaths();
-+    act(() => root?.unmount());
-+    root = undefined;
-+    container?.remove();
-+    render("#8B5CF6::shape_0");
-+    expect(allClosedPaths()).not.toBe(tablet);
-   });
-+
-   it("draws the explicitly selected Rakazo set as paths and gradients without a raster image", () => {
-     const view = render("#3EC5A8", "rakazo");
-     expect(bodies(view)).toContain(LOGO_BODY_PATH);
-@@ -328,8 +372,8 @@ describe("BotAvatar", () => {
+-  });
+-  it("draws the explicitly selected Rakazo set as paths and gradients without a raster image", () => {
+-    const view = render("#3EC5A8", "rakazo");
+-    expect(bodies(view)).toContain(LOGO_BODY_PATH);
+-    expect(bodies(view)).not.toContain(organicAvatarPath(avatarIdentitySeed("bot-1")));
+-    expect(view.querySelector("img, image")).toBeNull();
+-    expect(view.querySelectorAll("ellipse")).toHaveLength(2);
+-    expect(view.querySelector("radialGradient")).not.toBeNull();
++  it("does not add an extra star on the chief", () => {
++    const view = render("#D8B878", { name: "小猪包", main: true });
++    expect(view.querySelector('[aria-label="Main bot"]')).toBeNull();
++    expect(openminisSpecFor({ name: "小猪包", chief: true }).suppressMainStar).toBe(true);
    });
  
-   it("keeps an explicitly selected original shape when the stored set is Rakazo", () => {
+-  it("keeps a custom picture when the stored set is Rakazo", () => {
+-    const view = render("data:image/png;base64,abc", "rakazo");
++  it("keeps a photo", () => {
++    const view = render("data:image/png;base64,abc");
+     expect(view.querySelector("img")?.getAttribute("src")).toBe("data:image/png;base64,abc");
+-    expect(bodies(view)).toEqual([]);
+-  });
+-
+-  it("keeps an explicitly selected original shape when the stored set is Rakazo", () => {
 -    const view = render("#8B5CF6::shape_3", "rakazo");
 -    expect(bodies(view)).toEqual([shippedBotAvatarShapePath(3)]);
-+    render("#8B5CF6::shape_3", "rakazo");
-+    expect(drawnBodies()?.split("L")).toHaveLength(BABYGROK_VERTICES);
+-  });
+-  it("updates native SVG hosts with finite six-value matrices and numeric eye props", () => {
+-    render("#3EC5A8", "rakazo");
+-    const updates = nativeProps.map((sample) => sample());
+-    const matrices = updates.flatMap((update) =>
+-      Array.isArray(update.matrix) ? [update.matrix] : [],
+-    );
+-    expect(matrices).toHaveLength(5);
+-    for (const matrix of matrices) {
+-      expect(matrix).toHaveLength(6);
+-      expect(matrix.every(Number.isFinite)).toBe(true);
+-    }
+-    expect(updates.filter((update) => "cx" in update)).toHaveLength(2);
+-    expect(updates.every((update) => !("transform" in update))).toBe(true);
++    expect(view.querySelector("svg")).toBeNull();
    });
-   it("updates native SVG hosts with finite six-value matrices and numeric eye props", () => {
-     render("#3EC5A8", "rakazo");
+ 
+-  it("keeps eyes legible on a saved dark body in the light theme", () => {
+-    const view = render("#101014", "rakazo");
+-    expect(
+-      Array.from(view.querySelectorAll("ellipse"), (eye) => eye.getAttribute("data-fill")),
+-    ).toEqual(["#FFF", "#FFF"]);
++  it("still offers a poke target when asked", () => {
++    const view = render("#3EC5A8", { pokeable: true, name: "开发助理" });
++    expect(view.querySelector("button")).not.toBeNull();
+   });
+ 
+   it.each([
+@@ -361,10 +201,9 @@ describe("BotAvatar", () => {
+   ] as const)("draws the muted badge with the %s theme tokens for %s", (appearance, color) => {
+     const tokens = tokensForAppearance(appearance);
+     mobileTokens.current = tokens;
+-    const badge = render(color, undefined, { muted: true }).querySelector<HTMLElement>(
++    const badge = render(color, { muted: true }).querySelector<HTMLElement>(
+       '[aria-label="Notifications silenced"]',
+     );
+-    // An opaque backing keeps the picture from showing through the translucent fill.
+     expect(badge?.dataset).toMatchObject({
+       border: tokens.background,
+       background: tokens.background,
 diff --git a/apps/mobile/lib/bot-avatar.test.ts b/apps/mobile/lib/bot-avatar.test.ts
 index 180908eb4..8e5ed105e 100644
 --- a/apps/mobile/lib/bot-avatar.test.ts
@@ -213210,127 +213551,25 @@ index 000000000..1d1b965f6
 +}
 diff --git a/apps/mobile/lib/lumen/lumen-builtin-avatars.ts b/apps/mobile/lib/lumen/lumen-builtin-avatars.ts
 new file mode 100644
-index 000000000..6347aaae5
+index 000000000..ef6bf28c1
 --- /dev/null
 +++ b/apps/mobile/lib/lumen/lumen-builtin-avatars.ts
-@@ -0,0 +1,146 @@
+@@ -0,0 +1,32 @@
 +/**
-+ * The Lumen pictures the app itself carries, so the first frame after launch already shows the
-+ * finished art: no network, no download, no blank avatar. The manifest below is the same file the
-+ * server hosts, so a build and a server are read by one parser and pick the same picture.
-+ *
-+ * Metro only bundles a picture the source names, which is why every one of them has its own
-+ * literal require(). Generated from assets/lumen-avatars/manifest.json by
-+ * work/v36/gen-lumen-builtin.py — regenerate it whenever that folder changes.
++ * The client no longer ships or fetches Lumen pictures. This module stays only so older
++ * imports of the picture table keep compiling; every lookup is empty.
 + */
 +
 +import type { LumenManifest } from "./lumen-manifest";
-+import { parseLumenManifest } from "./lumen-manifest";
-+import rawManifest from "../../assets/lumen-avatars/manifest.json";
 +
-+/**
-+ * The address the shipped manifest's own picture paths resolve against. Picture URIs then read
-+ * `https://builtin.rakazo.app/lumen-avatars/assets/...`; only the path after `/lumen-avatars/`
-+ * is ever used, to find the picture in the bundle.
-+ */
 +export const LUMEN_BUILTIN_BASE_URL = "https://builtin.rakazo.app/lumen-avatars/manifest.json";
++export const LUMEN_BUILTIN_MANIFEST: LumenManifest | null = null;
++export const LUMEN_BUILTIN_VERSION = "";
 +
-+/** Every picture in the bundle, by the path the manifest names it by. */
-+function pictures(): Record<string, number> {
-+  return {
-+    "assets/header/chief-dark.gif": require("../../assets/lumen-avatars/assets/header/chief-dark.gif"),
-+    "assets/header/chief-light.gif": require("../../assets/lumen-avatars/assets/header/chief-light.gif"),
-+    "assets/header/cook-dark.gif": require("../../assets/lumen-avatars/assets/header/cook-dark.gif"),
-+    "assets/header/cook-light.gif": require("../../assets/lumen-avatars/assets/header/cook-light.gif"),
-+    "assets/header/dev-dark.gif": require("../../assets/lumen-avatars/assets/header/dev-dark.gif"),
-+    "assets/header/dev-light.gif": require("../../assets/lumen-avatars/assets/header/dev-light.gif"),
-+    "assets/header/life-dark.gif": require("../../assets/lumen-avatars/assets/header/life-dark.gif"),
-+    "assets/header/life-light.gif": require("../../assets/lumen-avatars/assets/header/life-light.gif"),
-+    "assets/header/lotto-dark.gif": require("../../assets/lumen-avatars/assets/header/lotto-dark.gif"),
-+    "assets/header/lotto-light.gif": require("../../assets/lumen-avatars/assets/header/lotto-light.gif"),
-+    "assets/header/memo-dark.gif": require("../../assets/lumen-avatars/assets/header/memo-dark.gif"),
-+    "assets/header/memo-light.gif": require("../../assets/lumen-avatars/assets/header/memo-light.gif"),
-+    "assets/header/novel-dark.gif": require("../../assets/lumen-avatars/assets/header/novel-dark.gif"),
-+    "assets/header/novel-light.gif": require("../../assets/lumen-avatars/assets/header/novel-light.gif"),
-+    "assets/header/ops-dark.gif": require("../../assets/lumen-avatars/assets/header/ops-dark.gif"),
-+    "assets/header/ops-light.gif": require("../../assets/lumen-avatars/assets/header/ops-light.gif"),
-+    "assets/header/oracle-dark.gif": require("../../assets/lumen-avatars/assets/header/oracle-dark.gif"),
-+    "assets/header/oracle-light.gif": require("../../assets/lumen-avatars/assets/header/oracle-light.gif"),
-+    "assets/header/ppt-dark.gif": require("../../assets/lumen-avatars/assets/header/ppt-dark.gif"),
-+    "assets/header/ppt-light.gif": require("../../assets/lumen-avatars/assets/header/ppt-light.gif"),
-+    "assets/header/quiz-dark.gif": require("../../assets/lumen-avatars/assets/header/quiz-dark.gif"),
-+    "assets/header/quiz-light.gif": require("../../assets/lumen-avatars/assets/header/quiz-light.gif"),
-+    "assets/list/chief-dark.gif": require("../../assets/lumen-avatars/assets/list/chief-dark.gif"),
-+    "assets/list/chief-light.gif": require("../../assets/lumen-avatars/assets/list/chief-light.gif"),
-+    "assets/list/cook-dark.gif": require("../../assets/lumen-avatars/assets/list/cook-dark.gif"),
-+    "assets/list/cook-light.gif": require("../../assets/lumen-avatars/assets/list/cook-light.gif"),
-+    "assets/list/dev-dark.gif": require("../../assets/lumen-avatars/assets/list/dev-dark.gif"),
-+    "assets/list/dev-light.gif": require("../../assets/lumen-avatars/assets/list/dev-light.gif"),
-+    "assets/list/life-dark.gif": require("../../assets/lumen-avatars/assets/list/life-dark.gif"),
-+    "assets/list/life-light.gif": require("../../assets/lumen-avatars/assets/list/life-light.gif"),
-+    "assets/list/lotto-dark.gif": require("../../assets/lumen-avatars/assets/list/lotto-dark.gif"),
-+    "assets/list/lotto-light.gif": require("../../assets/lumen-avatars/assets/list/lotto-light.gif"),
-+    "assets/list/memo-dark.gif": require("../../assets/lumen-avatars/assets/list/memo-dark.gif"),
-+    "assets/list/memo-light.gif": require("../../assets/lumen-avatars/assets/list/memo-light.gif"),
-+    "assets/list/novel-dark.gif": require("../../assets/lumen-avatars/assets/list/novel-dark.gif"),
-+    "assets/list/novel-light.gif": require("../../assets/lumen-avatars/assets/list/novel-light.gif"),
-+    "assets/list/ops-dark.gif": require("../../assets/lumen-avatars/assets/list/ops-dark.gif"),
-+    "assets/list/ops-light.gif": require("../../assets/lumen-avatars/assets/list/ops-light.gif"),
-+    "assets/list/oracle-dark.gif": require("../../assets/lumen-avatars/assets/list/oracle-dark.gif"),
-+    "assets/list/oracle-light.gif": require("../../assets/lumen-avatars/assets/list/oracle-light.gif"),
-+    "assets/list/ppt-dark.gif": require("../../assets/lumen-avatars/assets/list/ppt-dark.gif"),
-+    "assets/list/ppt-light.gif": require("../../assets/lumen-avatars/assets/list/ppt-light.gif"),
-+    "assets/list/quiz-dark.gif": require("../../assets/lumen-avatars/assets/list/quiz-dark.gif"),
-+    "assets/list/quiz-light.gif": require("../../assets/lumen-avatars/assets/list/quiz-light.gif"),
-+    "assets/static/chief-dark.png": require("../../assets/lumen-avatars/assets/static/chief-dark.png"),
-+    "assets/static/chief-light.png": require("../../assets/lumen-avatars/assets/static/chief-light.png"),
-+    "assets/static/cook-dark.png": require("../../assets/lumen-avatars/assets/static/cook-dark.png"),
-+    "assets/static/cook-light.png": require("../../assets/lumen-avatars/assets/static/cook-light.png"),
-+    "assets/static/dev-dark.png": require("../../assets/lumen-avatars/assets/static/dev-dark.png"),
-+    "assets/static/dev-light.png": require("../../assets/lumen-avatars/assets/static/dev-light.png"),
-+    "assets/static/life-dark.png": require("../../assets/lumen-avatars/assets/static/life-dark.png"),
-+    "assets/static/life-light.png": require("../../assets/lumen-avatars/assets/static/life-light.png"),
-+    "assets/static/lotto-dark.png": require("../../assets/lumen-avatars/assets/static/lotto-dark.png"),
-+    "assets/static/lotto-light.png": require("../../assets/lumen-avatars/assets/static/lotto-light.png"),
-+    "assets/static/memo-dark.png": require("../../assets/lumen-avatars/assets/static/memo-dark.png"),
-+    "assets/static/memo-light.png": require("../../assets/lumen-avatars/assets/static/memo-light.png"),
-+    "assets/static/novel-dark.png": require("../../assets/lumen-avatars/assets/static/novel-dark.png"),
-+    "assets/static/novel-light.png": require("../../assets/lumen-avatars/assets/static/novel-light.png"),
-+    "assets/static/ops-dark.png": require("../../assets/lumen-avatars/assets/static/ops-dark.png"),
-+    "assets/static/ops-light.png": require("../../assets/lumen-avatars/assets/static/ops-light.png"),
-+    "assets/static/oracle-dark.png": require("../../assets/lumen-avatars/assets/static/oracle-dark.png"),
-+    "assets/static/oracle-light.png": require("../../assets/lumen-avatars/assets/static/oracle-light.png"),
-+    "assets/static/ppt-dark.png": require("../../assets/lumen-avatars/assets/static/ppt-dark.png"),
-+    "assets/static/ppt-light.png": require("../../assets/lumen-avatars/assets/static/ppt-light.png"),
-+    "assets/static/quiz-dark.png": require("../../assets/lumen-avatars/assets/static/quiz-dark.png"),
-+    "assets/static/quiz-light.png": require("../../assets/lumen-avatars/assets/static/quiz-light.png"),
-+  };
-+}
-+
-+/** The shipped manifest: what every avatar draws from before the server answers. */
-+export const LUMEN_BUILTIN_MANIFEST: LumenManifest | null = parseLumenManifest(
-+  rawManifest,
-+  LUMEN_BUILTIN_BASE_URL,
-+);
-+
-+/** The version of the art this build carries; a manifest naming it names the same picture set. */
-+export const LUMEN_BUILTIN_VERSION = LUMEN_BUILTIN_MANIFEST?.version ?? "";
-+
-+/** The prefix every manifest path sits behind, on any server. */
-+const PICTURE_PREFIX = "/lumen-avatars/";
-+
-+let loaded: Record<string, number> | null = null;
-+
-+/** The bundled pictures, by the path the manifest names them by, read on the first avatar. */
 +export function lumenBuiltinAssets(): Record<string, number> {
-+  if (!loaded) loaded = pictures();
-+  return loaded;
++  return {};
 +}
 +
-+/**
-+ * The picture path a manifest URI names, without the prefix every server puts it behind, or null
-+ * when the URI is not a picture address at all.
-+ */
 +export function lumenBuiltinPath(uri: string): string | null {
 +  let path: string;
 +  try {
@@ -213338,27 +213577,15 @@ index 000000000..6347aaae5
 +  } catch {
 +    return null;
 +  }
-+  return path.startsWith(PICTURE_PREFIX) ? path.slice(PICTURE_PREFIX.length) : null;
++  return path.startsWith("/lumen-avatars/") ? path.slice("/lumen-avatars/".length) : null;
 +}
 +
-+/**
-+ * The bundled picture a manifest URI names, or null when this build does not carry it. Only the
-+ * path matters: the same art is served from the built-in address and from the app's own server.
-+ */
-+export function lumenBuiltinAssetFor(uri: string): number | null {
-+  const path = lumenBuiltinPath(uri);
-+  if (!path) return null;
-+  try {
-+    return lumenBuiltinAssets()[path] ?? null;
-+  } catch {
-+    // A run with no picture table (a bare unit test, a stripped build) draws the fallback body.
-+    return null;
-+  }
++export function lumenBuiltinAssetFor(_uri: string): number | null {
++  return null;
 +}
 +
-+/** True when a manifest (the cache's or the server's) names the same art this build carries. */
-+export function lumenBuiltinVersion(version: string | null | undefined): boolean {
-+  return Boolean(LUMEN_BUILTIN_VERSION) && version === LUMEN_BUILTIN_VERSION;
++export function lumenBuiltinVersion(_version: string | null | undefined): boolean {
++  return false;
 +}
 diff --git a/apps/mobile/lib/lumen/lumen-emblems.ts b/apps/mobile/lib/lumen/lumen-emblems.ts
 new file mode 100644
@@ -213669,132 +213896,28 @@ index 000000000..f0d7509b8
 +];
 diff --git a/apps/mobile/lib/lumen/lumen-manifest-store.ts b/apps/mobile/lib/lumen/lumen-manifest-store.ts
 new file mode 100644
-index 000000000..4efc0e963
+index 000000000..794eb76f1
 --- /dev/null
 +++ b/apps/mobile/lib/lumen/lumen-manifest-store.ts
-@@ -0,0 +1,185 @@
+@@ -0,0 +1,68 @@
 +import { useSyncExternalStore } from "react";
-+import { AccessibilityInfo, AppState } from "react-native";
-+import { currentApiBase, subscribeApiBase } from "../api";
-+import { LUMEN_BUILTIN_MANIFEST, lumenBuiltinVersion } from "./lumen-builtin-avatars";
++import { AccessibilityInfo } from "react-native";
 +import type { LumenManifest } from "./lumen-manifest";
-+import { lumenManifestUrl, parseLumenManifest } from "./lumen-manifest";
 +
 +/**
-+ * The manifest the avatars draw from: the copy the app itself carries (so the first frame after
-+ * launch already has the finished art, with no network at all), then last launch's server copy
-+ * from disk, then the server itself on every launch, on the way back to the foreground after a
-+ * while, and whenever the server address changes. A failed fetch keeps what the app had; with
-+ * nothing at all, every avatar keeps the drawn Lumen body.
++ * Reduce-motion for avatars, and a leftover manifest hook that now always returns null.
++ *
++ * Avatars are drawn in the client (OpenMinis shapes and colours). The server
++ * /lumen-avatars manifest is no longer read, fetched, or cached, so a launch never
++ * waits on the network for a face.
 + */
 +
-+const REFRESH_AFTER_MS = 10 * 60 * 1000;
-+const FETCH_TIMEOUT_MS = 8_000;
-+const MAX_BYTES = 512 * 1024;
-+
-+let manifest: LumenManifest | null = LUMEN_BUILTIN_MANIFEST;
 +let reducedMotion = false;
-+let fetchedAt = 0;
-+let inFlight = false;
 +let started = false;
 +const listeners = new Set<() => void>();
 +
-+// Unit tests render avatars without a phone: no disk, no network, the drawn body.
-+const underTest = typeof process !== "undefined" && Boolean(process.env?.VITEST);
-+
-+type CacheFile = {
-+  exists: boolean;
-+  textSync(): string;
-+  create(options: { overwrite: boolean }): void;
-+  writeSync(text: string): void;
-+};
-+
-+function cacheFile(): CacheFile | null {
-+  try {
-+    // Loaded on first use, so a screen that never shows an avatar never touches the module.
-+    // eslint-disable-next-line @typescript-eslint/no-require-imports
-+    const fs = require("expo-file-system") as {
-+      File: new (dir: unknown, name: string) => CacheFile;
-+      Paths: { document: unknown };
-+    };
-+    return new fs.File(fs.Paths.document, "lumen-manifest.json");
-+  } catch {
-+    return null;
-+  }
-+}
-+
 +function emit() {
 +  for (const listener of listeners) listener();
-+}
-+
-+function publish(next: LumenManifest | null) {
-+  manifest = next;
-+  emit();
-+}
-+
-+function loadFromDisk() {
-+  try {
-+    const file = cacheFile();
-+    if (!file?.exists) return;
-+    const saved = JSON.parse(file.textSync()) as { url?: string; body?: unknown };
-+    if (typeof saved.url !== "string") return;
-+    const parsed = parseLumenManifest(saved.body, saved.url);
-+    // The shipped copy is drawn from the bundle, so it is never replaced by a cached copy of
-+    // itself: only a manifest naming other art is worth publishing.
-+    if (parsed && !lumenBuiltinVersion(parsed.version)) publish(parsed);
-+  } catch {
-+    // A torn cache is the same as none.
-+  }
-+}
-+
-+async function refresh() {
-+  if (inFlight) return;
-+  inFlight = true;
-+  let url: string;
-+  try {
-+    url = lumenManifestUrl(currentApiBase());
-+  } catch {
-+    inFlight = false;
-+    return;
-+  }
-+  const controller = new AbortController();
-+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-+  try {
-+    const response = await fetch(url, {
-+      signal: controller.signal,
-+      headers: { Accept: "application/json", "Cache-Control": "no-cache" },
-+    });
-+    if (!response.ok) return;
-+    const text = await response.text();
-+    if (text.length > MAX_BYTES) return;
-+    const body: unknown = JSON.parse(text);
-+    const parsed = parseLumenManifest(body, url);
-+    if (!parsed) return;
-+    fetchedAt = Date.now();
-+    if (lumenBuiltinVersion(parsed.version)) {
-+      // The server names the art this build carries: keep drawing it from the bundle.
-+      if (manifest && !lumenBuiltinVersion(manifest.version)) publish(LUMEN_BUILTIN_MANIFEST);
-+    } else if (
-+      parsed.version !== manifest?.version ||
-+      parsed.baseUrl !== manifest?.baseUrl
-+    ) {
-+      publish(parsed);
-+    }
-+    try {
-+      const file = cacheFile();
-+      if (file) {
-+        file.create({ overwrite: true });
-+        file.writeSync(JSON.stringify({ url, body }));
-+      }
-+    } catch {
-+      // Not saving only costs the next cold launch one fetch.
-+    }
-+  } catch {
-+    // Offline or a bad file: keep the pictures already shown.
-+  } finally {
-+    clearTimeout(timer);
-+    inFlight = false;
-+  }
 +}
 +
 +function watchReducedMotion() {
@@ -213817,21 +213940,7 @@ index 000000000..4efc0e963
 +function start() {
 +  if (started) return;
 +  started = true;
-+  if (underTest) return;
-+  loadFromDisk();
 +  watchReducedMotion();
-+  void refresh();
-+  try {
-+    AppState.addEventListener("change", (state) => {
-+      if (state === "active" && Date.now() - fetchedAt > REFRESH_AFTER_MS) void refresh();
-+    });
-+  } catch {
-+    // Without app-state events the manifest still loads once per launch.
-+  }
-+  subscribeApiBase(() => {
-+    fetchedAt = 0;
-+    void refresh();
-+  });
 +}
 +
 +function subscribe(listener: () => void) {
@@ -213842,19 +213951,20 @@ index 000000000..4efc0e963
 +  };
 +}
 +
-+function snapshot() {
-+  return manifest;
++function snapshot(): LumenManifest | null {
++  return null;
 +}
 +
 +function reducedSnapshot() {
 +  return reducedMotion;
 +}
 +
++/** Always null: the client no longer draws from a Lumen picture manifest. */
 +export function useLumenManifest(): LumenManifest | null {
 +  return useSyncExternalStore(subscribe, snapshot, () => null);
 +}
 +
-+/** iOS "Reduce Motion": the manifest's avatars then show their still picture. */
++/** iOS "Reduce Motion": the OpenMinis eyes stay open instead of blinking. */
 +export function useLumenReducedMotion(): boolean {
 +  return useSyncExternalStore(subscribe, reducedSnapshot, () => false);
 +}
@@ -258592,10 +258702,10 @@ index 000000000..9f4991ac9
 +  return avatarClipPose(avatarClip(name), seconds);
 +}
 diff --git a/packages/core/src/index.ts b/packages/core/src/index.ts
-index 0e9e48b49..18fa8f53b 100644
+index 0e9e48b49..24c3bbbae 100644
 --- a/packages/core/src/index.ts
 +++ b/packages/core/src/index.ts
-@@ -13,13 +13,18 @@ export * from "./avatar-clips.js";
+@@ -13,13 +13,19 @@ export * from "./avatar-clips.js";
  export * from "./avatar-life.js";
  export * from "./avatar-motion.js";
  export * from "./avatar-shape.js";
@@ -258608,6 +258718,7 @@ index 0e9e48b49..18fa8f53b 100644
 +export * from "./bot-motion-clips.js";
 +export * from "./lumen-manifest.js";
 +export * from "./mochi-avatar.js";
++export * from "./openminis-avatar.js";
  export * from "./bot-look.js";
  export * from "./bot-mentions.js";
  export * from "./bot-messages.js";
@@ -258615,7 +258726,7 @@ index 0e9e48b49..18fa8f53b 100644
  export * from "./bot-sections.js";
  export * from "./bot-sender-name.js";
  export * from "./bot-templates.js";
-@@ -65,11 +70,12 @@ export * from "./mcp.js";
+@@ -65,11 +71,12 @@ export * from "./mcp.js";
  export * from "./mcp-app.js";
  export * from "./message-pages.js";
  export * from "./message-reactions.js";
@@ -260596,6 +260707,898 @@ index d2e0ae8db..91bc0b65c 100644
 +  });
 +  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
  }
+diff --git a/packages/core/src/openminis-avatar.test.ts b/packages/core/src/openminis-avatar.test.ts
+new file mode 100644
+index 000000000..3d8f6db08
+--- /dev/null
++++ b/packages/core/src/openminis-avatar.test.ts
+@@ -0,0 +1,128 @@
++import { describe, expect, it } from "vitest";
++import {
++  OPENMINIS_CLOVER,
++  OPENMINIS_CLOUD,
++  OPENMINIS_COLOR_COUNT,
++  OPENMINIS_FLOWER,
++  OPENMINIS_PALETTE,
++  OPENMINIS_ROLE_ROWS,
++  OPENMINIS_SHAPE_COUNT,
++  openminisBodyPath,
++  openminisContains,
++  openminisHashedSpec,
++  openminisHex,
++  openminisMoodFor,
++  openminisRgb,
++  openminisSpecFor,
++  openminisSvg,
++} from "./openminis-avatar.js";
++
++describe("openminis palette and hash defaults", () => {
++  it("has twelve colours and thirteen shapes", () => {
++    expect(OPENMINIS_PALETTE).toHaveLength(OPENMINIS_COLOR_COUNT);
++    expect(OPENMINIS_SHAPE_COUNT).toBe(13);
++  });
++
++  it("turns black into graphite in the dark theme and leaves indigo alone", () => {
++    expect(openminisRgb(0, false)).toEqual([0, 0, 0]);
++    expect(openminisRgb(0, true)).toEqual([0.42, 0.42, 0.44]);
++    expect(openminisHex(10, false)).toBe(openminisHex(10, true));
++    expect(openminisHex(10, false).toLowerCase()).toBe("#6366f2");
++  });
++
++  it("matches OpenMinis template defaults for the hashed ids", () => {
++    expect(openminisHashedSpec("any", true)).toEqual({ shape: 0, color: 10 });
++    expect(openminisHashedSpec("coder", false)).toEqual({ shape: 7, color: 6 });
++    expect(openminisHashedSpec("writer", false)).toEqual({ shape: 8, color: 6 });
++    expect(openminisHashedSpec("life", false)).toEqual({ shape: 8, color: 7 });
++    expect(openminisHashedSpec("quiz", false)).toEqual({ shape: 0, color: 5 });
++  });
++});
++
++describe("openminis role mapping", () => {
++  it("gives the chief the indigo circle and suppresses an extra star", () => {
++    expect(openminisSpecFor({ name: "小猪包" })).toMatchObject({
++      shape: 0,
++      color: 10,
++      role: "chief",
++      suppressMainStar: true,
++    });
++    expect(openminisSpecFor({ chief: true, name: "someone" }).role).toBe("chief");
++    expect(openminisSpecFor({ identity: "cmwgm49boyweiboib5meju5x7" }).role).toBe("chief");
++  });
++
++  it("uses OpenMinis template defaults where a counterpart exists", () => {
++    expect(openminisSpecFor({ name: "开发助理" })).toMatchObject({ role: "dev", shape: 7, color: 6 });
++    expect(openminisSpecFor({ name: "小说写手" })).toMatchObject({ role: "novel", shape: 8, color: 6 });
++    expect(openminisSpecFor({ name: "生活助理" })).toMatchObject({ role: "life", shape: 8, color: 7 });
++    expect(openminisSpecFor({ name: "刷题教练" })).toMatchObject({ role: "quiz", shape: 0, color: 5 });
++  });
++
++  it("gives every one of the twelve roles a mapped look, matched by name, key or id", () => {
++    for (const row of OPENMINIS_ROLE_ROWS) {
++      expect(openminisSpecFor({ name: row.name }).role).toBe(row.role);
++      expect(openminisSpecFor({ identity: row.role }).role).toBe(row.role);
++      expect(openminisSpecFor({ identity: row.botIds[0] }).role).toBe(row.role);
++    }
++  });
++
++  it("hashes an unknown bot instead of falling back to the chief", () => {
++    const spec = openminisSpecFor({ identity: "a-new-helper", name: "新助手" });
++    expect(spec.role).toBe("custom");
++    expect(spec).toMatchObject(openminisHashedSpec("a-new-helper", false));
++    expect(spec.suppressMainStar).toBe(false);
++  });
++});
++
++describe("openminis moods", () => {
++  it("maps working, waiting, errors and long idleness", () => {
++    expect(openminisMoodFor({ status: "running" })).toBe("focused");
++    expect(openminisMoodFor({ composing: true })).toBe("focused");
++    expect(openminisMoodFor({ status: "waiting" })).toBe("curious");
++    expect(openminisMoodFor({ status: "failed" })).toBe("frown");
++    expect(openminisMoodFor({ unread: true })).toBe("happy");
++    expect(openminisMoodFor({ idleSeconds: 2 * 86_400 })).toBe("dozing");
++    expect(openminisMoodFor({ shy: true, status: "running" })).toBe("shy");
++    expect(openminisMoodFor({})).toBe("calm");
++  });
++});
++
++describe("openminis body paths", () => {
++  it("returns a closed path for every shape", () => {
++    for (let shape = 0; shape < OPENMINIS_SHAPE_COUNT; shape += 1) {
++      const d = openminisBodyPath(shape);
++      expect(d.startsWith("M"), `shape ${shape}`).toBe(true);
++      expect(d.endsWith("Z"), `shape ${shape}`).toBe(true);
++      expect(d.length).toBeGreaterThan(20);
++    }
++  });
++
++  it("builds clover, cloud and flower as a single union, covering their discs", () => {
++    expect(openminisContains(OPENMINIS_CLOVER, 0.5, 0.5)).toBe(true);
++    expect(openminisContains(OPENMINIS_CLOUD, 0.5, 0.5)).toBe(true);
++    expect(openminisContains(OPENMINIS_FLOWER, 0.5, 0.5)).toBe(true);
++    expect(openminisContains(OPENMINIS_CLOVER, 0.32, 0.36)).toBe(true);
++    expect(openminisContains(OPENMINIS_CLOVER, 0, 0)).toBe(false);
++    expect(openminisBodyPath(1).includes("L")).toBe(true);
++  });
++
++  it("draws a teardrop whose bulb sits at the bottom", () => {
++    const d = openminisBodyPath(7);
++    expect(d).toContain("A0.4 0.4");
++    expect(d).toContain("0.9 0.62");
++    expect(d).toContain("0.1 0.62");
++  });
++
++  it("emits an svg with the body fill and white eyes", () => {
++    const svg = openminisSvg(
++      { shape: 0, color: 10 },
++      { size: 50, dark: false, eyeOpen: 1, mood: "calm" },
++    );
++    expect(svg).toContain('fill="#6366f2"');
++    expect(svg).toContain('fill="#ffffff"');
++    expect(svg).toContain("<svg");
++    const dark = openminisSvg({ shape: 0, color: 0 }, { size: 50, dark: true, showsFace: false });
++    expect(dark).toContain("omGlow");
++    expect(dark).toContain(openminisHex(0, true).toLowerCase());
++  });
++});
+diff --git a/packages/core/src/openminis-avatar.ts b/packages/core/src/openminis-avatar.ts
+new file mode 100644
+index 000000000..7fc2a2135
+--- /dev/null
++++ b/packages/core/src/openminis-avatar.ts
+@@ -0,0 +1,752 @@
++/**
++ * OpenMinis-style bot avatars: 13 shapes × 12 colours, white capsule eyes, blink and moods.
++ *
++ * Geometry, palette and default mapping follow the OpenMinis CloudBotAvatar drawing
++ * (ingnez/OpenMinis, GPLv3). The owner chose this look after being told about that licence.
++ * This module is a TypeScript reimplementation of the drawing, used by the mobile client
++ * and by the review renderer; it has no network and no picture assets.
++ */
++
++export const OPENMINIS_SHAPE_COUNT = 13;
++export const OPENMINIS_COLOR_COUNT = 12;
++export const OPENMINIS_OUTLINE_SAMPLES = 720;
++export const OPENMINIS_DOZE_AFTER_SECONDS = 2 * 86_400;
++
++export type OpenMinisRgb = readonly [r: number, g: number, b: number];
++
++/** Palette in 0…1 RGB. Index 0 is black in the light theme and graphite in the dark theme. */
++export const OPENMINIS_PALETTE: readonly OpenMinisRgb[] = [
++  [0, 0, 0],
++  [0.55, 0.38, 0.24],
++  [0.93, 0.26, 0.27],
++  [0.95, 0.45, 0.16],
++  [0.92, 0.58, 0.14],
++  [0.36, 0.78, 0.45],
++  [0.33, 0.73, 0.65],
++  [0.24, 0.52, 0.96],
++  [0.55, 0.36, 0.96],
++  [0.92, 0.29, 0.6],
++  [0.39, 0.4, 0.95],
++  [0.47, 0.47, 0.49],
++];
++
++export const OPENMINIS_DARK_INK: OpenMinisRgb = [0.42, 0.42, 0.44];
++
++export const OPENMINIS_SHAPE_NAMES = [
++  "circle",
++  "clover",
++  "tilt-round-square",
++  "four-star",
++  "cloud",
++  "bean",
++  "flower",
++  "teardrop",
++  "capsule",
++  "triangle",
++  "hexagon",
++  "eight-star",
++  "pentagon",
++] as const;
++
++export const OPENMINIS_COLOR_NAMES = [
++  "black",
++  "brown",
++  "red",
++  "orange",
++  "amber",
++  "green",
++  "cyan",
++  "blue",
++  "purple",
++  "pink",
++  "indigo",
++  "gray",
++] as const;
++
++export type OpenMinisRole =
++  | "chief"
++  | "dev"
++  | "novel"
++  | "ppt"
++  | "oracle"
++  | "life"
++  | "quiz"
++  | "memo"
++  | "ops"
++  | "cook"
++  | "lotto"
++  | "mail";
++
++export type OpenMinisMood = "calm" | "focused" | "curious" | "happy" | "frown" | "dozing" | "shy";
++
++export type OpenMinisSpec = {
++  shape: number;
++  color: number;
++  role: OpenMinisRole | "custom";
++  /** The drawn chief has no star in its body: the app must not add one. */
++  suppressMainStar: boolean;
++};
++
++export type OpenMinisRoleRow = {
++  role: OpenMinisRole;
++  name: string;
++  shape: number;
++  color: number;
++  /** Stable ids of the shipped roster, so this account's bots keep their look if renamed. */
++  botIds: readonly string[];
++};
++
++/**
++ * Twelve roles: OpenMinis template defaults where a counterpart exists (chief, coder, writer,
++ * life, quiz); the rest are distinct leftover shape+colour pairs.
++ */
++export const OPENMINIS_ROLE_ROWS: readonly OpenMinisRoleRow[] = [
++  { role: "chief", name: "小猪包", shape: 0, color: 10, botIds: ["cmwgm49boyweiboib5meju5x7"] },
++  { role: "dev", name: "开发助理", shape: 7, color: 6, botIds: ["cmwgouca0nk6rwbhk1swaxbi4"] },
++  { role: "novel", name: "小说写手", shape: 8, color: 6, botIds: ["cmwgqczzcl435o5ih2kowbtgo"] },
++  { role: "ppt", name: "PPT大师", shape: 10, color: 3, botIds: ["cmwgqgor7lb6mlie0sni0t8qw"] },
++  { role: "oracle", name: "占卜师", shape: 11, color: 8, botIds: ["cmwgrqwqvki33sqnq1ydesq94"] },
++  { role: "life", name: "生活助理", shape: 8, color: 7, botIds: ["cmwh5ty5irjaij7vyiivaobb0"] },
++  { role: "quiz", name: "刷题教练", shape: 0, color: 5, botIds: ["cmwhl6d8i7u3v9znq3dgvo9ge"] },
++  { role: "memo", name: "备忘录", shape: 2, color: 1, botIds: ["cmwizss1ym6kxs4lvztbczi57"] },
++  { role: "ops", name: "运维助理", shape: 12, color: 11, botIds: ["cmwkhxq51fbif1b6u7spzp8fs"] },
++  { role: "cook", name: "做饭教练", shape: 1, color: 2, botIds: ["cmwlu1xlmblhb6cek3rpl5e3d"] },
++  { role: "lotto", name: "中奖大师", shape: 3, color: 9, botIds: ["cmwqkb91i3yxl196nxgp38e4k"] },
++  { role: "mail", name: "邮件大师", shape: 4, color: 4, botIds: ["cmwrnr77lkwsei4mj6zweunbj"] },
++];
++
++const ROLE_BY_KEY = new Map<string, OpenMinisRoleRow>(
++  OPENMINIS_ROLE_ROWS.flatMap((row) => {
++    const keys = [row.role, row.name, ...row.botIds];
++    return keys.map((key) => [key, row] as const);
++  }),
++);
++
++export function openminisClampShape(shape: number): number {
++  if (!Number.isFinite(shape)) return 0;
++  const n = Math.trunc(shape);
++  return ((n % OPENMINIS_SHAPE_COUNT) + OPENMINIS_SHAPE_COUNT) % OPENMINIS_SHAPE_COUNT;
++}
++
++export function openminisClampColor(color: number): number {
++  if (!Number.isFinite(color)) return 0;
++  const n = Math.trunc(color);
++  return ((n % OPENMINIS_COLOR_COUNT) + OPENMINIS_COLOR_COUNT) % OPENMINIS_COLOR_COUNT;
++}
++
++export function openminisRgb(color: number, dark: boolean): OpenMinisRgb {
++  const i = openminisClampColor(color);
++  return dark && i === 0 ? OPENMINIS_DARK_INK : OPENMINIS_PALETTE[i]!;
++}
++
++export function openminisHex(color: number, dark: boolean): string {
++  const [r, g, b] = openminisRgb(color, dark);
++  const ch = (v: number) => Math.round(v * 255).toString(16).padStart(2, "0");
++  return `#${ch(r)}${ch(g)}${ch(b)}`;
++}
++
++/** djb2 as in OpenMinis CloudBotAvatarSpec.default: 32-bit, times 33 plus each UTF-8 byte. */
++export function openminisDjb2(text: string): number {
++  let h = 5381;
++  for (const byte of new TextEncoder().encode(text)) {
++    h = (Math.imul(h, 33) + byte) >>> 0;
++  }
++  return h;
++}
++
++/** OpenMinis default for a bot with no saved avatar: primary is indigo circle; others are hashed. */
++export function openminisHashedSpec(id: string, primary: boolean): { shape: number; color: number } {
++  if (primary) return { shape: 0, color: 10 };
++  const h = openminisDjb2(id);
++  return { shape: h % 13, color: 1 + Math.floor(h / 13) % 11 };
++}
++
++export function openminisSpecFor(input: {
++  identity?: string | null;
++  name?: string | null;
++  chief?: boolean;
++}): OpenMinisSpec {
++  if (input.chief) {
++    const chief = ROLE_BY_KEY.get("chief")!;
++    return { shape: chief.shape, color: chief.color, role: "chief", suppressMainStar: true };
++  }
++  const id = (input.identity ?? "").trim();
++  const name = (input.name ?? "").trim();
++  const row = (id && ROLE_BY_KEY.get(id)) || (name && ROLE_BY_KEY.get(name)) || null;
++  if (row) {
++    return {
++      shape: row.shape,
++      color: row.color,
++      role: row.role,
++      suppressMainStar: row.role === "chief",
++    };
++  }
++  const hashed = openminisHashedSpec(id || name || "bot", false);
++  return { ...hashed, role: "custom", suppressMainStar: false };
++}
++
++export function openminisMoodFor(input: {
++  status?: string | null;
++  activity?: string | null;
++  composing?: boolean;
++  unread?: boolean;
++  failed?: boolean;
++  idleSeconds?: number;
++  shy?: boolean;
++}): OpenMinisMood {
++  if (input.shy) return "shy";
++  const status = input.status ?? "";
++  const activity = input.activity ?? "";
++  if (activity === "error" || status === "failed" || status === "error" || input.failed) return "frown";
++  if (status === "waiting" || activity === "waiting") return "curious";
++  if (
++    input.composing ||
++    activity === "thinking" ||
++    activity === "working" ||
++    activity === "computer" ||
++    activity === "writing" ||
++    activity === "reading" ||
++    activity === "talk" ||
++    activity === "speaking" ||
++    status === "thinking" ||
++    status === "running" ||
++    status === "queued" ||
++    status === "working" ||
++    status === "in_progress"
++  ) {
++    return "focused";
++  }
++  if (activity === "done" || activity === "happy" || input.unread) return "happy";
++  if (activity === "sleep" || (input.idleSeconds ?? 0) >= OPENMINIS_DOZE_AFTER_SECONDS) return "dozing";
++  return "calm";
++}
++
++type Pt = { x: number; y: number };
++
++function fmt(n: number): string {
++  const v = Math.round(n * 1e5) / 1e5;
++  return Object.is(v, -0) ? "0" : String(v);
++}
++
++class PathWriter {
++  private readonly parts: string[] = [];
++  private x = 0;
++  private y = 0;
++  private started = false;
++
++  move(x: number, y: number): this {
++    this.parts.push(`M${fmt(x)} ${fmt(y)}`);
++    this.x = x;
++    this.y = y;
++    this.started = true;
++    return this;
++  }
++
++  line(x: number, y: number): this {
++    this.parts.push(`L${fmt(x)} ${fmt(y)}`);
++    this.x = x;
++    this.y = y;
++    return this;
++  }
++
++  cubic(c1x: number, c1y: number, c2x: number, c2y: number, x: number, y: number): this {
++    this.parts.push(`C${fmt(c1x)} ${fmt(c1y)} ${fmt(c2x)} ${fmt(c2y)} ${fmt(x)} ${fmt(y)}`);
++    this.x = x;
++    this.y = y;
++    return this;
++  }
++
++  quad(cx: number, cy: number, x: number, y: number): this {
++    this.parts.push(`Q${fmt(cx)} ${fmt(cy)} ${fmt(x)} ${fmt(y)}`);
++    this.x = x;
++    this.y = y;
++    return this;
++  }
++
++  /** Circular arc. sweep=1 is clockwise (SVG, y-down). */
++  arc(rx: number, ry: number, rot: number, large: 0 | 1, sweep: 0 | 1, x: number, y: number): this {
++    this.parts.push(
++      `A${fmt(rx)} ${fmt(ry)} ${fmt(rot)} ${large} ${sweep} ${fmt(x)} ${fmt(y)}`,
++    );
++    this.x = x;
++    this.y = y;
++    return this;
++  }
++
++  /**
++   * Canvas/CoreGraphics arcTo: from the current point, approach corner A, then head toward B,
++   * with a circular corner of radius r.
++   */
++  arcTo(ax: number, ay: number, bx: number, by: number, r: number): this {
++    if (!this.started) this.move(ax, ay);
++    const px = this.x;
++    const py = this.y;
++    const v1x = px - ax;
++    const v1y = py - ay;
++    const v2x = bx - ax;
++    const v2y = by - ay;
++    const l1 = Math.hypot(v1x, v1y);
++    const l2 = Math.hypot(v2x, v2y);
++    if (r <= 0 || l1 < 1e-9 || l2 < 1e-9) {
++      this.line(ax, ay);
++      return this;
++    }
++    const u1x = v1x / l1;
++    const u1y = v1y / l1;
++    const u2x = v2x / l2;
++    const u2y = v2y / l2;
++    const dot = Math.max(-1, Math.min(1, u1x * u2x + u1y * u2y));
++    const angle = Math.acos(dot);
++    if (angle < 1e-6 || Math.abs(Math.PI - angle) < 1e-6) {
++      this.line(ax, ay);
++      return this;
++    }
++    const dist = r / Math.tan(angle / 2);
++    const d = Math.min(dist, l1, l2);
++    const usedR = d === dist ? r : d * Math.tan(angle / 2);
++    const t1x = ax + u1x * d;
++    const t1y = ay + u1y * d;
++    const t2x = ax + u2x * d;
++    const t2y = ay + u2y * d;
++    this.line(t1x, t1y);
++    // Perpendicular to incoming (from t1 toward A is -u1); choose the inward normal.
++    const cross = u1x * u2y - u1y * u2x;
++    const sweep: 0 | 1 = cross < 0 ? 1 : 0;
++    this.arc(usedR, usedR, 0, 0, sweep, t2x, t2y);
++    return this;
++  }
++
++  close(): this {
++    this.parts.push("Z");
++    return this;
++  }
++
++  toString(): string {
++    return this.parts.join("");
++  }
++}
++
++function mid(a: Pt, b: Pt): Pt {
++  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
++}
++
++function roundedPolygon(points: Pt[], radius: number): string {
++  const n = points.length;
++  const path = new PathWriter();
++  const first = mid(points[n - 1]!, points[0]!);
++  path.move(first.x, first.y);
++  for (let i = 0; i < n; i += 1) {
++    const corner = points[i]!;
++    const next = points[(i + 1) % n]!;
++    path.arcTo(corner.x, corner.y, next.x, next.y, radius);
++  }
++  path.close();
++  return path.toString();
++}
++
++function polygon(count: number, rotation: number, radius = 0.48): Pt[] {
++  return Array.from({ length: count }, (_, i) => {
++    const a = rotation + (i * 2 * Math.PI) / count;
++    return { x: 0.5 + radius * Math.cos(a), y: 0.5 + radius * Math.sin(a) };
++  });
++}
++
++function starVertices(points: number, inner: number, rotation: number): Pt[] {
++  const verts: Pt[] = [];
++  for (let i = 0; i < points * 2; i += 1) {
++    const r = i % 2 === 0 ? 0.5 : inner;
++    const a = rotation + (i * Math.PI) / points;
++    verts.push({ x: 0.5 + r * Math.cos(a), y: 0.5 + r * Math.sin(a) });
++  }
++  return verts;
++}
++
++type Disc = { x: number; y: number; r: number };
++
++export const OPENMINIS_CLOVER: readonly Disc[] = [
++  { x: 0.32, y: 0.36, r: 0.24 },
++  { x: 0.68, y: 0.36, r: 0.24 },
++  { x: 0.36, y: 0.66, r: 0.24 },
++  { x: 0.66, y: 0.66, r: 0.24 },
++  { x: 0.5, y: 0.5, r: 0.2 },
++];
++
++export const OPENMINIS_CLOUD: readonly Disc[] = [
++  { x: 0.5, y: 0.3, r: 0.22 },
++  { x: 0.28, y: 0.45, r: 0.22 },
++  { x: 0.72, y: 0.45, r: 0.22 },
++  { x: 0.38, y: 0.7, r: 0.22 },
++  { x: 0.64, y: 0.7, r: 0.22 },
++  { x: 0.5, y: 0.5, r: 0.22 },
++];
++
++export const OPENMINIS_FLOWER: readonly Disc[] = [
++  { x: 0.5, y: 0.5, r: 0.26 },
++  ...Array.from({ length: 6 }, (_, i) => {
++    const a = (i * Math.PI) / 3;
++    return { x: 0.5 + 0.24 * Math.cos(a), y: 0.5 + 0.24 * Math.sin(a), r: 0.17 };
++  }),
++];
++
++function unionExit(discs: readonly Disc[], cx: number, cy: number, dx: number, dy: number): number | null {
++  let best: number | null = null;
++  for (const d of discs) {
++    const ox = cx - d.x;
++    const oy = cy - d.y;
++    const b = dx * ox + dy * oy;
++    const c = ox * ox + oy * oy - d.r * d.r;
++    const disc = b * b - c;
++    if (disc < 0) continue;
++    const t = -b + Math.sqrt(disc);
++    if (t > 0 && t > (best ?? -1)) best = t;
++  }
++  return best;
++}
++
++export function openminisUnion(
++  discs: readonly Disc[],
++  samples = OPENMINIS_OUTLINE_SAMPLES,
++): Pt[] {
++  const pts: Pt[] = [];
++  for (let i = 0; i < samples; i += 1) {
++    const a = (i / samples) * 2 * Math.PI;
++    const dx = Math.cos(a);
++    const dy = Math.sin(a);
++    const t = unionExit(discs, 0.5, 0.5, dx, dy);
++    if (t == null) continue;
++    pts.push({ x: 0.5 + t * dx, y: 0.5 + t * dy });
++  }
++  return pts;
++}
++
++export function openminisContains(discs: readonly Disc[], x: number, y: number, slack = 0): boolean {
++  return discs.some((d) => Math.hypot(x - d.x, y - d.y) <= d.r + slack);
++}
++
++function outline(discs: readonly Disc[], samples = OPENMINIS_OUTLINE_SAMPLES): string {
++  const pts = openminisUnion(discs, samples);
++  if (pts.length === 0) return "";
++  const path = new PathWriter();
++  path.move(pts[0]!.x, pts[0]!.y);
++  for (let i = 1; i < pts.length; i += 1) path.line(pts[i]!.x, pts[i]!.y);
++  path.close();
++  return path.toString();
++}
++
++function rotatePt(p: Pt, angle: number, cx = 0.5, cy = 0.5): Pt {
++  const dx = p.x - cx;
++  const dy = p.y - cy;
++  const c = Math.cos(angle);
++  const s = Math.sin(angle);
++  return { x: cx + dx * c - dy * s, y: cy + dx * s + dy * c };
++}
++
++function roundedRectPath(x: number, y: number, w: number, h: number, r: number): PathWriter {
++  const rr = Math.min(r, w / 2, h / 2);
++  const path = new PathWriter();
++  path.move(x + rr, y);
++  path.line(x + w - rr, y);
++  path.arc(rr, rr, 0, 0, 1, x + w, y + rr);
++  path.line(x + w, y + h - rr);
++  path.arc(rr, rr, 0, 0, 1, x + w - rr, y + h);
++  path.line(x + rr, y + h);
++  path.arc(rr, rr, 0, 0, 1, x, y + h - rr);
++  path.line(x, y + rr);
++  path.arc(rr, rr, 0, 0, 1, x + rr, y);
++  path.close();
++  return path;
++}
++
++function transformPath(d: string, map: (x: number, y: number) => Pt): string {
++  return d.replace(/(-?\d*\.?\d+)(?:e[-+]?\d+)?\s+(-?\d*\.?\d+)(?:e[-+]?\d+)?/gi, (all, xs: string, ys: string, offset: number) => {
++    // Only transform coordinate pairs that follow a command, not the flags of an arc.
++    // Simpler: parse the path properly.
++    void all;
++    void offset;
++    void xs;
++    void ys;
++    return all;
++  });
++}
++
++function parseAndTransform(d: string, map: (x: number, y: number) => Pt): string {
++  const out: string[] = [];
++  const re = /([MLCQAZ])|(-?\d*\.?\d+(?:e[-+]?\d+)?)/gi;
++  let command = "";
++  const nums: number[] = [];
++
++  const flush = () => {
++    if (!command || (command !== "Z" && nums.length === 0 && command !== "z")) {
++      /* skip */
++    }
++    const emit = (ch: string, pts: number[], pairStart = 0) => {
++      const bits = [ch];
++      for (let i = 0; i < pts.length; i += 1) {
++        if (i >= pairStart && (i - pairStart) % 2 === 0 && i + 1 < pts.length) {
++          const p = map(pts[i]!, pts[i + 1]!);
++          bits.push(fmt(p.x), fmt(p.y));
++          i += 1;
++        } else if (i >= pairStart && (i - pairStart) % 2 === 0) {
++          bits.push(fmt(pts[i]!));
++        } else if (i < pairStart) {
++          bits.push(fmt(pts[i]!));
++        }
++      }
++      out.push(bits.join(" "));
++    };
++    switch (command) {
++      case "M":
++      case "L":
++      case "C":
++      case "Q":
++        emit(command, nums, 0);
++        break;
++      case "A": {
++        // A rx ry rot large sweep x y  — only the endpoint is a mapped point; rot stays, rx/ry stay for circles.
++        for (let i = 0; i + 6 < nums.length; i += 7) {
++          const p = map(nums[i + 5]!, nums[i + 6]!);
++          out.push(
++            `A${fmt(nums[i]!)} ${fmt(nums[i + 1]!)} ${fmt(nums[i + 2]!)} ${nums[i + 3]} ${nums[i + 4]} ${fmt(p.x)} ${fmt(p.y)}`,
++          );
++        }
++        break;
++      }
++      case "Z":
++        out.push("Z");
++        break;
++      default:
++        break;
++    }
++    nums.length = 0;
++  };
++
++  let match: RegExpExecArray | null;
++  while ((match = re.exec(d))) {
++    if (match[1]) {
++      if (command) flush();
++      command = match[1].toUpperCase();
++      if (command === "Z") flush();
++    } else if (match[2]) {
++      nums.push(Number(match[2]));
++    }
++  }
++  if (command && command !== "Z") flush();
++  return out.join("");
++}
++
++void transformPath;
++
++function tiltedRoundedSquare(): string {
++  const d = roundedRectPath(0.14, 0.14, 0.72, 0.72, 0.2).toString();
++  const angle = Math.PI / 9;
++  return parseAndTransform(d, (x, y) => rotatePt({ x, y }, angle));
++}
++
++function bean(): string {
++  // Ellipse (0.08, 0.2, 0.84, 0.6) rotated −π/10 about the centre of the unit square.
++  const path = new PathWriter();
++  const cx = 0.5;
++  const cy = 0.5;
++  const rx = 0.42;
++  const ry = 0.3;
++  path.move(cx + rx, cy);
++  path.arc(rx, ry, 0, 0, 1, cx - rx, cy);
++  path.arc(rx, ry, 0, 0, 1, cx + rx, cy);
++  path.close();
++  const angle = -Math.PI / 10;
++  // Axis-aligned ellipse rotated: keep rx/ry, set x-axis-rotation, rotate endpoints.
++  const rotDeg = (angle * 180) / Math.PI;
++  const start = rotatePt({ x: cx + rx, y: cy }, angle);
++  const midPt = rotatePt({ x: cx - rx, y: cy }, angle);
++  const end = start;
++  return `M${fmt(start.x)} ${fmt(start.y)}A${fmt(rx)} ${fmt(ry)} ${fmt(rotDeg)} 0 1 ${fmt(midPt.x)} ${fmt(midPt.y)}A${fmt(rx)} ${fmt(ry)} ${fmt(rotDeg)} 0 1 ${fmt(end.x)} ${fmt(end.y)}Z`;
++}
++
++function teardrop(): string {
++  const path = new PathWriter();
++  path.move(0.5, 0.04);
++  path.cubic(0.62, 0.22, 0.9, 0.38, 0.9, 0.62);
++  // Bulb at the bottom: from the right of the circle to the left, clockwise (y-down).
++  path.arc(0.4, 0.4, 0, 0, 1, 0.1, 0.62);
++  path.cubic(0.1, 0.38, 0.38, 0.22, 0.5, 0.04);
++  path.close();
++  return path.toString();
++}
++
++function capsule(): string {
++  return roundedRectPath(0.04, 0.22, 0.92, 0.56, 0.28).toString();
++}
++
++function circle(): string {
++  const path = new PathWriter();
++  path.move(1, 0.5);
++  path.arc(0.5, 0.5, 0, 1, 1, 0, 0.5);
++  path.arc(0.5, 0.5, 0, 1, 1, 1, 0.5);
++  path.close();
++  return path.toString();
++}
++
++/** Body outline in the unit square (0…1). Some shapes (the teardrop) reach slightly outside. */
++export function openminisBodyPath(shape: number, samples = OPENMINIS_OUTLINE_SAMPLES): string {
++  switch (openminisClampShape(shape)) {
++    case 1:
++      return outline(OPENMINIS_CLOVER, samples);
++    case 2:
++      return tiltedRoundedSquare();
++    case 3:
++      return roundedPolygon(starVertices(4, 0.24, -Math.PI / 2), 0.06);
++    case 4:
++      return outline(OPENMINIS_CLOUD, samples);
++    case 5:
++      return bean();
++    case 6:
++      return outline(OPENMINIS_FLOWER, samples);
++    case 7:
++      return teardrop();
++    case 8:
++      return capsule();
++    case 9:
++      return roundedPolygon(
++        [
++          { x: 0.12, y: 0.12 },
++          { x: 0.95, y: 0.5 },
++          { x: 0.12, y: 0.88 },
++        ],
++        0.14,
++      );
++    case 10:
++      return roundedPolygon(polygon(6, Math.PI / 6), 0.12);
++    case 11:
++      return roundedPolygon(starVertices(8, 0.34, 0), 0.06);
++    case 12:
++      return roundedPolygon(polygon(5, -Math.PI / 2), 0.12);
++    default:
++      return circle();
++  }
++}
++
++export type OpenMinisEye = {
++  kind: "capsule" | "happy" | "frown" | "line";
++  width: number;
++  height: number;
++  stroke?: number;
++};
++
++export function openminisEyeMetrics(mood: OpenMinisMood, eyeOpen: number, size: number): OpenMinisEye {
++  const open = Math.max(eyeOpen, 0.12);
++  switch (mood) {
++    case "happy":
++      if (eyeOpen > 0.5) return { kind: "happy", width: 0.14, height: 0.09, stroke: 0.07 };
++      break;
++    case "focused":
++      return { kind: "capsule", width: 0.11, height: 0.12 * open };
++    case "curious":
++      return { kind: "capsule", width: 0.12, height: 0.27 * open };
++    case "frown":
++      return { kind: "frown", width: 0.14, height: 0.07, stroke: 0.07 };
++    case "shy":
++      return { kind: "frown", width: 0.13, height: 0.06, stroke: 0.06 };
++    case "dozing":
++      return { kind: "line", width: 0.13, height: Math.max(1.5 / Math.max(size, 1), 0.035) };
++    default:
++      break;
++  }
++  return { kind: "capsule", width: 0.1, height: 0.22 * open };
++}
++
++export function openminisFaceTransform(mood: OpenMinisMood, gaze: { x: number; y: number } = { x: 0, y: 0 }): {
++  x: number;
++  y: number;
++  rotate: number;
++  spacing: number;
++} {
++  return {
++    x: 0.06 + 0.08 * gaze.x,
++    y: -0.08 + 0.07 * gaze.y,
++    rotate: mood === "curious" ? -4 : -14,
++    spacing: 0.13,
++  };
++}
++
++function happyEyePath(width: number, height: number, flip: boolean): string {
++  const minX = -width / 2;
++  const maxX = width / 2;
++  const minY = -height / 2;
++  const maxY = height / 2;
++  const path = new PathWriter();
++  if (!flip) {
++    path.move(minX, maxY);
++    path.quad(0, minY - height * 0.6, maxX, maxY);
++  } else {
++    path.move(minX, minY);
++    path.quad(0, maxY + height * 0.6, maxX, minY);
++  }
++  return path.toString();
++}
++
++export type OpenMinisDrawOptions = {
++  size: number;
++  dark: boolean;
++  eyeOpen?: number;
++  mood?: OpenMinisMood;
++  gaze?: { x: number; y: number };
++  showsFace?: boolean;
++};
++
++/** A complete SVG (unit viewBox) for one avatar: the review sheet and SvgXml both use this. */
++export function openminisSvg(spec: { shape: number; color: number }, options: OpenMinisDrawOptions): string {
++  const size = options.size;
++  const dark = options.dark;
++  const eyeOpen = options.eyeOpen ?? 1;
++  const mood = options.mood ?? "calm";
++  const gaze = options.gaze ?? { x: 0, y: 0 };
++  const showsFace = options.showsFace !== false;
++  const fill = openminisHex(spec.color, dark);
++  const body = openminisBodyPath(spec.shape);
++  const glow = dark
++    ? `<g filter="url(#omGlow)" opacity="0.28"><path d="${body}" fill="#ffffff"/></g>`
++    : "";
++  const blur = Math.max(0.5, size * 0.02) / size;
++  const defs = dark
++    ? `<defs><filter id="omGlow" x="-0.2" y="-0.2" width="1.4" height="1.4"><feGaussianBlur stdDeviation="${fmt(blur)}"/></filter></defs>`
++    : "";
++  let face = "";
++  if (showsFace) {
++    const eye = openminisEyeMetrics(mood, eyeOpen, size);
++    const tr = openminisFaceTransform(mood, gaze);
++    const gap = tr.spacing + eye.width;
++    const left = -gap / 2;
++    const right = gap / 2;
++    const eyeMarkup = (cx: number) => {
++      if (eye.kind === "happy" || eye.kind === "frown") {
++        const d = happyEyePath(eye.width, eye.height, eye.kind === "frown");
++        const sw = eye.stroke ?? 0.07;
++        return `<path d="${d}" transform="translate(${fmt(cx)} 0)" fill="none" stroke="#ffffff" stroke-width="${fmt(sw)}" stroke-linecap="round"/>`;
++      }
++      const x = cx - eye.width / 2;
++      const y = -eye.height / 2;
++      const rr = Math.min(eye.width, eye.height) / 2;
++      return `<rect x="${fmt(x)}" y="${fmt(y)}" width="${fmt(eye.width)}" height="${fmt(eye.height)}" rx="${fmt(rr)}" fill="#ffffff"/>`;
++    };
++    face = `<g transform="translate(${fmt(0.5 + tr.x)} ${fmt(0.5 + tr.y)}) rotate(${fmt(tr.rotate)})">${eyeMarkup(left)}${eyeMarkup(right)}</g>`;
++    if (mood === "shy") {
++      face += `<g transform="translate(${fmt(0.5 + 0.06)} ${fmt(0.5 + 0.08)})" opacity="0.75">
++        <ellipse cx="${fmt(-0.15)}" cy="0" rx="${fmt(0.55 / 4)}" ry="${fmt(0.04)}" fill="#ff69b4" filter="url(#omBlush)"/>
++        <ellipse cx="${fmt(0.15)}" cy="0" rx="${fmt(0.55 / 4)}" ry="${fmt(0.04)}" fill="#ff69b4" filter="url(#omBlush)"/>
++      </g>`;
++    }
++    if (mood === "dozing") {
++      face += `<text x="${fmt(0.5 + 0.3)}" y="${fmt(0.5 - 0.3)}" fill="#ffffff" fill-opacity="0.9" font-size="0.22" font-weight="700" font-family="system-ui, sans-serif" text-anchor="middle" dominant-baseline="central">z</text>`;
++    }
++  }
++  const blushDef =
++    showsFace && mood === "shy"
++      ? `<filter id="omBlush"><feGaussianBlur stdDeviation="0.015"/></filter>`
++      : "";
++  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-0.08 -0.08 1.16 1.16" width="${size}" height="${size}" overflow="visible">${defs}${blushDef ? `<defs>${blushDef}</defs>` : ""}${glow}<path d="${body}" fill="${fill}"/>${face}</svg>`;
++}
++
++/** Wait between blinks, in seconds: shorter while the bot is working. */
++export function openminisBlinkWait(working: boolean): { min: number; max: number } {
++  return working ? { min: 0.45, max: 1.1 } : { min: 1.2, max: 3.2 };
++}
 diff --git a/packages/core/src/status-line.test.ts b/packages/core/src/status-line.test.ts
 new file mode 100644
 index 000000000..5c7f9cdf2
@@ -263683,6 +264686,213 @@ index 2bec7b3ac..5606d5389 100644
      // No "module" condition: resolve externals the way Node will.
      conditions: ["node"],
      logLevel: "warning",
+diff --git a/scripts/render-openminis-port.ts b/scripts/render-openminis-port.ts
+new file mode 100644
+index 000000000..af640f36b
+--- /dev/null
++++ b/scripts/render-openminis-port.ts
+@@ -0,0 +1,201 @@
++import { writeFileSync, mkdirSync } from "node:fs";
++import { dirname } from "node:path";
++import {
++  OPENMINIS_ROLE_ROWS,
++  OPENMINIS_SHAPE_COUNT,
++  OPENMINIS_SHAPE_NAMES,
++  openminisHashedSpec,
++  openminisHex,
++  openminisSvg,
++  type OpenMinisMood,
++} from "../packages/core/src/openminis-avatar.ts";
++
++const OUT = process.env.OPENMINIS_PORT_OUT ?? "/workspace/rakazo-review/avatars/openminis-port";
++
++function svgToData(svg: string): string {
++  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
++}
++
++function tile(spec: { shape: number; color: number }, size: number, dark: boolean, mood: OpenMinisMood = "calm", eyeOpen = 1): string {
++  return openminisSvg(spec, { size, dark, mood, eyeOpen, showsFace: true });
++}
++
++function panel(opts: {
++  title: string;
++  dark: boolean;
++  size: number;
++  labelSize?: number;
++  rows: { label: string; shape: number; color: number; mood?: OpenMinisMood; eyeOpen?: number }[];
++  tileGap?: number;
++}): string {
++  const { title, dark, size, rows } = opts;
++  const gap = opts.tileGap ?? 16;
++  const labelH = 22;
++  const pad = 24;
++  const cols = rows.length;
++  const width = pad * 2 + cols * size + (cols - 1) * gap;
++  const height = pad * 2 + 36 + size + labelH + 8;
++  const bg = dark ? "#1C1C1E" : "#F4F1EA";
++  const fg = dark ? "#F2F2F7" : "#1C1C1E";
++  const muted = dark ? "#A1A1AA" : "#5C5C57";
++  const items = rows
++    .map((row, i) => {
++      const x = pad + i * (size + gap);
++      const y = pad + 36;
++      const svg = tile(row, size, dark, row.mood ?? "calm", row.eyeOpen ?? 1);
++      // inline the inner svg in a group translated
++      const inner = svg.replace(/^<svg[^>]*>/, "").replace(/<\/svg>$/, "");
++      return `<g transform="translate(${x} ${y})">
++        <svg width="${size}" height="${size}" viewBox="-0.08 -0.08 1.16 1.16" overflow="visible">${inner}</svg>
++        <text x="${size / 2}" y="${size + 16}" fill="${muted}" font-size="11" font-family="Noto Sans CJK SC, Noto Sans CJK, sans-serif" text-anchor="middle">${escapeXml(row.label)}</text>
++      </g>`;
++    })
++    .join("");
++  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
++    <rect width="${width}" height="${height}" fill="${bg}"/>
++    <text x="${pad}" y="${pad + 16}" fill="${fg}" font-size="16" font-weight="600" font-family="Noto Sans CJK SC, Noto Sans CJK, sans-serif">${escapeXml(title)}</text>
++    ${items}
++  </svg>`;
++}
++
++function escapeXml(s: string): string {
++  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
++}
++
++const roles = OPENMINIS_ROLE_ROWS.map((row) => ({
++  label: `${row.role}  ${row.name}`,
++  name: row.name,
++  key: row.role,
++  shape: row.shape,
++  color: row.color,
++}));
++
++mkdirSync(OUT, { recursive: true });
++
++const sheets: Record<string, string> = {
++  "home-list-light.svg": panel({
++    title: "Home list · 50 pt · light",
++    dark: false,
++    size: 50,
++    rows: roles.map((row) => ({ ...row, label: row.name })),
++  }),
++  "home-list-dark.svg": panel({
++    title: "Home list · 50 pt · dark",
++    dark: true,
++    size: 50,
++    rows: roles.map((row) => ({ ...row, label: row.name })),
++  }),
++  "chat-header-light.svg": panel({
++    title: "Chat header · 28 pt · light",
++    dark: false,
++    size: 28,
++    rows: roles.map((row) => ({ ...row, label: row.key })),
++  }),
++  "chat-header-dark.svg": panel({
++    title: "Chat header · 28 pt · dark",
++    dark: true,
++    size: 28,
++    rows: roles.map((row) => ({ ...row, label: row.key })),
++  }),
++  "home-hero-light.svg": panel({
++    title: "Home hero · 136 pt · light",
++    dark: false,
++    size: 136,
++    rows: roles.slice(0, 6),
++  }),
++  "home-hero-dark.svg": panel({
++    title: "Home hero · 136 pt · dark",
++    dark: true,
++    size: 136,
++    rows: roles.slice(0, 6),
++  }),
++  "home-hero-light-rest.svg": panel({
++    title: "Home hero · 136 pt · light (rest)",
++    dark: false,
++    size: 136,
++    rows: roles.slice(6),
++  }),
++  "home-hero-dark-rest.svg": panel({
++    title: "Home hero · 136 pt · dark (rest)",
++    dark: true,
++    size: 136,
++    rows: roles.slice(6),
++  }),
++};
++
++// Moods + blink for the chief
++const chief = { shape: 0, color: 10 };
++const moods: OpenMinisMood[] = ["calm", "focused", "curious", "happy", "frown", "dozing", "shy"];
++sheets["moods-light.svg"] = panel({
++  title: "Chief moods + blink · light",
++  dark: false,
++  size: 80,
++  rows: [
++    ...moods.map((mood) => ({ label: mood, ...chief, mood })),
++    { label: "blink", ...chief, mood: "calm" as const, eyeOpen: 0.1 },
++  ],
++});
++sheets["moods-dark.svg"] = panel({
++  title: "Chief moods + blink · dark",
++  dark: true,
++  size: 80,
++  rows: [
++    ...moods.map((mood) => ({ label: mood, ...chief, mood })),
++    { label: "blink", ...chief, mood: "calm" as const, eyeOpen: 0.1 },
++  ],
++});
++
++const shapes = Array.from({ length: OPENMINIS_SHAPE_COUNT }, (_, shape) => ({
++  label: `${shape} ${OPENMINIS_SHAPE_NAMES[shape]}`,
++  shape,
++  color: 10,
++}));
++sheets["shapes-indigo.svg"] = panel({
++  title: "All 13 shapes in indigo · 64 pt",
++  dark: false,
++  size: 64,
++  rows: shapes,
++});
++
++for (const [name, svg] of Object.entries(sheets)) {
++  writeFileSync(`${OUT}/${name}`, svg);
++  console.log("wrote", name);
++}
++
++// Also write a combined master SVG that stacks the important sheets.
++const listL = sheets["home-list-light.svg"]!;
++const listD = sheets["home-list-dark.svg"]!;
++const headL = sheets["chat-header-light.svg"]!;
++const headD = sheets["chat-header-dark.svg"]!;
++const heroL = sheets["home-hero-light.svg"]!;
++const heroD = sheets["home-hero-dark.svg"]!;
++const heroL2 = sheets["home-hero-light-rest.svg"]!;
++const heroD2 = sheets["home-hero-dark-rest.svg"]!;
++
++function svgSize(svg: string): { w: number; h: number } {
++  const m = svg.match(/width="(\d+(?:\.\d+)?)" height="(\d+(?:\.\d+)?)"/);
++  if (!m) throw new Error("no size");
++  return { w: Number(m[1]), h: Number(m[2]) };
++}
++
++const parts = [listL, listD, headL, headD, heroL, heroL2, heroD, heroD2, sheets["moods-light.svg"]!, sheets["moods-dark.svg"]!, sheets["shapes-indigo.svg"]!];
++let y = 0;
++const width = Math.max(...parts.map((p) => svgSize(p).w));
++const stacked = parts.map((svg) => {
++  const { h } = svgSize(svg);
++  const inner = svg.replace(/^<svg[^>]*>/, "").replace(/<\/svg>$/, "");
++  const group = `<g transform="translate(0 ${y})">${inner}</g>`;
++  y += h;
++  return group;
++});
++const master = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${y}" viewBox="0 0 ${width} ${y}">
++  <rect width="${width}" height="${y}" fill="#D8D2C8"/>
++  ${stacked.join("\n")}
++</svg>`;
++writeFileSync(`${OUT}/sheet.svg`, master);
++console.log("wrote sheet.svg", width, "x", y);
++
++// unused import keep hashed available for debugging
++void openminisHashedSpec;
++void svgToData;
++void dirname;
 diff --git a/vitest.config.ts b/vitest.config.ts
 index 10c5c362b..870b6ede6 100644
 --- a/vitest.config.ts

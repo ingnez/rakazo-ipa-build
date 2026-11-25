@@ -28,15 +28,13 @@ git log -1 --format='upstream %H %s'
 git apply -v "$HERE/client.patch"
 git diff --stat
 
-# The finished Lumen art the app carries (66 transparent pictures, 34 MB): it lives beside the
-# patch rather than inside it, so the patch stays text and the pictures stay byte for byte what
-# the avatar pipeline produced. Without it the hero still draws, but from the network or the
-# fallback body — so a build that lost it fails here, not on the phone.
-test -d "$HERE/lumen-avatars/assets"
+# Avatars are drawn in the client (OpenMinis shapes and colours). There is no picture pack to
+# copy, and a leftover lumen-avatars folder must not ride into the bundle.
 rm -rf apps/mobile/assets/lumen-avatars
-cp -R "$HERE/lumen-avatars" apps/mobile/assets/lumen-avatars
-[ "$(find apps/mobile/assets/lumen-avatars -type f ! -name manifest.json | wc -l | tr -d " ")" = "66" ] \
-  || { echo "::error::the shipped art is not the 66 finished pictures"; exit 1; }
+if [ -d "$HERE/lumen-avatars" ]; then
+  echo "::error::lumen-avatars is still next to the patch; avatars are drawn, not shipped as pictures"
+  exit 1
+fi
 
 # The build is worthless without the patch and its assets: fail here, not 25 minutes later.
 test -f apps/mobile/lib/app-font.ts
@@ -401,19 +399,20 @@ grep -q 'NSPhotoLibraryAddUsageDescription' apps/mobile/app.json
 # missing (work/v34/negative-gates.sh, 12/12 mutations exit 1 with an ::error).
 bash "$HERE/gates-v34.sh"
 
-# v35: the avatars read the server's manifest, the viewer swipes off the UI thread, a message's
-# pictures load one at a time, and a folder lead wears a flag. Its own script, so the same file
-# proves each check fails when the work is missing (work/v35 negative run: 2/2 exit 1).
+# v35: the viewer swipes off the UI thread, a message's pictures load one at a time, and a
+# folder lead wears a flag. Avatars no longer read a server manifest.
 test -f apps/mobile/lib/lumen/lumen-manifest-store.ts
-grep -q "lumenAvatarChoice" apps/mobile/components/bot-avatar.tsx
 bash "$HERE/gates-v35.sh"
 
-# v36: the hero is 136 pt, the art is carried in the bundle, a picture never arrives as a blank
-# square, the app has its own update channel, and the web draws the same hero. Its own script, so
-# the same file proves each check fails when the work is missing (work/v36 negative run: 9/9).
-test -f apps/mobile/lib/lumen/lumen-builtin-avatars.ts
-test -f apps/mobile/lib/lumen/lumen-avatar-source.ts
+# v36: the hero is 136 pt and the app has its own update channel. Avatars are no longer a
+# bundled picture pack (see gates-v37.sh).
+test -f apps/mobile/lib/lumen/lumen-manifest-store.ts
 bash "$HERE/gates-v36.sh"
+
+# v37: OpenMinis avatars, drawn in the client, no network picture pack, chief has no extra star.
+test -f packages/core/src/openminis-avatar.ts
+test -f apps/mobile/components/openminis-bot-avatar.tsx
+bash "$HERE/gates-v37.sh"
 
 npm i -g pnpm@12.18.0
 pnpm install --frozen-lockfile
@@ -494,11 +493,11 @@ unzip -q -o Rakazo-unsigned.ipa 'Payload/Rakazo.app/Info.plist' -d "$IPA_PLIST"
 /usr/libexec/PlistBuddy -c 'Print :NSPhotoLibraryAddUsageDescription' "$IPA_PLIST/Payload/Rakazo.app/Info.plist" | grep -q 'photo library'
 unzip -l Rakazo-unsigned.ipa | grep -E 'XVF-Regular.ttf|ping_4_chime_a|RakazoDocumentScanner'
 
-# v36: the finished art has to be in the package itself. A package that lost it would still
-# launch, and every avatar would come off the network.
+# v37: avatars are drawn, so the package must not carry a Lumen picture pack (that would be
+# unused weight, and a leftover fetch path would put faces back on the network).
 art_in_ipa="$(unzip -l Rakazo-unsigned.ipa | grep -c 'lumen-avatars/' || true)"
-[ "$art_in_ipa" -ge 66 ] ||
-  { echo "::error::only $art_in_ipa of the 66 avatar pictures are in the package"; exit 1; }
+[ "$art_in_ipa" -eq 0 ] ||
+  { echo "::error::the package still carries $art_in_ipa lumen-avatars files"; exit 1; }
 
 # The icon that ships is the one in the source tree, byte for byte, and no ghost PNG rides along.
 for icon in monochrome-icon; do

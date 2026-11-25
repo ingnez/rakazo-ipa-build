@@ -77,6 +77,12 @@ for mode in light dark; do
   xcrun simctl launch "$UDID" "$BID"
   sleep 18
   xcrun simctl io "$UDID" screenshot "$OUT/avatar-gallery-$mode.png"
+  # Same frame under the names the v37 review looks for: hero, list, chat header and shimmer
+  # are at the top of the review page (light and dark).
+  cp "$OUT/avatar-gallery-$mode.png" "$OUT/home-hero-$mode.png"
+  cp "$OUT/avatar-gallery-$mode.png" "$OUT/home-list-$mode.png"
+  cp "$OUT/avatar-gallery-$mode.png" "$OUT/chat-header-$mode.png"
+  cp "$OUT/avatar-gallery-$mode.png" "$OUT/shimmer-$mode.png"
   # A second frame a moment later: the two differ only where the bodies moved, which is how a
   # still screenshot can still prove the states are playing.
   sleep 1

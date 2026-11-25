@@ -489,7 +489,7 @@ unzip -q -o Rakazo-unsigned.ipa 'Payload/Rakazo.app/Info.plist' -d "$IPA_PLIST"
 /usr/libexec/PlistBuddy -c 'Print :UIAppFonts' "$IPA_PLIST/Payload/Rakazo.app/Info.plist" | grep -q 'XVF-Regular.ttf'
 /usr/libexec/PlistBuddy -c 'Print :CADisableMinimumFrameDurationOnPhone' "$IPA_PLIST/Payload/Rakazo.app/Info.plist" || true
 /usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$IPA_PLIST/Payload/Rakazo.app/Info.plist" | grep -qx Bot
-/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$IPA_PLIST/Payload/Rakazo.app/Info.plist" | grep -qx 1.0.16
+/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$IPA_PLIST/Payload/Rakazo.app/Info.plist" | grep -qx 1.0.17
 /usr/libexec/PlistBuddy -c 'Print :NSPhotoLibraryAddUsageDescription' "$IPA_PLIST/Payload/Rakazo.app/Info.plist" | grep -q 'photo library'
 unzip -l Rakazo-unsigned.ipa | grep -E 'XVF-Regular.ttf|ping_4_chime_a|RakazoDocumentScanner'
 

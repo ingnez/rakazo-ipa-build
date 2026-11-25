@@ -24041,7 +24041,7 @@ index 000000000..c6783b3b5
 +  });
 +}
 diff --git a/apps/mobile/app.json b/apps/mobile/app.json
-index d0e806932..077e3aac8 100644
+index d0e806932..c55026130 100644
 --- a/apps/mobile/app.json
 +++ b/apps/mobile/app.json
 @@ -4,19 +4,33 @@
@@ -24049,7 +24049,7 @@ index d0e806932..077e3aac8 100644
      "owner": "inbox-zero",
      "scheme": "rakazo",
 -    "version": "1.0.14",
-+    "version": "1.0.16",
++    "version": "1.0.17",
      "orientation": "default",
      "userInterfaceStyle": "automatic",
 -    "icon": "./assets/icon.png",
@@ -24118,7 +24118,7 @@ index d0e806932..077e3aac8 100644
      "ios": {
        "bundleIdentifier": "com.rakazo.app",
 -      "buildNumber": "1",
-+      "buildNumber": "3",
++      "buildNumber": "4",
        "supportsTablet": true,
 -      "icon": "../../packages/ui-tokens/assets/Rakazo.icon",
 +      "icon": "./assets/bot-icon.png",
@@ -24249,7 +24249,7 @@ index 59a5262b6..4c7d9c133 100644
          name="plugin"
          // Named after the plugin it opened.
 diff --git a/apps/mobile/app/(settings)/account.tsx b/apps/mobile/app/(settings)/account.tsx
-index a6a012feb..23c5ffe0f 100644
+index a6a012feb..692cfc0db 100644
 --- a/apps/mobile/app/(settings)/account.tsx
 +++ b/apps/mobile/app/(settings)/account.tsx
 @@ -7,7 +7,7 @@ import type { Href } from "expo-router";
@@ -24261,7 +24261,7 @@ index a6a012feb..23c5ffe0f 100644
  import { SafeAreaView } from "react-native-safe-area-context";
  import { AppMark } from "../../components/app-mark";
  import { ApprovalModeRow, ApprovalRulesRow } from "../../components/approval-settings-rows";
-@@ -17,7 +17,7 @@ import { SettingsGroup, SettingsRow, useStackedSettings } from "../../components
+@@ -17,11 +17,11 @@ import { SettingsGroup, SettingsRow, useStackedSettings } from "../../components
  import { SpendingLimitRow, useSpendingStatus } from "../../components/spending-limit-row";
  import { rpc, selectedSpaceId } from "../../lib/api";
  import { signOut } from "../../lib/api-auth";
@@ -24270,6 +24270,11 @@ index a6a012feb..23c5ffe0f 100644
  import { useApprovalSettings } from "../../lib/approval-settings";
  import { replaceWithSignIn } from "../../lib/auth-routing";
  import { endCallBeforeSessionEnd } from "../../lib/call-session";
+-import { dateLocaleForUi, useUiLocale } from "../../lib/i18n";
++import { useDateLocale } from "../../lib/i18n";
+ import type { MobileMe } from "../../lib/mobile-types";
+ import { native, useMobileTokens, useThemedStyles } from "../../lib/native";
+ import { activeOrganization, useOrganizations } from "../../lib/organizations";
 @@ -31,8 +31,12 @@ import { ACCOUNT_SETTINGS } from "../../lib/settings-target";
  import { useSideInsets } from "../../lib/side-insets";
  import { openStoreListing, useStoreUpdateAvailable } from "../../lib/store-update";
@@ -24283,7 +24288,14 @@ index a6a012feb..23c5ffe0f 100644
  type Icon = Pick<ComponentProps<typeof NativeSymbol>, "ios" | "android">;
  type SettingsLink = { title: string; href: Href; icon: Icon };
  
-@@ -46,6 +50,7 @@ export default function Account() {
+@@ -40,12 +44,13 @@ type SettingsLink = { title: string; href: Href; icon: Icon };
+ export default function Account() {
+   const sideInsets = useSideInsets();
+   const { t } = useLingui();
+-  const locale = useUiLocale();
++  const locale = useDateLocale();
+   const router = useRouter();
+   const tokens = useMobileTokens();
    const { focus } = useLocalSearchParams<{ focus?: string }>();
    const [me, setMe] = useState<MobileMe | null>(null);
    const account = accountDisplay(me ?? {}, t`Your account`);
@@ -24301,6 +24313,17 @@ index a6a012feb..23c5ffe0f 100644
    const storeUpdateAvailable = useStoreUpdateAvailable();
    const approvals = useApprovalSettings(ACCOUNT_SETTINGS);
    const spending = useSpendingStatus();
+@@ -128,8 +132,8 @@ export default function Account() {
+     }, []),
+   );
+ 
+-  const count = new Intl.NumberFormat(dateLocaleForUi(locale));
+-  const usd = new Intl.NumberFormat(dateLocaleForUi(locale), {
++  const count = new Intl.NumberFormat(locale);
++  const usd = new Intl.NumberFormat(locale, {
+     style: "currency",
+     currency: "USD",
+   });
 @@ -144,14 +148,16 @@ export default function Account() {
    const usageBlock = (
      <SettingsRow
@@ -24320,6 +24343,15 @@ index a6a012feb..23c5ffe0f 100644
      />
    );
    const creditsRow =
+@@ -170,7 +176,7 @@ export default function Account() {
+       label={plan.label === plan.name ? plan.name : `${plan.name} · ${plan.label}`}
+     >
+       {plan.windows.map((window) => {
+-        const reset = formatTimeUntil(window.resetsAt, dateLocaleForUi(locale));
++        const reset = formatTimeUntil(window.resetsAt, locale);
+         return (
+           <SettingsRow
+             key={window.period}
 @@ -218,12 +224,8 @@ export default function Account() {
      }
    }
@@ -24564,6 +24596,57 @@ index a6a012feb..23c5ffe0f 100644
      updateButton: {
        alignSelf: "center",
      },
+diff --git a/apps/mobile/app/(settings)/billing.tsx b/apps/mobile/app/(settings)/billing.tsx
+index 74f7aeadb..90b86801f 100644
+--- a/apps/mobile/app/(settings)/billing.tsx
++++ b/apps/mobile/app/(settings)/billing.tsx
+@@ -25,13 +25,13 @@ import {
+   ownKeySubscriptionCents,
+   planEndsAt,
+ } from "../../lib/billing";
+-import { dateLocaleForUi } from "../../lib/i18n";
++import { useDateLocale } from "../../lib/i18n";
+ import { rememberReferral } from "../../lib/referral";
+ import { openFromSettingsSheet } from "../../lib/settings-sheet";
+ import { useSideInsets } from "../../lib/side-insets";
+ 
+-function formatDate(iso: string) {
+-  return new Date(iso).toLocaleDateString(dateLocaleForUi(), {
++function formatDate(iso: string, locale: string) {
++  return new Date(iso).toLocaleDateString(locale, {
+     year: "numeric",
+     month: "short",
+     day: "numeric",
+@@ -42,6 +42,7 @@ export default function BillingScreen() {
+   const sideInsets = useSideInsets();
+   const stacked = useStackedSettings();
+   const { t } = useLingui();
++  const locale = useDateLocale();
+   const router = useRouter();
+   const [status, setStatus] = useState<BillingStatus | null>(null);
+   const [amount, setAmount] = useState<HeldCreditAmount>(DEFAULT_MONTHLY_CREDIT_AMOUNT);
+@@ -212,10 +213,10 @@ export default function BillingScreen() {
+         {endsAt ? (
+           <SettingsRow
+             title={status.cancelAtPeriodEnd ? t`Ends` : t`Free until`}
+-            value={formatDate(endsAt)}
++            value={formatDate(endsAt, locale)}
+           />
+         ) : status.access && status.currentPeriodEndsAt ? (
+-          <SettingsRow title={t`Renews`} value={formatDate(status.currentPeriodEndsAt)} />
++          <SettingsRow title={t`Renews`} value={formatDate(status.currentPeriodEndsAt, locale)} />
+         ) : null}
+         {yearlySavings !== null && annualCents ? (
+           <SettingsRow
+@@ -262,7 +263,7 @@ export default function BillingScreen() {
+         >
+           <SettingsRow title={t`Computer hours left`} value={String(status.computerHoursLeft)} />
+           {status.computerHoursResetAt ? (
+-            <SettingsRow title={t`Resets`} value={formatDate(status.computerHoursResetAt)} />
++            <SettingsRow title={t`Resets`} value={formatDate(status.computerHoursResetAt, locale)} />
+           ) : null}
+           {endTrial ? (
+             <SettingsRow
 diff --git a/apps/mobile/app/(settings)/bot-templates.tsx b/apps/mobile/app/(settings)/bot-templates.tsx
 index 4a32c0a8b..1f184112e 100644
 --- a/apps/mobile/app/(settings)/bot-templates.tsx
@@ -26657,9 +26740,40 @@ index 535306005..37aeab1be 100644
              />
              {/* Connections are the account's in every Space, so a Space's override lists only its models. */}
              {target.scope === "account" ? (
+diff --git a/apps/mobile/app/(settings)/profile.tsx b/apps/mobile/app/(settings)/profile.tsx
+index b0ee56c1a..ff51828cc 100644
+--- a/apps/mobile/app/(settings)/profile.tsx
++++ b/apps/mobile/app/(settings)/profile.tsx
+@@ -17,7 +17,7 @@ import {
+   updateAccountName,
+ } from "../../lib/api-auth";
+ import { mobileTokens } from "../../lib/appearance";
+-import { dateLocaleForUi, useUiLocale } from "../../lib/i18n";
++import { useDateLocale } from "../../lib/i18n";
+ import type { MobileMe } from "../../lib/mobile-types";
+ import { useResolvedAppearance, useThemedStyles } from "../../lib/native";
+ import type { MobilePasskey } from "../../lib/passkey";
+@@ -43,7 +43,7 @@ import { errorText } from "../../lib/user-error";
+ export default function Profile() {
+   const sideInsets = useSideInsets();
+   const { t } = useLingui();
+-  const locale = useUiLocale();
++  const dateLocale = useDateLocale();
+   const router = useRouter();
+   const styles = useThemedStyles(createSettingsPageStyles);
+   const stacked = useStackedSettings();
+@@ -269,7 +269,7 @@ export default function Profile() {
+                     accessibilityRole="button"
+                     detail={
+                       created && !Number.isNaN(created.getTime())
+-                        ? created.toLocaleDateString(dateLocaleForUi(locale), {
++                        ? created.toLocaleDateString(dateLocale, {
+                             dateStyle: "medium",
+                           })
+                         : undefined
 diff --git a/apps/mobile/app/(settings)/usage.tsx b/apps/mobile/app/(settings)/usage.tsx
 new file mode 100644
-index 000000000..b532759cc
+index 000000000..9d9aaa23f
 --- /dev/null
 +++ b/apps/mobile/app/(settings)/usage.tsx
 @@ -0,0 +1,521 @@
@@ -26689,7 +26803,7 @@ index 000000000..b532759cc
 +import { Chevron } from "../../components/row-accessories";
 +import { SettingsGroup, SettingsLabel, useStackedSettings } from "../../components/settings-group";
 +import { mobileTokens } from "../../lib/appearance";
-+import { dateLocaleForUi, useUiLocale } from "../../lib/i18n";
++import { useDateLocale } from "../../lib/i18n";
 +import { native, useMobileTokens, useThemedStyles } from "../../lib/native";
 +import { accountRpcQuery, queryClient } from "../../lib/query";
 +import { useSideInsets } from "../../lib/side-insets";
@@ -26742,7 +26856,7 @@ index 000000000..b532759cc
 +};
 +
 +export default function UsageScreen() {
-+  const locale = useUiLocale();
++  const locale = useDateLocale();
 +  const sideInsets = useSideInsets();
 +  const stacked = useStackedSettings();
 +  const tokens = useMobileTokens();
@@ -26769,11 +26883,11 @@ index 000000000..b532759cc
 +    setRefreshing(false);
 +  }
 +
-+  const number = new Intl.NumberFormat(dateLocaleForUi(locale));
++  const number = new Intl.NumberFormat(locale);
 +  const timeOf = (iso: string) => {
 +    const date = new Date(iso);
 +    if (Number.isNaN(date.getTime())) return "";
-+    const stamp = new Intl.DateTimeFormat(dateLocaleForUi(locale), {
++    const stamp = new Intl.DateTimeFormat(locale, {
 +      ...(date.toDateString() === new Date().toDateString()
 +        ? { hour: "2-digit", minute: "2-digit", second: "2-digit" }
 +        : { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }),
@@ -26968,7 +27082,7 @@ index 000000000..b532759cc
 +                  details.window,
 +                  details.since,
 +                  details.until,
-+                  dateLocaleForUi(locale),
++                  locale,
 +                ) || undefined
 +              }
 +            >
@@ -27485,7 +27599,7 @@ index c938f4ead..725c94cff 100644
      addLabel: { color: native.label, fontSize: 17 },
      tile: {
 diff --git a/apps/mobile/app/_layout.tsx b/apps/mobile/app/_layout.tsx
-index e65118bfb..128c6e9e8 100644
+index e65118bfb..415c8066c 100644
 --- a/apps/mobile/app/_layout.tsx
 +++ b/apps/mobile/app/_layout.tsx
 @@ -24,10 +24,11 @@ import type { ReactNode } from "react";
@@ -27517,15 +27631,17 @@ index e65118bfb..128c6e9e8 100644
  import { loadAppearancePreference, mobileTokens } from "../lib/appearance";
  import { replaceWithSignIn } from "../lib/auth-routing";
  import { AvatarScreenFocus } from "../lib/avatar-life";
-@@ -55,9 +58,15 @@ import { CallKeyboardContext } from "../lib/call-keyboard-context";
+@@ -55,9 +58,16 @@ import { CallKeyboardContext } from "../lib/call-keyboard-context";
  import { useCallActive } from "../lib/call-session";
  import { installClientUpdates, watchForegroundUpdates } from "../lib/client-update";
  import { loadHapticsPreference } from "../lib/haptics";
+-import { bootstrapI18n } from "../lib/i18n";
 +// The catalogs and the active locale have to exist before the first render draws a word: with
 +// inline requires an import that only an effect uses is read when that effect runs, which is after
 +// the frame. A bare import is never inlined, so this one still runs while the layout loads.
 +import "../lib/i18n";
- import { bootstrapI18n } from "../lib/i18n";
++import { useAppResume } from "../lib/app-foreground";
++import { bootstrapI18n, refreshDeviceDateFormat } from "../lib/i18n";
  import { startIncomingCalls } from "../lib/incoming-calls";
 +import { useKeyboardLift } from "../lib/keyboard-lift";
  import { clearLastBot } from "../lib/last-bot";
@@ -27533,7 +27649,7 @@ index e65118bfb..128c6e9e8 100644
  import { loadLinkFavicon } from "../lib/link-favicons";
  import {
    configureForegroundNotifications,
-@@ -67,6 +76,7 @@ import { OpenPageContext } from "../lib/message-mentions";
+@@ -67,6 +77,7 @@ import { OpenPageContext } from "../lib/message-mentions";
  import { setMobileMonitoringScreen } from "../lib/monitoring";
  import { native, useMobileTokens, useResolvedAppearance } from "../lib/native";
  import { useNotificationResponses } from "../lib/open-notification";
@@ -27541,7 +27657,7 @@ index e65118bfb..128c6e9e8 100644
  import { clearQueries } from "../lib/query";
  import { useReferral } from "../lib/referral";
  import {
-@@ -96,7 +106,6 @@ import {
+@@ -96,7 +107,6 @@ import {
    markMobileStartupMounted,
    trackMobileStartup,
  } from "../lib/startup";
@@ -27549,7 +27665,7 @@ index e65118bfb..128c6e9e8 100644
  import {
    loadTrustedLinkSites,
    trustLinkSite,
-@@ -106,23 +115,40 @@ import { startUnsentSends } from "../lib/unsent-sends";
+@@ -106,23 +116,40 @@ import { startUnsentSends } from "../lib/unsent-sends";
  import { startWorkActivities } from "../lib/work-activity";
  import { InboxPane } from "./index";
  
@@ -27594,7 +27710,7 @@ index e65118bfb..128c6e9e8 100644
  /** On a wide window the chat list stays on the left and the stack shows the open chat beside it. */
  function SplitFrame({ children }: { children: ReactNode }) {
    const pathname = usePathname();
-@@ -219,6 +245,20 @@ function SplitFrame({ children }: { children: ReactNode }) {
+@@ -219,6 +246,20 @@ function SplitFrame({ children }: { children: ReactNode }) {
    );
  }
  
@@ -27615,7 +27731,20 @@ index e65118bfb..128c6e9e8 100644
  function LinkGlobe() {
    const tokens = useMobileTokens();
    return (
-@@ -358,34 +398,73 @@ function LayoutContent() {
+@@ -294,8 +335,10 @@ function LayoutContent() {
+     if (!ready) return;
+     return startIncomingCalls();
+   }, [ready, callSession]);
+-  const screen = analyticsScreen(usePathname());
+-  useEffect(() => setMobileMonitoringScreen(screen), [screen]);
++  const pathname = usePathname();
++  const screen = analyticsScreen(pathname);
++  const monitoringScreen = pathname === "/share" ? "share" : screen;
++  useEffect(() => setMobileMonitoringScreen(monitoringScreen), [monitoringScreen]);
+   useEffect(() => {
+     const surface = Platform.OS;
+     if (!ready || !screen || (surface !== "ios" && surface !== "android")) return;
+@@ -358,34 +401,76 @@ function LayoutContent() {
      return startWorkActivities();
    }, [ready]);
  
@@ -27627,6 +27756,9 @@ index e65118bfb..128c6e9e8 100644
 +  }, [ready]);
 +
    useEffect(() => watchForegroundUpdates(), []);
++  useAppResume(() => {
++    void refreshDeviceDateFormat();
++  });
  
    useEffect(() => {
      markMobileStartupMounted();
@@ -27709,7 +27841,7 @@ index e65118bfb..128c6e9e8 100644
    }, []);
  
    return (
-@@ -396,7 +475,7 @@ function LayoutContent() {
+@@ -396,7 +481,7 @@ function LayoutContent() {
              <ThemeProvider value={navigationTheme}>
                <StatusBar style={resolved === "light" ? "dark" : "light"} />
                <CallKeyboardContext.Provider value={call}>
@@ -27718,7 +27850,7 @@ index e65118bfb..128c6e9e8 100644
                    <SplitFrame>
                      <Stack
                        screenLayout={({ navigation, options, children }) => (
-@@ -422,20 +501,24 @@ function LayoutContent() {
+@@ -422,20 +507,24 @@ function LayoutContent() {
                          headerShadowVisible: false,
                          headerBackButtonDisplayMode: "minimal",
                          contentStyle: { backgroundColor: String(native.page) },
@@ -27751,7 +27883,7 @@ index e65118bfb..128c6e9e8 100644
                          }}
                        />
                        <Stack.Screen name="share" options={{ headerShown: false }} />
-@@ -452,12 +535,13 @@ function LayoutContent() {
+@@ -452,12 +541,13 @@ function LayoutContent() {
                          name="(settings)"
                          options={{
                            headerShown: false,
@@ -27771,7 +27903,7 @@ index e65118bfb..128c6e9e8 100644
                            contentStyle: { backgroundColor: native.groupedPage },
                          }}
                        />
-@@ -484,7 +568,11 @@ function LayoutContent() {
+@@ -484,7 +574,11 @@ function LayoutContent() {
                          name="new-bot"
                          options={{
                            title: t`New bot`,
@@ -27784,7 +27916,7 @@ index e65118bfb..128c6e9e8 100644
                            gestureEnabled: true,
                            headerBackVisible: false,
                          }}
-@@ -532,11 +620,13 @@ function LayoutContent() {
+@@ -532,11 +626,13 @@ function LayoutContent() {
                          name="page"
                          options={{
                            headerShown: false,
@@ -27802,7 +27934,7 @@ index e65118bfb..128c6e9e8 100644
                          }}
                        />
                        <Stack.Screen
-@@ -594,19 +684,24 @@ function LayoutContent() {
+@@ -594,19 +690,24 @@ function LayoutContent() {
                        />
                      </Stack>
                    </SplitFrame>
@@ -27838,7 +27970,7 @@ index e65118bfb..128c6e9e8 100644
              </ThemeProvider>
            </ChatContentProviders>
          ) : (
-@@ -617,11 +712,14 @@ function LayoutContent() {
+@@ -617,11 +718,14 @@ function LayoutContent() {
    );
  }
  
@@ -27912,7 +28044,7 @@ index 9187feee6..5dd94dda4 100644
          <SettingsRow
            key="routines"
 diff --git a/apps/mobile/app/bot-settings.tsx b/apps/mobile/app/bot-settings.tsx
-index 408ddab44..687eeaec1 100644
+index 408ddab44..2d5a4969c 100644
 --- a/apps/mobile/app/bot-settings.tsx
 +++ b/apps/mobile/app/bot-settings.tsx
 @@ -8,7 +8,6 @@ import {
@@ -27923,7 +28055,7 @@ index 408ddab44..687eeaec1 100644
    credentialForModel,
    DEFAULT_BOT_AVATAR_COLOR,
    MODEL_SEARCH_THRESHOLD,
-@@ -23,9 +22,12 @@ import type { Voice } from "expo-speech";
+@@ -23,9 +22,13 @@ import type { Voice } from "expo-speech";
  import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
  import type { ScrollViewInstance } from "react-native";
  import { Alert, Modal, Pressable, ScrollView, Share, StyleSheet, Text, View } from "react-native";
@@ -27932,11 +28064,12 @@ index 408ddab44..687eeaec1 100644
  import { BotContextCards } from "../components/bot-context-cards";
  import { BotLookPicker } from "../components/bot-look-picker";
 +import { parseLumenLook } from "../lib/lumen/lumen-avatar";
++import { dateLocaleForUi } from "../lib/i18n";
 +import { BotSoulField } from "../components/bot-soul-field";
  import { useComputerMaintenanceRows } from "../components/computer-maintenance-actions";
  import { ComputerModePicker } from "../components/computer-mode-picker";
  import { glassHeaderOptions } from "../components/glass-title";
-@@ -43,6 +45,7 @@ import {
+@@ -43,6 +46,7 @@ import {
    SettingsSwitch,
  } from "../components/settings-group";
  import { currentApiBase, rpc, selectedSpaceId } from "../lib/api";
@@ -27944,7 +28077,7 @@ index 408ddab44..687eeaec1 100644
  import { deviceVoices, setVoiceForBot, voiceForBot, voiceLabel } from "../lib/bot-voices";
  import { CallKeyboardContext } from "../lib/call-keyboard-context";
  import { chatModelPickerChoices } from "../lib/chat-model";
-@@ -62,6 +65,7 @@ import { stopVoicePlayback } from "../lib/voice";
+@@ -62,6 +66,7 @@ import { stopVoicePlayback } from "../lib/voice";
  export default function BotSettingsScreen() {
    const rootAvoidsKeyboard = useContext(CallKeyboardContext);
    const sideInsets = useSideInsets();
@@ -27952,7 +28085,7 @@ index 408ddab44..687eeaec1 100644
    const tokens = useMobileTokens();
    const { t } = useLingui();
    const router = useRouter();
-@@ -76,6 +80,7 @@ export default function BotSettingsScreen() {
+@@ -76,6 +81,7 @@ export default function BotSettingsScreen() {
    const threadId = useRef<string | undefined>(undefined);
    const [name, setName] = useState("");
    const [description, setDescription] = useState("");
@@ -27960,7 +28093,7 @@ index 408ddab44..687eeaec1 100644
    const [instructions, setInstructions] = useState("");
    const [color, setColor] = useState<string>(DEFAULT_BOT_AVATAR_COLOR);
    const [computerMode, setComputerMode] = useState<ComputerMode>("team");
-@@ -89,6 +94,7 @@ export default function BotSettingsScreen() {
+@@ -89,6 +95,7 @@ export default function BotSettingsScreen() {
    const [dailyCheckIns, setDailyCheckIns] = useState(true);
    const [crossSpaceCommunication, setCrossSpaceCommunication] = useState(true);
    const [fleetManagement, setFleetManagement] = useState(true);
@@ -27968,7 +28101,7 @@ index 408ddab44..687eeaec1 100644
    const [replyMode, setReplyMode] = useState<ReplyMode>("chat");
    const [credentials, setCredentials] = useState<MobileModelCredential[]>([]);
    const [catalog, setCatalog] = useState<MobileModel[]>([]);
-@@ -141,6 +147,20 @@ export default function BotSettingsScreen() {
+@@ -141,6 +148,20 @@ export default function BotSettingsScreen() {
      [botId, t],
    );
  
@@ -27989,7 +28122,7 @@ index 408ddab44..687eeaec1 100644
    const replyModeSave = useMemo(
      () =>
        createQueuedSave<ReplyMode>("chat", {
-@@ -202,6 +222,7 @@ export default function BotSettingsScreen() {
+@@ -202,6 +223,7 @@ export default function BotSettingsScreen() {
          nameSave.reset(next.name);
          notifySave.reset(next.notifyOnFinish ?? true);
          setDescription(next.description ?? "");
@@ -27997,7 +28130,7 @@ index 408ddab44..687eeaec1 100644
          setInstructions(next.instructions ?? "");
          setColor(next.color);
          setAvatarSet(resolveBotAvatarSet(next.avatarSet));
-@@ -220,11 +241,13 @@ export default function BotSettingsScreen() {
+@@ -220,11 +242,13 @@ export default function BotSettingsScreen() {
          crossSpaceSave.reset(next.crossSpaceCommunication ?? true);
          setFleetManagement(next.fleetManagement);
          fleetSave.reset(next.fleetManagement);
@@ -28012,7 +28145,7 @@ index 408ddab44..687eeaec1 100644
  
    useEffect(() => {
      void Promise.all([rpc("me"), rpc("models/list"), rpc("models/credentials")])
-@@ -407,6 +430,7 @@ export default function BotSettingsScreen() {
+@@ -407,6 +431,7 @@ export default function BotSettingsScreen() {
          description?: string;
          instructions?: string;
          expectedInstructions?: string;
@@ -28020,7 +28153,7 @@ index 408ddab44..687eeaec1 100644
          color?: string;
          avatarSet?: BotAvatarSet;
          modelProvider?: string | null;
-@@ -421,6 +445,8 @@ export default function BotSettingsScreen() {
+@@ -421,6 +446,8 @@ export default function BotSettingsScreen() {
          input.instructions = instructions;
          input.expectedInstructions = bot.instructions;
        }
@@ -28029,7 +28162,7 @@ index 408ddab44..687eeaec1 100644
        if (color !== bot.color) input.color = color;
        if (avatarSet !== resolveBotAvatarSet(bot.avatarSet)) input.avatarSet = avatarSet;
        const modelChanged =
-@@ -452,6 +478,8 @@ export default function BotSettingsScreen() {
+@@ -452,6 +479,8 @@ export default function BotSettingsScreen() {
          // does not resend them.
          const { botId: _botId, expectedInstructions: _expected, ...saved } = input;
          setBot((prev) => (prev ? { ...prev, ...saved, ...updated } : prev));
@@ -28038,7 +28171,7 @@ index 408ddab44..687eeaec1 100644
        }
        await Promise.all([
          dailyCheckInsSave.flush(),
-@@ -473,6 +501,7 @@ export default function BotSettingsScreen() {
+@@ -473,6 +502,7 @@ export default function BotSettingsScreen() {
    const dirty =
      bot &&
      (description.trim() !== (bot.description ?? "") ||
@@ -28046,7 +28179,7 @@ index 408ddab44..687eeaec1 100644
        instructions !== (bot.instructions ?? "") ||
        color !== bot.color ||
        avatarSet !== resolveBotAvatarSet(bot.avatarSet) ||
-@@ -684,6 +713,28 @@ export default function BotSettingsScreen() {
+@@ -684,6 +714,28 @@ export default function BotSettingsScreen() {
                  value={fleetManagement}
                />
              </SettingsGroup>
@@ -28075,7 +28208,7 @@ index 408ddab44..687eeaec1 100644
              <SettingsGroup label={t`Replies`}>
                <MenuPicker
                  choices={[
-@@ -700,6 +751,10 @@ export default function BotSettingsScreen() {
+@@ -700,6 +752,10 @@ export default function BotSettingsScreen() {
                  value={replyMode}
                />
              </SettingsGroup>
@@ -28086,7 +28219,16 @@ index 408ddab44..687eeaec1 100644
              <View style={{ gap: 7 }}>
                <View
                  style={{
-@@ -853,44 +908,68 @@ export default function BotSettingsScreen() {
+@@ -717,7 +773,7 @@ export default function BotSettingsScreen() {
+                       value=""
+                       choices={bot.instructionHistory.map((version) => ({
+                         key: version.id,
+-                        label: `${new Date(version.createdAt).toLocaleString()} (${version.reason})`,
++                        label: `${new Date(version.createdAt).toLocaleString(dateLocaleForUi())} (${version.reason})`,
+                       }))}
+                       onChange={(versionId) => {
+                         if (pendingRef.current || instructions !== bot.instructions) return;
+@@ -853,44 +909,68 @@ export default function BotSettingsScreen() {
            presentationStyle="pageSheet"
            onRequestClose={() => setAvatarOpen(false)}
          >
@@ -28189,7 +28331,7 @@ index 408ddab44..687eeaec1 100644
          </Modal>
        ) : null}
      </>
-@@ -899,5 +978,36 @@ export default function BotSettingsScreen() {
+@@ -899,5 +979,36 @@ export default function BotSettingsScreen() {
  
  const styles = StyleSheet.create({
    cardContent: { padding: 16 },
@@ -29242,6 +29384,36 @@ index ad487f626..83c2212be 100644
 +  // container to centre it, and a bare Text stretched to a fixed height does not.
 +  createAsleep: { fontSize: 16, fontWeight: "600", textAlign: "center", lineHeight: 20 },
 +});
+diff --git a/apps/mobile/app/paywall.tsx b/apps/mobile/app/paywall.tsx
+index b1c29a801..bd8a617c7 100644
+--- a/apps/mobile/app/paywall.tsx
++++ b/apps/mobile/app/paywall.tsx
+@@ -50,7 +50,7 @@ import {
+ import { endCallBeforeSessionEnd } from "../lib/call-session";
+ import { translucentColor } from "../lib/color";
+ import { useContentBottomInset } from "../lib/content-bottom-inset";
+-import { dateLocaleForUi } from "../lib/i18n";
++import { useDateLocale } from "../lib/i18n";
+ import { useMobileTokens } from "../lib/native";
+ import {
+   activeOrganization,
+@@ -80,6 +80,7 @@ const CREW = [
+  */
+ export default function Paywall() {
+   const { t } = useLingui();
++  const dateLocale = useDateLocale();
+   const tokens = useMobileTokens();
+   const insets = useSafeAreaInsets();
+   const contentBottomInset = useContentBottomInset();
+@@ -273,7 +274,7 @@ export default function Paywall() {
+   if (started) {
+     const endsAt = planEndsAt(status);
+     const freeUntil = endsAt
+-      ? new Date(endsAt).toLocaleDateString(dateLocaleForUi(), { month: "long", day: "numeric" })
++      ? new Date(endsAt).toLocaleDateString(dateLocale, { month: "long", day: "numeric" })
+       : null;
+     return (
+       <View
 diff --git a/apps/mobile/app/peer-chat.tsx b/apps/mobile/app/peer-chat.tsx
 index 61a01d503..0a0842701 100644
 --- a/apps/mobile/app/peer-chat.tsx
@@ -29652,6 +29824,37 @@ index 61a01d503..0a0842701 100644
 +    readOnlyLabel: { color: tokens.mutedForeground, fontSize: 13, lineHeight: 18 },
    });
  }
+diff --git a/apps/mobile/app/routine.tsx b/apps/mobile/app/routine.tsx
+index bc48146f3..5f120a636 100644
+--- a/apps/mobile/app/routine.tsx
++++ b/apps/mobile/app/routine.tsx
+@@ -21,7 +21,7 @@ import {
+ } from "../components/settings-group";
+ import { rpc } from "../lib/api";
+ import { CallKeyboardContext } from "../lib/call-keyboard-context";
+-import { dateLocaleForUi, useUiLocale } from "../lib/i18n";
++import { useDateLocale } from "../lib/i18n";
+ import { native, useMobileTokens } from "../lib/native";
+ import { iosAtLeast } from "../lib/native-controls";
+ import { deviceTimeZone, routineTriggerRows, routineWebTriggers } from "../lib/routine";
+@@ -143,7 +143,7 @@ function RoutineView({
+ }) {
+   const tokens = useMobileTokens();
+   const { t } = useLingui();
+-  const locale = useUiLocale();
++  const dateLocale = useDateLocale();
+   const router = useRouter();
+   const [running, setRunning] = useState(false);
+   const triggers = routineTriggerRows(routine, deviceTimeZone());
+@@ -152,7 +152,7 @@ function RoutineView({
+       ? null
+       : routine.scheduleDelayed
+         ? t`Schedule delayed`
+-        : new Date(routine.nextRunAt).toLocaleString(dateLocaleForUi(locale), {
++        : new Date(routine.nextRunAt).toLocaleString(dateLocale, {
+             weekday: "short",
+             month: "short",
+             day: "numeric",
 diff --git a/apps/mobile/app/search.tsx b/apps/mobile/app/search.tsx
 index 5eae03917..7d63a1dc1 100644
 --- a/apps/mobile/app/search.tsx
@@ -30280,6 +30483,150 @@ index c91de4311..58e1755dc 100644
            {usesCustomApiBase(current) || draft.trim() !== current ? (
              <NativeActionButton
                disabled={pending}
+diff --git a/apps/mobile/app/share.tsx b/apps/mobile/app/share.tsx
+index a52968e9e..6f6c93e90 100644
+--- a/apps/mobile/app/share.tsx
++++ b/apps/mobile/app/share.tsx
+@@ -1,6 +1,8 @@
+ import { ph } from "@lingui/core/macro";
+ import { useLingui } from "@lingui/react/macro";
+-import { useNavigation, usePreventRemove, useRouter } from "expo-router";
++import { useTimeout } from "@rakazo/chat-ui/hooks";
++import { useIsFocused, useNavigation, usePreventRemove } from "expo-router";
++import { StackActions } from "expo-router/react-navigation";
+ import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
+ import { Image, Text, View } from "react-native";
+ import { useSafeAreaInsets } from "react-native-safe-area-context";
+@@ -12,66 +14,101 @@ import {
+   subscribeIncomingShare,
+ } from "../lib/incoming-share";
+ import type { MobileBot } from "../lib/mobile-types";
++import { recordMobileShareAction, reportMobileError } from "../lib/monitoring";
+ import { useMobileTokens } from "../lib/native";
+ import { sharePreview } from "../lib/share-preview";
+ import { HomeSession } from "./index";
+ 
++type LeaveAttempt = {
++  action: "select" | "close" | "sign_in";
++  navigate: () => void;
++  releaseChoice?: () => void;
++};
++
++const TRANSITION_TIMEOUT_MS = 2_000;
++
+ export default function ShareRoute() {
+-  const router = useRouter();
+   const navigation = useNavigation();
++  const focused = useIsFocused();
+   const share = useSyncExternalStore(subscribeIncomingShare, getIncomingShare);
+   const leaving = useRef(false);
+-  const [onLeave, setOnLeave] = useState<(() => void) | null>(null);
++  const [attempt, setAttempt] = useState<LeaveAttempt | null>(null);
+   const tokens = useMobileTokens();
+   const insets = useSafeAreaInsets();
+   const { t } = useLingui();
+-  const allowRemoval = usePreventRemove(!onLeave, ({ data, repeat }) => {
++  const allowRemoval = usePreventRemove(!attempt, ({ data, repeat }) => {
+     const payload = data.action.payload;
+     // Authentication temporarily replaces the picker; sign-in returns here with the share.
+     if (payload && "name" in payload && payload.name === "sign-in") {
+-      leave(repeat);
++      leave({ action: "sign_in", navigate: repeat });
+       return;
+     }
+     close();
+   });
+-  const leave = (navigate: () => void) => {
++  const leave = (next: LeaveAttempt) => {
+     if (leaving.current) return;
+     leaving.current = true;
+-    setOnLeave(() => navigate);
++    setAttempt(next);
+     allowRemoval();
+   };
+   // The prevention registry is React state too: same-tick navigation still sees the guard.
+   useEffect(() => {
+-    onLeave?.();
+-  }, [onLeave]);
++    if (!attempt) return;
++    recordMobileShareAction(attempt.action);
++    attempt.navigate();
++  }, [attempt]);
++  useTimeout(
++    () => {
++      // The picker can still be mounted when the destination already owns focus.
++      if (!attempt || !navigation.isFocused()) return;
++      attempt.releaseChoice?.();
++      leaving.current = false;
++      setAttempt(null);
++      reportMobileError(new Error("Share picker navigation did not complete"), "mobile.share", {
++        screen: "share",
++        action: attempt.action,
++      });
++    },
++    attempt && focused ? TRANSITION_TIMEOUT_MS : null,
++    attempt,
++  );
+   const close = () => {
+     if (leaving.current) return;
+     cancelIncomingShare();
+-    leave(() => router.dismissTo("/"));
++    leave({
++      action: "close",
++      navigate: () => {
++        const stack = navigation.getState();
++        if (!stack) return;
++        // Dismiss just this picker. A screen underneath may have an unsaved draft.
++        const action = stack.index > 0 ? StackActions.pop() : StackActions.replace("index");
++        navigation.dispatch({ ...action, target: stack.key });
++      },
++    });
+   };
+-  const closeOnce = useEffectEvent(() => {
+-    if (!leaving.current) close();
+-  });
++  const closeOnce = useEffectEvent(close);
+ 
+   useEffect(() => {
+-    if (!share) closeOnce();
+-  }, [share]);
++    if (!share && focused) closeOnce();
++  }, [share, focused]);
+ 
+   const open = (bot: Pick<MobileBot, "id" | "name">) => {
+-    // Removal must preserve the share for thread.tsx to claim it.
+-    if (!getIncomingShare()) return;
+-    leave(() =>
+-      navigation.dispatch({
+-        type: "RESET",
+-        payload: {
+-          index: 1,
+-          routes: [
+-            { name: "index" },
+-            { name: "thread", params: { botId: bot.id, name: bot.name } },
+-          ],
+-        },
+-      }),
+-    );
++    // Removal must preserve the share for the thread to claim it; only close cancels.
++    if (leaving.current || !getIncomingShare()) return;
++    leave({
++      action: "select",
++      navigate: () => {
++        const stack = navigation.getState();
++        if (!stack) return;
++        const previous = stack.routes[stack.index - 1];
++        const params = previous?.params;
++        const action =
++          previous?.name === "thread" && params && "botId" in params && params.botId === bot.id
++            ? StackActions.pop()
++            : StackActions.replace("thread", { botId: bot.id, name: bot.name });
++        navigation.dispatch({ ...action, target: stack.key });
++      },
++    });
+   };
+   const preview = share ? sharePreview(share) : null;
+ 
 diff --git a/apps/mobile/app/sign-in.tsx b/apps/mobile/app/sign-in.tsx
 index 6a58f17d8..21ec1c0c6 100644
 --- a/apps/mobile/app/sign-in.tsx
@@ -170259,10 +170606,27 @@ index 000000000..d6e4bc54a
 +  );
 +}
 diff --git a/apps/mobile/components/activity-mark.tsx b/apps/mobile/components/activity-mark.tsx
-index 9827e1a37..185daa159 100644
+index 9827e1a37..ca47f74d2 100644
 --- a/apps/mobile/components/activity-mark.tsx
 +++ b/apps/mobile/components/activity-mark.tsx
-@@ -31,7 +31,9 @@ export type ActivityMarkBot = {
+@@ -2,7 +2,7 @@ import type { BotAvatarSet } from "@rakazo/contracts";
+ import { avatarPhotoDot } from "@rakazo/core";
+ import { MAX_FONT_SCALE, typeScale } from "@rakazo/ui-tokens";
+ import { useEffect, useState } from "react";
+-import { Text, View } from "react-native";
++import { View } from "react-native";
+ import type { SharedValue } from "react-native-reanimated";
+ import Animated, {
+   cancelAnimation,
+@@ -17,6 +17,7 @@ import Animated, {
+ } from "react-native-reanimated";
+ import { useAvatarOnScreen } from "../lib/avatar-life";
+ import { useMobileTokens } from "../lib/native";
++import { ShimmerText } from "./shimmer-text";
+ import { BotAvatar } from "./bot-avatar";
+ 
+ /** A working bot; `composing` while it writes reply text (the mark turns into dots). */
+@@ -31,7 +32,9 @@ export type ActivityMarkBot = {
  /** The mark is the bot's 28 pt avatar. */
  export const MARK_SIZE = 28;
  /** The mark row's height, with room for a tap's hop, and how long it takes to open. */
@@ -170273,7 +170637,7 @@ index 9827e1a37..185daa159 100644
  export const ROW_MS = 260;
  /** The row opens quickly and slows into place. */
  const ROW_EASING = Easing.out(Easing.cubic);
-@@ -104,6 +106,7 @@ export function ActivityMark({
+@@ -104,6 +107,7 @@ export function ActivityMark({
              <PhotoDots typing={bot.composing ?? false} paused={!onScreen} />
            ) : (
              <BotAvatar
@@ -170281,6 +170645,26 @@ index 9827e1a37..185daa159 100644
                color={bot.color}
                avatarSet={bot.avatarSet}
                identity={bot.id}
+@@ -117,13 +121,15 @@ export function ActivityMark({
+         </Animated.View>
+       </Animated.View>
+       {label ? (
+-        <Text
+-          numberOfLines={1}
++        <ShimmerText
+           maxFontSizeMultiplier={MAX_FONT_SCALE}
+-          style={{ flexShrink: 1, color: tokens.mutedForeground, ...typeScale.secondary }}
++          style={typeScale.secondary}
++          color={tokens.mutedForeground}
++          highlight={tokens.foreground}
++          paused={!onScreen}
+         >
+           {label}
+-        </Text>
++        </ShimmerText>
+       ) : null}
+     </Animated.View>
+   );
 diff --git a/apps/mobile/components/app-error-boundary.tsx b/apps/mobile/components/app-error-boundary.tsx
 index 606563772..bd879a8fc 100644
 --- a/apps/mobile/components/app-error-boundary.tsx
@@ -170458,18 +170842,22 @@ index e29608bdd..59ba82a51 100644
                android="chevron-expand"
 diff --git a/apps/mobile/components/avatar-review-gallery.tsx b/apps/mobile/components/avatar-review-gallery.tsx
 new file mode 100644
-index 000000000..a8ae3983a
+index 000000000..745c3ffd6
 --- /dev/null
 +++ b/apps/mobile/components/avatar-review-gallery.tsx
-@@ -0,0 +1,119 @@
+@@ -0,0 +1,146 @@
 +import * as SplashScreen from "expo-splash-screen";
 +import { useEffect, useState } from "react";
 +import { ScrollView, Text, View } from "react-native";
 +import { GestureHandlerRootView } from "react-native-gesture-handler";
 +import { LUMEN_EMBLEMS } from "../lib/lumen/lumen-emblems";
 +import { LUMEN_PALETTE, LUMEN_TEAM, lumenLookValue } from "../lib/lumen/lumen-avatar";
++import type { MobileBot } from "../lib/mobile-types";
 +import { useMobileTokens } from "../lib/native";
++import { ActivityMark } from "./activity-mark";
 +import { BotLookPicker } from "./bot-look-picker";
++import { ChatTitleAvatar } from "./chat-title-avatar";
++import { HomeHeroBody } from "./home-hero-body";
 +import { OpenMinisBotAvatar } from "./openminis-bot-avatar";
 +
 +/**
@@ -170480,6 +170868,13 @@ index 000000000..a8ae3983a
 + */
 +export function AvatarReviewGallery() {
 +  const tokens = useMobileTokens();
++  const chief = {
++    id: "review-chief",
++    name: "小猪包",
++    color: "#ffffff",
++    isMain: true,
++    notifyOnFinish: true,
++  } as MobileBot;
 +  useEffect(() => {
 +    void SplashScreen.hideAsync().catch(() => undefined);
 +  }, []);
@@ -170501,6 +170896,22 @@ index 000000000..a8ae3983a
 +        <Text style={{ color: tokens.mutedForeground, fontSize: 13, marginTop: 4 }}>
 +          形状与颜色 · 团队 {LUMEN_TEAM.length} 只
 +        </Text>
++
++        <Text style={label}>Main bot · home hero</Text>
++        <HomeHeroBody bot={chief} onOpen={() => undefined} />
++
++        <Text style={label}>Chat header</Text>
++        <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 8 }}>
++          <ChatTitleAvatar bot={chief} status="working" composing={false} />
++          <Text style={{ color: tokens.foreground, fontSize: 17, fontWeight: "600" }}>{chief.name}</Text>
++        </View>
++
++        <Text style={label}>Shimmer</Text>
++        <ActivityMark
++          bots={[{ id: chief.id, color: chief.color, status: "working" }]}
++          atBottom
++          label="正在写回复…"
++        />
 +
 +        <Text style={label}>Team</Text>
 +        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
@@ -171751,18 +172162,85 @@ index dd145c5c2..6cbef5acc 100644
        {typeof bot.notifyOnFinish === "boolean" ? (
          <Pressable
            accessibilityRole="button"
+diff --git a/apps/mobile/components/bot-profile-menu.tsx b/apps/mobile/components/bot-profile-menu.tsx
+index 18a187437..38a74463c 100644
+--- a/apps/mobile/components/bot-profile-menu.tsx
++++ b/apps/mobile/components/bot-profile-menu.tsx
+@@ -1,12 +1,16 @@
+ import { MenuView } from "@expo/ui/community/menu";
+ import { useLingui } from "@lingui/react/macro";
+ import type { NativeStackNavigationOptions } from "expo-router";
+-import { useRouter } from "expo-router";
++import { useNavigation, useRouter } from "expo-router";
++import { useRef } from "react";
+ import { Alert, View } from "react-native";
++import { rpc } from "../lib/api";
+ import { notifyArchivedChatsChanged } from "../lib/archived-chats";
+ import { archiveBot, confirmClearConversation, confirmDeleteBot } from "../lib/bot-lifecycle";
++import { notifyInboxChanged, openChatFromInbox } from "../lib/inbox-changes";
+ import { useResolvedAppearance } from "../lib/native";
+ import { iosAtLeast } from "../lib/native-controls";
++import { addToSearchInbox, searchInboxSession } from "../lib/search-inbox";
+ import { useConfirmationGuard } from "../lib/use-confirmation-guard";
+ import { useLeaveDeletedChat } from "../lib/use-leave-deleted-chat";
+ import { errorText } from "../lib/user-error";
+@@ -23,13 +27,43 @@ export type BotProfileAction = {
+ export function useBotProfileActions(botId: string, name: string): BotProfileAction[] {
+   const { t } = useLingui();
+   const router = useRouter();
++  const navigation = useNavigation();
+   const leaveDeletedChat = useLeaveDeletedChat();
+   const beginDelete = useConfirmationGuard();
++  const leaving = useRef(false);
++  const duplicating = useRef(false);
+   function leave() {
+     router.dismissAll();
+     router.replace("/");
+   }
++  async function duplicate() {
++    if (leaving.current || duplicating.current) return;
++    duplicating.current = true;
++    const askedIn = searchInboxSession();
++    try {
++      const copy = await rpc("bots/duplicate", { botId });
++      notifyInboxChanged();
++      addToSearchInbox({ kind: "bot", bot: copy }, askedIn);
++      if (!navigation.isFocused()) return;
++      leaving.current = true;
++      router.dismissAll();
++      const href = { pathname: "/thread" as const, params: { botId: copy.id, name: copy.name } };
++      if (!openChatFromInbox(href)) router.push(href);
++    } catch (error) {
++      if (navigation.isFocused())
++        Alert.alert(t`Could not duplicate bot`, errorText(error, t`Try again.`));
++    } finally {
++      duplicating.current = false;
++    }
++  }
+   return [
++    {
++      id: "duplicate",
++      text: t`Duplicate`,
++      onPress: () => {
++        void duplicate();
++      },
++    },
+     {
+       id: "clear",
+       text: t`Clear conversation`,
 diff --git a/apps/mobile/components/bot-profile-tabs.tsx b/apps/mobile/components/bot-profile-tabs.tsx
 new file mode 100644
-index 000000000..38a775842
+index 000000000..97bf11c77
 --- /dev/null
 +++ b/apps/mobile/components/bot-profile-tabs.tsx
-@@ -0,0 +1,743 @@
+@@ -0,0 +1,744 @@
 +import type { DiarySummary, FrontDeskTask, MemoryLearning, Routine } from "@rakazo/contracts";
 +import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 +import { useRouter } from "expo-router";
 +import { useCallback, useMemo, useState } from "react";
 +import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from "react-native";
 +import { rpc } from "../lib/api";
++import { dateLocaleForUi } from "../lib/i18n";
 +import { hapticError, hapticSelection, hapticSuccess } from "../lib/haptics";
 +import { native, useMobileTokens } from "../lib/native";
 +import { queryClient, rpcQuery } from "../lib/query";
@@ -172403,7 +172881,7 @@ index 000000000..38a775842
 +  const at = new Date(diary.createdAt);
 +  const time = Number.isNaN(at.getTime())
 +    ? ""
-+    : at.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
++    : at.toLocaleTimeString(dateLocaleForUi(), { hour: "numeric", minute: "2-digit" });
 +  const range =
 +    diary.endSeq > diary.startSeq ? `#${diary.startSeq}-#${diary.endSeq}` : `#${diary.startSeq}`;
 +  return [date, time, range, diary.messageCount > 0 ? `${diary.messageCount} 条消息` : ""]
@@ -173350,7 +173828,7 @@ index 000000000..52d230d95
 +});
 diff --git a/apps/mobile/components/cards/run-error-sheet.tsx b/apps/mobile/components/cards/run-error-sheet.tsx
 new file mode 100644
-index 000000000..8ceebad3a
+index 000000000..fbdd68032
 --- /dev/null
 +++ b/apps/mobile/components/cards/run-error-sheet.tsx
 @@ -0,0 +1,165 @@
@@ -173363,7 +173841,7 @@ index 000000000..8ceebad3a
 +import { Platform, ScrollView, Text, useWindowDimensions, View } from "react-native";
 +import { useSafeAreaInsets } from "react-native-safe-area-context";
 +import { runErrorDiagnostic, runErrorWhatHappened } from "../../lib/cards/run-error-presentation";
-+import { useUiLocale } from "../../lib/i18n/i18n";
++import { useDateLocale } from "../../lib/i18n";
 +import { useMobileTokens } from "../../lib/native/native";
 +import { NativeSymbol } from "../native/native-symbol";
 +import { SheetCloseButton } from "../native/sheet-close-button";
@@ -173373,7 +173851,7 @@ index 000000000..8ceebad3a
 +/** Saved provider diagnostics do not identify the credential owner. */
 +export function useRunError(details: string | null, includeReset = true) {
 +  const { t } = useLingui();
-+  const locale = useUiLocale();
++  const dateLocale = useDateLocale();
 +  const [clockVersion, refreshClock] = useReducer((version: number) => version + 1, 0);
 +  const error = details
 +    ? normalizeRunError(
@@ -173387,7 +173865,7 @@ index 000000000..8ceebad3a
 +          if (message === "Your model provider") return t`Model provider`;
 +          return translateRunError(message, values);
 +        },
-+        locale,
++        dateLocale,
 +        Date.now(),
 +      )
 +    : null;
@@ -173414,7 +173892,7 @@ index 000000000..8ceebad3a
 +  action?: { label: string; onPress: () => void } | null;
 +}) {
 +  const { t } = useLingui();
-+  const locale = useUiLocale();
++  const dateLocale = useDateLocale();
 +  const tokens = useMobileTokens();
 +  const insets = useSafeAreaInsets();
 +  const { fontScale, height } = useWindowDimensions();
@@ -173422,7 +173900,7 @@ index 000000000..8ceebad3a
 +  const [technical, setTechnical] = useState(false);
 +  useEffect(() => setTechnical(false), [details]);
 +  if (!error) return null;
-+  const diagnostic = runErrorDiagnostic(error, locale);
++  const diagnostic = runErrorDiagnostic(error, dateLocale);
 +  const whatHappened = runErrorWhatHappened(error);
 +  const textStyle = { color: tokens.foreground, fontSize: 16, lineHeight: 24 };
 +  return (
@@ -177625,10 +178103,18 @@ index 882affd5b..ed476c3e2 100644
        openBot,
        openGroup,
 diff --git a/apps/mobile/components/inbox-rows.tsx b/apps/mobile/components/inbox-rows.tsx
-index e1fb00ae2..ce3d56898 100644
+index e1fb00ae2..88cc46368 100644
 --- a/apps/mobile/components/inbox-rows.tsx
 +++ b/apps/mobile/components/inbox-rows.tsx
-@@ -112,14 +112,18 @@ export function ConversationRow({
+@@ -15,6 +15,7 @@ import Animated, {
+   withTiming,
+ } from "react-native-reanimated";
+ import { AvatarRow } from "../lib/avatar-life";
++import { useDateLocale } from "../lib/i18n";
+ import { formatSnoozeWake, formatThreadTime } from "../lib/inbox";
+ import type { PinnedChat } from "../lib/inbox-spaces";
+ import { botNeedsAttention } from "../lib/inbox-spaces";
+@@ -112,14 +113,18 @@ export function ConversationRow({
                {title}
              </Text>
            </View>
@@ -177654,7 +178140,7 @@ index e1fb00ae2..ce3d56898 100644
        </View>
      </DragSafePressable>
    );
-@@ -282,7 +286,8 @@ export const PinnedTiles = memo(function PinnedTiles({
+@@ -282,7 +287,8 @@ export const PinnedTiles = memo(function PinnedTiles({
                  size={avatarSize}
                  status={chat.bot.status}
                  muted={chat.bot.notifyOnFinish === false}
@@ -177664,7 +178150,28 @@ index e1fb00ae2..ce3d56898 100644
                />
              ) : (
                <GroupAvatar members={chat.group.members} size={avatarSize} />
-@@ -353,11 +358,22 @@ export function ChatSwipe({
+@@ -332,15 +338,17 @@ export type RowMenuProps = {
+ };
+ 
+ /** The row's time slot: when a snoozed chat wakes, that it woke, or its last activity. */
+-function chatTime(
++function useChatTime(
+   chat: MobileBot | MobileGroup | SpaceBot | SpaceGroup,
+   day: number,
+   now: number,
+   woke: string,
+ ) {
+-  if (chat.snoozedUntil && chatSnoozed(chat, now)) return formatSnoozeWake(chat.snoozedUntil);
++  const locale = useDateLocale();
++  if (chat.snoozedUntil && chatSnoozed(chat, now))
++    return formatSnoozeWake(chat.snoozedUntil, new Date(), locale);
+   if (chatWoke(chat, now)) return woke;
+-  return chat.updatedAt ? formatThreadTime(chat.updatedAt, new Date(day)) : "";
++  return chat.updatedAt ? formatThreadTime(chat.updatedAt, new Date(day), locale) : "";
+ }
+ 
+ /** A chat row with the iOS swipe actions and context menu; other platforms get the row as is. */
+@@ -353,11 +361,22 @@ export function ChatSwipe({
    onEditSection,
    snoozed,
    onSnooze,
@@ -177687,7 +178194,7 @@ index e1fb00ae2..ce3d56898 100644
    target:
      | { kind: "bot"; chat: MobileBot | SpaceBot }
      | { kind: "group"; chat: MobileGroup | SpaceGroup };
-@@ -395,6 +411,11 @@ export function ChatSwipe({
+@@ -395,6 +414,11 @@ export function ChatSwipe({
        onEditSection={(mode) => onEditSection(kind, chat, mode, sections)}
        snoozed={snoozed}
        onSnooze={onSnooze}
@@ -177699,7 +178206,7 @@ index e1fb00ae2..ce3d56898 100644
      >
        {children}
      </InboxSwipeRow>
-@@ -412,6 +433,11 @@ export const BotRow = memo(function BotRow({
+@@ -412,6 +436,11 @@ export const BotRow = memo(function BotRow({
    onOrganize,
    onEditSection,
    onSnooze,
@@ -177711,7 +178218,7 @@ index e1fb00ae2..ce3d56898 100644
  }: {
    bot: MobileBot | SpaceBot;
    day: number;
-@@ -420,6 +446,12 @@ export const BotRow = memo(function BotRow({
+@@ -420,10 +449,16 @@ export const BotRow = memo(function BotRow({
    onPress: (bot: MobileBot | SpaceBot) => void;
    onLongPress?: (bot: MobileBot | SpaceBot) => void;
    onAction?: (action: InboxRowAction, bot: MobileBot | SpaceBot) => void;
@@ -177724,7 +178231,12 @@ index e1fb00ae2..ce3d56898 100644
  } & RowMenuProps) {
    const { t } = useLingui();
    const preview = previewSnippet(bot.preview, 40) || t`No messages yet`;
-@@ -463,7 +495,8 @@ export const BotRow = memo(function BotRow({
+-  const time = chatTime(bot, day, now, t`Woke`);
++  const time = useChatTime(bot, day, now, t`Woke`);
+   const working = isRunWorking(bot.status);
+   const waiting = useWaitingOnYou(bot);
+   // Spelled out because an explicit label replaces the one built from the row's children.
+@@ -463,7 +498,8 @@ export const BotRow = memo(function BotRow({
              size={INBOX_ROW.avatarSize}
              status={bot.status}
              muted={bot.notifyOnFinish === false}
@@ -177734,7 +178246,7 @@ index e1fb00ae2..ce3d56898 100644
            />
          </AvatarRow>
        }
-@@ -478,6 +511,11 @@ export const BotRow = memo(function BotRow({
+@@ -478,6 +514,11 @@ export const BotRow = memo(function BotRow({
        onEditSection={onEditSection}
        snoozed={chatSnoozed(bot, now)}
        onSnooze={onSnooze && ((until) => onSnooze("bot", bot, until))}
@@ -177746,6 +178258,15 @@ index e1fb00ae2..ce3d56898 100644
      >
        {row}
      </ChatSwipe>
+@@ -509,7 +550,7 @@ export const GroupRow = memo(function GroupRow({
+   const { t } = useLingui();
+   const preview =
+     previewSnippet(group.preview, 40) || group.members.map((member) => member.name).join(", ");
+-  const time = chatTime(group, day, now, t`Woke`);
++  const time = useChatTime(group, day, now, t`Woke`);
+   const runAction = (action: InboxRowAction) => onAction?.(action, group);
+   const row = (
+     <ConversationRow
 diff --git a/apps/mobile/components/inbox-swipe-row.ios.tsx b/apps/mobile/components/inbox-swipe-row.ios.tsx
 index 91a1bf4a5..8792ff8b8 100644
 --- a/apps/mobile/components/inbox-swipe-row.ios.tsx
@@ -178534,10 +179055,10 @@ index 000000000..e957c64ea
 +}
 diff --git a/apps/mobile/components/inbox/inbox-rows.tsx b/apps/mobile/components/inbox/inbox-rows.tsx
 new file mode 100644
-index 000000000..e14037249
+index 000000000..a46611a97
 --- /dev/null
 +++ b/apps/mobile/components/inbox/inbox-rows.tsx
-@@ -0,0 +1,554 @@
+@@ -0,0 +1,557 @@
 +import { ph } from "@lingui/core/macro";
 +import { useLingui } from "@lingui/react/macro";
 +import type { SpaceBot, SpaceGroup } from "@rakazo/contracts";
@@ -178558,6 +179079,7 @@ index 000000000..e14037249
 +import { androidRipple } from "../../lib/appearance/ripple";
 +import { AvatarRow } from "../../lib/bots/avatar-life";
 +import { mobileLogoAvatarActivity } from "../../lib/bots/logo-avatar-activity";
++import { useDateLocale } from "../../lib/i18n";
 +import { formatSnoozeWake, formatThreadTime } from "../../lib/inbox/inbox";
 +import type { PinnedChat } from "../../lib/inbox/inbox-spaces";
 +import { botNeedsAttention } from "../../lib/inbox/inbox-spaces";
@@ -178873,15 +179395,17 @@ index 000000000..e14037249
 +};
 +
 +/** The row's time slot: when a snoozed chat wakes, that it woke, or its last activity. */
-+function chatTime(
++function useChatTime(
 +  chat: MobileBot | MobileGroup | SpaceBot | SpaceGroup,
 +  day: number,
 +  now: number,
 +  woke: string,
 +) {
-+  if (chat.snoozedUntil && chatSnoozed(chat, now)) return formatSnoozeWake(chat.snoozedUntil);
++  const locale = useDateLocale();
++  if (chat.snoozedUntil && chatSnoozed(chat, now))
++    return formatSnoozeWake(chat.snoozedUntil, new Date(), locale);
 +  if (chatWoke(chat, now)) return woke;
-+  return chat.updatedAt ? formatThreadTime(chat.updatedAt, new Date(day)) : "";
++  return chat.updatedAt ? formatThreadTime(chat.updatedAt, new Date(day), locale) : "";
 +}
 +
 +/** A chat row with the iOS swipe actions and context menu; other platforms get the row as is. */
@@ -178966,7 +179490,7 @@ index 000000000..e14037249
 +} & RowMenuProps) {
 +  const { t } = useLingui();
 +  const preview = previewSnippet(bot.preview, 40) || t`No messages yet`;
-+  const time = chatTime(bot, day, now, t`Woke`);
++  const time = useChatTime(bot, day, now, t`Woke`);
 +  const working = isRunWorking(bot.status);
 +  const waiting = useWaitingOnYou(bot);
 +  // Spelled out because an explicit label replaces the one built from the row's children.
@@ -179054,7 +179578,7 @@ index 000000000..e14037249
 +  const { t } = useLingui();
 +  const preview =
 +    previewSnippet(group.preview, 40) || group.members.map((member) => member.name).join(", ");
-+  const time = chatTime(group, day, now, t`Woke`);
++  const time = useChatTime(group, day, now, t`Woke`);
 +  const runAction = (action: InboxRowAction) => onAction?.(action, group);
 +  const row = (
 +    <ConversationRow
@@ -183938,6 +184462,80 @@ index 000000000..3fdde2d04
 +    </Animated.View>
 +  );
 +}
+diff --git a/apps/mobile/components/routine-run-history.tsx b/apps/mobile/components/routine-run-history.tsx
+index 7b27bd995..dfe1e40d7 100644
+--- a/apps/mobile/components/routine-run-history.tsx
++++ b/apps/mobile/components/routine-run-history.tsx
+@@ -5,7 +5,7 @@ import { useRouter } from "expo-router";
+ import { useState } from "react";
+ import { ActivityIndicator } from "react-native";
+ import { activityStatusLabel, routineRunLateLabel } from "../lib/activity";
+-import { dateLocaleForUi, useUiLocale } from "../lib/i18n";
++import { useDateLocale } from "../lib/i18n";
+ import { native } from "../lib/native";
+ import { routineRunDestination, useRoutineRuns } from "../lib/routine-runs";
+ import { NativeActionButton } from "./native-action-button";
+@@ -92,9 +92,9 @@ function RunRow({
+   onPress: (() => void) | undefined;
+ }) {
+   const { t } = useLingui();
+-  const locale = useUiLocale();
++  const dateLocale = useDateLocale();
+   const failure = useRunError(error);
+-  const title = formatRoutineRunAt(run, dateLocaleForUi(locale));
++  const title = formatRoutineRunAt(run, dateLocale);
+   return (
+     <SettingsRow
+       accessibilityRole={onPress ? "button" : undefined}
+diff --git a/apps/mobile/components/run-error-sheet.tsx b/apps/mobile/components/run-error-sheet.tsx
+index 348417ed5..9de11dc40 100644
+--- a/apps/mobile/components/run-error-sheet.tsx
++++ b/apps/mobile/components/run-error-sheet.tsx
+@@ -5,7 +5,7 @@ import * as Clipboard from "expo-clipboard";
+ import { useEffect, useReducer, useState } from "react";
+ import { Platform, ScrollView, Text, useWindowDimensions, View } from "react-native";
+ import { useSafeAreaInsets } from "react-native-safe-area-context";
+-import { useUiLocale } from "../lib/i18n";
++import { useDateLocale } from "../lib/i18n";
+ import { useMobileTokens } from "../lib/native";
+ import { runErrorDiagnostic, runErrorWhatHappened } from "../lib/run-error-presentation";
+ import { NativeSymbol } from "./native-symbol";
+@@ -16,7 +16,7 @@ import { SheetCloseButton } from "./sheet-close-button";
+ /** Saved provider diagnostics do not identify the credential owner. */
+ export function useRunError(details: string | null, includeReset = true) {
+   const { t } = useLingui();
+-  const locale = useUiLocale();
++  const dateLocale = useDateLocale();
+   const [clockVersion, refreshClock] = useReducer((version: number) => version + 1, 0);
+   const error = details
+     ? normalizeRunError(
+@@ -30,7 +30,7 @@ export function useRunError(details: string | null, includeReset = true) {
+           if (message === "Your model provider") return t`Model provider`;
+           return translateRunError(message, values);
+         },
+-        locale,
++        dateLocale,
+         Date.now(),
+       )
+     : null;
+@@ -59,7 +59,7 @@ export function RunErrorSheet({
+   action?: { label: string; onPress: () => void } | null;
+ }) {
+   const { t } = useLingui();
+-  const locale = useUiLocale();
++  const dateLocale = useDateLocale();
+   const tokens = useMobileTokens();
+   const insets = useSafeAreaInsets();
+   const { fontScale, height } = useWindowDimensions();
+@@ -67,7 +67,7 @@ export function RunErrorSheet({
+   const [technical, setTechnical] = useState(false);
+   useEffect(() => setTechnical(false), [details]);
+   if (!error) return null;
+-  const diagnostic = runErrorDiagnostic(error, locale);
++  const diagnostic = runErrorDiagnostic(error, dateLocale);
+   const whatHappened = runErrorWhatHappened(error);
+   const textStyle = { color: tokens.foreground, fontSize: 16, lineHeight: 24 };
+   return (
 diff --git a/apps/mobile/components/sand/card-chrome.tsx b/apps/mobile/components/sand/card-chrome.tsx
 new file mode 100644
 index 000000000..ea6be3adb
@@ -185629,6 +186227,142 @@ index 0792689cc..27b495a87 100644
 -    dimmed: { opacity: 0.45 },
    });
  }
+diff --git a/apps/mobile/components/shimmer-text.tsx b/apps/mobile/components/shimmer-text.tsx
+new file mode 100644
+index 000000000..34cf2b8f0
+--- /dev/null
++++ b/apps/mobile/components/shimmer-text.tsx
+@@ -0,0 +1,130 @@
++import type { ReactNode } from "react";
++import { useEffect, useState } from "react";
++import type { StyleProp, TextStyle } from "react-native";
++import { StyleSheet, Text, View } from "react-native";
++import type { SharedValue } from "react-native-reanimated";
++import Animated, {
++  cancelAnimation,
++  Easing,
++  useAnimatedStyle,
++  useReducedMotion,
++  useSharedValue,
++  withRepeat,
++  withTiming,
++} from "react-native-reanimated";
++
++/** One pass of the glint, matching the web shimmer. */
++const SWEEP_MS = 1400;
++/** The glint is this share of the text's width, brightest in the middle. */
++const BAND = 0.6;
++const SLICES = [0.2, 0.45, 0.7, 0.9, 1, 0.9, 0.7, 0.45, 0.2];
++
++/**
++ * A single line of text with a highlight sweeping left to right across it, like the web's
++ * shimmer: the text in `color`, glinting toward `highlight`. Without React Native gradient
++ * masks, the glint is the same line in `highlight` seen through a few narrow windows that
++ * fade in toward the middle. Still while `paused` or with Reduce Motion.
++ */
++export function ShimmerText({
++  children,
++  style,
++  color,
++  highlight,
++  paused = false,
++  maxFontSizeMultiplier,
++}: {
++  children: ReactNode;
++  style?: StyleProp<TextStyle>;
++  color: string;
++  highlight: string;
++  paused?: boolean;
++  maxFontSizeMultiplier?: number;
++}) {
++  const reducedMotion = useReducedMotion();
++  const [width, setWidth] = useState(0);
++  const progress = useSharedValue(0);
++  const running = !reducedMotion && !paused && width > 0;
++
++  useEffect(() => {
++    if (!running) return;
++    progress.value = 0;
++    progress.value = withRepeat(withTiming(1, { duration: SWEEP_MS, easing: Easing.linear }), -1);
++    return () => cancelAnimation(progress);
++  }, [running, progress]);
++
++  const textStyle = [style, { color: highlight }];
++  return (
++    <View style={{ flexShrink: 1 }}>
++      <Text
++        numberOfLines={1}
++        maxFontSizeMultiplier={maxFontSizeMultiplier}
++        onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
++        style={[style, { color }]}
++      >
++        {children}
++      </Text>
++      {running ? (
++        <View
++          pointerEvents="none"
++          accessibilityElementsHidden
++          importantForAccessibility="no-hide-descendants"
++          style={StyleSheet.absoluteFill}
++        >
++          {SLICES.map((opacity, index) => (
++            <ShimmerSlice
++              key={index}
++              index={index}
++              opacity={opacity}
++              width={width}
++              progress={progress}
++            >
++              <Text
++                numberOfLines={1}
++                maxFontSizeMultiplier={maxFontSizeMultiplier}
++                style={[textStyle, { width }]}
++              >
++                {children}
++              </Text>
++            </ShimmerSlice>
++          ))}
++        </View>
++      ) : null}
++    </View>
++  );
++}
++
++/** One window onto the bright copy; the copy moves against it so it stays over the line. */
++function ShimmerSlice({
++  index,
++  opacity,
++  width,
++  progress,
++  children,
++}: {
++  index: number;
++  opacity: number;
++  width: number;
++  progress: SharedValue<number>;
++  children: ReactNode;
++}) {
++  const sliceWidth = (width * BAND) / SLICES.length;
++  // The band starts just off the leading edge and ends just past the trailing one.
++  const left = useAnimatedStyle(() => {
++    const x = -width * BAND + progress.value * width * (1 + BAND) + index * sliceWidth;
++    return { transform: [{ translateX: x }] };
++  });
++  const back = useAnimatedStyle(() => {
++    const x = -width * BAND + progress.value * width * (1 + BAND) + index * sliceWidth;
++    return { transform: [{ translateX: -x }] };
++  });
++  return (
++    <Animated.View
++      style={[
++        { position: "absolute", top: 0, bottom: 0, width: sliceWidth, overflow: "hidden", opacity },
++        left,
++      ]}
++    >
++      <Animated.View style={back}>{children}</Animated.View>
++    </Animated.View>
++  );
++}
 diff --git a/apps/mobile/components/task-steps-sheet.tsx b/apps/mobile/components/task-steps-sheet.tsx
 new file mode 100644
 index 000000000..1b765cd4f
@@ -186970,6 +187704,36 @@ index 91025cc86..cfeecbe1c 100644
          color={mention.color ?? tokens.mutedForeground}
          avatarSet={mention.avatarSet}
          identity={mention.id}
+diff --git a/apps/mobile/components/thread-error-notice.tsx b/apps/mobile/components/thread-error-notice.tsx
+index 4071aa8a3..d8ee3eb70 100644
+--- a/apps/mobile/components/thread-error-notice.tsx
++++ b/apps/mobile/components/thread-error-notice.tsx
+@@ -1,7 +1,7 @@
+ import { ph } from "@lingui/core/macro";
+ import { useLingui } from "@lingui/react/macro";
+ import { StyleSheet, Text, useWindowDimensions, View } from "react-native";
+-import { useUiLocale } from "../lib/i18n";
++import { useDateLocale } from "../lib/i18n";
+ import { native, useMobileTokens } from "../lib/native";
+ import { NativeSymbol } from "./native-symbol";
+ import { RunErrorAction, RunErrorTextAction } from "./run-error-actions";
+@@ -22,14 +22,14 @@ export function ThreadErrorNotice({
+   action?: { label: string; onPress: () => void } | null;
+ }) {
+   const { t } = useLingui();
+-  const locale = useUiLocale();
++  const dateLocale = useDateLocale();
+   const tokens = useMobileTokens();
+   const { fontScale } = useWindowDimensions();
+   if (!error && !summary) return null;
+   const upcomingReset =
+     resetAt && resetAt > Date.now()
+       ? t`Resets ${ph({
+-          date: new Intl.DateTimeFormat(locale, {
++          date: new Intl.DateTimeFormat(dateLocale, {
+             month: "short",
+             day: "numeric",
+             timeZone: "UTC",
 diff --git a/apps/mobile/components/thread-header-right.tsx b/apps/mobile/components/thread-header-right.tsx
 index 0ffda090c..dbdd4aa40 100644
 --- a/apps/mobile/components/thread-header-right.tsx
@@ -188814,7 +189578,7 @@ index aa623d6be..d87cebe6c 100644
 +  );
 +}
 diff --git a/apps/mobile/components/thread/message-row.tsx b/apps/mobile/components/thread/message-row.tsx
-index db15142a1..5423776ae 100644
+index db15142a1..e5d07abb2 100644
 --- a/apps/mobile/components/thread/message-row.tsx
 +++ b/apps/mobile/components/thread/message-row.tsx
 @@ -6,7 +6,7 @@ import type {
@@ -188843,8 +189607,9 @@ index db15142a1..5423776ae 100644
 +} from "react-native-reanimated";
  import type { MobileArtifactTarget } from "../../lib/artifact-open";
 -import { canDoubleTapReact } from "../../lib/double-tap";
+-import { useUiLocale } from "../../lib/i18n";
 +import { canDoubleTapReact, doubleTapIntent } from "../../lib/double-tap";
- import { useUiLocale } from "../../lib/i18n";
++import { useDateLocale } from "../../lib/i18n";
 +import { firstMessageLink } from "../../lib/link-preview";
  import { presentMessageActionSheet } from "../../lib/message-action-sheet";
 -import { buildMessageContextMenu, messageMenuReaction } from "../../lib/message-context-menu";
@@ -188914,11 +189679,11 @@ index db15142a1..5423776ae 100644
 +const SWIPE_SPRING = { damping: 20, stiffness: 260 } as const;
 +
 +/** A message's own time of day, as the reference app shows it when the column slides. */
-+function messageClock(createdAt?: string): string {
++function messageClock(createdAt: string | undefined, locale: string): string {
 +  if (!createdAt) return "";
 +  const date = new Date(createdAt);
 +  if (Number.isNaN(date.getTime())) return "";
-+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
++  return date.toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit" });
 +}
 +
  export const MessageRow = memo(function MessageRow({
@@ -188932,6 +189697,15 @@ index db15142a1..5423776ae 100644
    activityColor,
    activityAvatarSet,
    activityStatus,
+@@ -152,7 +183,7 @@ export const MessageRow = memo(function MessageRow({
+   const tokens = useMobileTokens();
+   const colorScheme = useResolvedAppearance();
+   const { t } = useLingui();
+-  const locale = useUiLocale();
++  const dateLocale = useDateLocale();
+   const artifactTarget = useMemo<MobileArtifactTarget | undefined>(
+     () => (groupId ? { groupId } : botId ? { botId } : undefined),
+     [botId, groupId],
 @@ -171,37 +202,46 @@ export const MessageRow = memo(function MessageRow({
    );
    const [optimisticLike, setOptimisticLike] = useState(false);
@@ -189180,7 +189954,14 @@ index db15142a1..5423776ae 100644
          accessibilityActions: menuActions.map((action) => ({
            name: action.name,
            label: action.text,
-@@ -380,6 +426,54 @@ export const MessageRow = memo(function MessageRow({
+@@ -374,12 +420,60 @@ export const MessageRow = memo(function MessageRow({
+     onCall,
+     colorScheme,
+     t,
+-    locale,
++    dateLocale,
+     waitingForUser,
+     hasLike,
      optimisticLike,
    ]);
    const layout = messageRowLayout(message.blocks, { activityBotId, inGroup, columnWidth });
@@ -189199,7 +189980,7 @@ index db15142a1..5423776ae 100644
 +  const clockStyle = useAnimatedStyle(() => ({
 +    opacity: Math.min(1, -swipe.value / TIME_REVEAL),
 +  }));
-+  const clock = messageClock(message.createdAt);
++  const clock = messageClock(message.createdAt, dateLocale);
 +  const pan = useMemo(
 +    () =>
 +      Gesture.Pan()
@@ -190233,7 +191014,7 @@ index 722969faa..a295b5635 100644
            activityAvatarSet={activityBot?.avatarSet}
            activityStatus={activityStatus}
 diff --git a/apps/mobile/components/thread/thread-screen.tsx b/apps/mobile/components/thread/thread-screen.tsx
-index c3c0cfd9b..23d43b8a4 100644
+index c3c0cfd9b..48db4bc88 100644
 --- a/apps/mobile/components/thread/thread-screen.tsx
 +++ b/apps/mobile/components/thread/thread-screen.tsx
 @@ -1,9 +1,9 @@
@@ -190511,7 +191292,15 @@ index c3c0cfd9b..23d43b8a4 100644
    const paging = useThreadPaging({
      history,
      scroll,
-@@ -447,7 +588,8 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -402,6 +543,7 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+   useIncomingShareImport({
+     attachments,
+     composerRef: composer.composerRef,
++    focused,
+     readOnly,
+     threadKey,
+     uploadConfig,
+@@ -447,7 +589,8 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
        setReplyQuote(null);
      },
      quote: setQuoteTarget,
@@ -190521,7 +191310,7 @@ index c3c0cfd9b..23d43b8a4 100644
      speak,
      react: composer.react,
      markUnread: markUnreadFrom,
-@@ -457,11 +599,44 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -457,11 +600,44 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
      // A chat attachment opens the version it was sent with, not the newest.
      previewFile: (artifactId) =>
        router.push({ pathname: "/artifact", params: { artifactId, exact: "1" } }),
@@ -190568,7 +191357,7 @@ index c3c0cfd9b..23d43b8a4 100644
      jump: (messageId) => {
        void applyMessageJump({
          botId,
-@@ -508,14 +683,19 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -508,14 +684,19 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
    });
  
    const workingBots =
@@ -190590,7 +191379,7 @@ index c3c0cfd9b..23d43b8a4 100644
            },
          ]
        : inGroup
-@@ -527,6 +707,19 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -527,6 +708,19 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
              status: bot.status,
            }))
          : [];
@@ -190610,7 +191399,7 @@ index c3c0cfd9b..23d43b8a4 100644
    const workingFooter = (
      <ThreadWorkingFooter
        bots={workingBots.map((bot) => ({
-@@ -535,7 +728,8 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -535,7 +729,8 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
        }))}
        atBottom={!scroll.state.detached}
        label={
@@ -190620,7 +191409,7 @@ index c3c0cfd9b..23d43b8a4 100644
        }
      />
    );
-@@ -572,23 +766,20 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -572,23 +767,20 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
    );
  
    return (
@@ -190657,7 +191446,7 @@ index c3c0cfd9b..23d43b8a4 100644
          <View style={{ flex: 1 }}>
            <NewestPageCards.Provider value={newestPages}>
              <ThreadMessageList
-@@ -610,46 +801,22 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -610,46 +802,22 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
                showLatest={showLatest}
              />
            </NewestPageCards.Provider>
@@ -190710,7 +191499,7 @@ index c3c0cfd9b..23d43b8a4 100644
                draftScope={draftScope}
                agentSkills={agentSkills}
                composerMentionTargets={composerMentionTargets}
-@@ -657,9 +824,46 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -657,9 +825,46 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
                composerPrompt={composerPrompt}
                replyTargetId={replyTarget?.id}
                replyQuote={replyQuote}
@@ -190757,7 +191546,7 @@ index c3c0cfd9b..23d43b8a4 100644
                botId={botId}
                onCall={onCall}
                sending={attachments.shareImporting}
-@@ -673,27 +877,51 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
+@@ -673,27 +878,51 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
              />
            </ThreadComposerDock>
          </View>
@@ -190829,6 +191618,33 @@ index c3c0cfd9b..23d43b8a4 100644
      </View>
    );
  }
+diff --git a/apps/mobile/components/time-separator.tsx b/apps/mobile/components/time-separator.tsx
+index 2ee105b28..65a67ea39 100644
+--- a/apps/mobile/components/time-separator.tsx
++++ b/apps/mobile/components/time-separator.tsx
+@@ -3,11 +3,11 @@ import { formatTimeSeparator } from "@rakazo/core";
+ import { typeScale } from "@rakazo/ui-tokens";
+ import { Text } from "react-native";
+ import { mobileTokens } from "../lib/appearance";
+-import { dateLocaleForUi, useUiLocale } from "../lib/i18n";
++import { useDateLocale } from "../lib/i18n";
+ 
+ export function TimeSeparator({ createdAt }: { createdAt?: string }) {
+   const { t } = useLingui();
+-  const locale = useUiLocale();
++  const dateLocale = useDateLocale();
+   if (!createdAt) return null;
+   return (
+     <Text
+@@ -21,7 +21,7 @@ export function TimeSeparator({ createdAt }: { createdAt?: string }) {
+         marginBottom: 4,
+       }}
+     >
+-      {formatTimeSeparator(createdAt, dateLocaleForUi(locale), {
++      {formatTimeSeparator(createdAt, dateLocale, {
+         today: t`Today`,
+         yesterday: t`Yesterday`,
+       })}
 diff --git a/apps/mobile/components/ui/long-press-menu.test.tsx b/apps/mobile/components/ui/long-press-menu.test.tsx
 new file mode 100644
 index 000000000..871a4b1b7
@@ -192842,6 +193658,28 @@ index 95010853f..3f9b16f71 100644
      expect(routineRunLateLabel({ ...run, lateSince: "2025-12-30T12:00:00Z" })).toBe(
        "3 T. verspätet gestartet",
      );
+diff --git a/apps/mobile/lib/activity.ts b/apps/mobile/lib/activity.ts
+index 8699c571b..1fe2573e7 100644
+--- a/apps/mobile/lib/activity.ts
++++ b/apps/mobile/lib/activity.ts
+@@ -15,7 +15,7 @@ export async function fetchSpaceActivity(): Promise<{
+   return { active: active.runs, recent: recent.runs };
+ }
+ 
+-export function formatActivityRelativeTime(iso: string, now = new Date()): string {
++export function formatActivityRelativeTime(iso: string, now = new Date(), locale = dateLocaleForUi()): string {
+   const date = new Date(iso);
+   if (Number.isNaN(date.getTime())) return "";
+   const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+@@ -26,7 +26,7 @@ export function formatActivityRelativeTime(iso: string, now = new Date()): strin
+   if (hours < 24) return t`${ph({ count: hours })}h ago`;
+   const days = Math.floor(hours / 24);
+   if (days < 7) return t`${ph({ count: days })}d ago`;
+-  return date.toLocaleDateString(dateLocaleForUi(), { month: "short", day: "numeric" });
++  return date.toLocaleDateString(locale, { month: "short", day: "numeric" });
+ }
+ 
+ /** "Started 2h late" for a scheduled run that started well after its time; else undefined. */
 diff --git a/apps/mobile/lib/after-first-paint.test.tsx b/apps/mobile/lib/after-first-paint.test.tsx
 new file mode 100644
 index 000000000..f0cf35886
@@ -198625,7 +199463,7 @@ index 9970e5399..1554de400 100644
    };
  }
 diff --git a/apps/mobile/lib/bot-profile.test.tsx b/apps/mobile/lib/bot-profile.test.tsx
-index 358ca2a94..4ab326bf4 100644
+index 358ca2a94..00e5f5e86 100644
 --- a/apps/mobile/lib/bot-profile.test.tsx
 +++ b/apps/mobile/lib/bot-profile.test.tsx
 @@ -1,6 +1,6 @@
@@ -198636,7 +199474,39 @@ index 358ca2a94..4ab326bf4 100644
  import { notifyManager } from "@tanstack/react-query";
  import type { ReactNode } from "react";
  import { act, createElement, useEffect, useLayoutEffect } from "react";
-@@ -121,6 +121,8 @@ vi.mock("react-native", () => {
+@@ -27,6 +27,8 @@ vi.mock("./haptics", () => ({
+ const {
+   rpc,
+   push,
++  dismissAll,
++  isFocused,
+   alert,
+   afterChatNotifyChange,
+   listSpaceArtifacts,
+@@ -40,6 +42,8 @@ const {
+ } = vi.hoisted(() => ({
+   rpc: vi.fn(),
+   push: vi.fn(),
++  dismissAll: vi.fn(),
++  isFocused: vi.fn(() => true),
+   alert: vi.fn(),
+   afterChatNotifyChange: vi.fn(async () => undefined),
+   listSpaceArtifacts: vi.fn(),
+@@ -84,11 +88,12 @@ vi.mock("expo-router", () => ({
+       return null;
+     },
+   },
+-  useRouter: () => ({ push }),
++  useRouter: () => ({ push, dismissAll, replace: vi.fn() }),
+   useNavigationContainerRef: () => ({
+     getCurrentRoute: () => ({ name: "bot-profile", params: params.current }),
+   }),
+   useNavigation: () => ({
++    isFocused,
+     setOptions: (options: { headerSearchBarOptions?: typeof screen.search }) => {
+       screen.search = options.headerSearchBarOptions ?? null;
+     },
+@@ -121,6 +126,8 @@ vi.mock("react-native", () => {
        createElement("button", { type: "button", onClick: onRefresh }, "Refresh files"),
      ScrollView: view,
      View: view,
@@ -198645,7 +199515,7 @@ index 358ca2a94..4ab326bf4 100644
      Text: ({ children }: { children?: ReactNode }) => createElement("span", null, children),
      TextInput: ({ value }: { value?: string }) => createElement("input", { value, readOnly: true }),
      Pressable: ({
-@@ -188,6 +190,8 @@ vi.mock("./native", () => ({
+@@ -188,6 +195,8 @@ vi.mock("./native", () => ({
    useThemedStyles: (createStyles: () => unknown) => createStyles(),
  }));
  vi.mock("./appearance", () => ({ mobileTokens: () => color }));
@@ -198654,7 +199524,7 @@ index 358ca2a94..4ab326bf4 100644
  vi.mock("./routine", async (importOriginal) => ({
    ...(await importOriginal<typeof RoutineHelpers>()),
    deviceTimeZone: () => "Europe/Berlin",
-@@ -264,6 +268,70 @@ const routine = (id: string, name: string, partial: Partial<Routine> = {}) => ({
+@@ -264,6 +273,70 @@ const routine = (id: string, name: string, partial: Partial<Routine> = {}) => ({
    ...partial,
  });
  
@@ -198725,7 +199595,15 @@ index 358ca2a94..4ab326bf4 100644
  // Cached reads reach the screens in the same act() as the answer, as in the other query tests.
  notifyManager.setScheduler((callback) => callback());
  
-@@ -327,6 +395,10 @@ function profileRpc(
+@@ -283,6 +356,7 @@ beforeEach(() => {
+     headers: { "x-rakazo-space-id": "space-a" },
+     sessionGeneration: session.generation,
+   }));
++  isFocused.mockReturnValue(true);
+ });
+ 
+ afterEach(() => {
+@@ -327,6 +401,10 @@ function profileRpc(
    routines: () => Promise<unknown>,
    {
      bot = async () => fixtureBot,
@@ -198736,7 +199614,7 @@ index 358ca2a94..4ab326bf4 100644
      update = async () => {
        throw new Error("unexpected bots/update");
      },
-@@ -340,6 +412,8 @@ function profileRpc(
+@@ -340,6 +418,8 @@ function profileRpc(
      computer = async () => ({ state: "stopped" }),
    }: {
      bot?: () => Promise<unknown>;
@@ -198745,7 +199623,7 @@ index 358ca2a94..4ab326bf4 100644
      update?: () => Promise<unknown>;
      updateRoutine?: (input: { routineId: string; active: boolean }) => Promise<unknown>;
      removeRoutine?: (input: { routineId: string }) => Promise<unknown>;
-@@ -349,6 +423,8 @@ function profileRpc(
+@@ -349,6 +429,8 @@ function profileRpc(
  ) {
    rpc.mockImplementation((procedure: string, input: never) => {
      if (procedure === "bots/get") return bot();
@@ -198754,7 +199632,7 @@ index 358ca2a94..4ab326bf4 100644
      if (procedure === "routines/list") return routines();
      if (procedure === "bots/update") return update();
      if (procedure === "routines/update") return updateRoutine(input);
-@@ -381,7 +457,76 @@ describe("bot profile", () => {
+@@ -381,7 +463,76 @@ describe("bot profile", () => {
        [{ pathname: "/computer", params: { botId: "bot-fixture", name: "Fixture" } }],
      ]);
      const rows = [...container.querySelectorAll("button")].map((node) => node.textContent);
@@ -198832,6 +199710,102 @@ index 358ca2a94..4ab326bf4 100644
    });
  
    it("keeps the bot's less common actions in its … menu, and clears the open chat", async () => {
+@@ -393,10 +544,15 @@ describe("bot profile", () => {
+       }[]
+     )();
+     const items = menu!.menu.items;
+-    expect(items.map((item) => item.label)).toEqual(["Clear conversation", "Archive", "Delete…"]);
++    expect(items.map((item) => item.label)).toEqual([
++      "Duplicate",
++      "Clear conversation",
++      "Archive",
++      "Delete…",
++    ]);
+     const cleared = vi.fn();
+     const stop = onConversationCleared(cleared);
+-    items[0]!.onPress();
++    items[1]!.onPress();
+     const [, , buttons] = alert.mock.lastCall as [
+       string,
+       string,
+@@ -409,6 +565,77 @@ describe("bot profile", () => {
+     stop();
+   });
+ 
++  it("opens the copy's chat once it is duplicated, and only once for repeated taps", async () => {
++    profileRpc(async () => []);
++    await render(createElement(BotProfile));
++    const [menu] = (
++      screen.options.unstable_headerRightItems as () => {
++        menu: { items: { label: string; onPress: () => void }[] };
++      }[]
++    )();
++    const duplicate = menu!.menu.items[0]!;
++    expect(duplicate.label).toBe("Duplicate");
++    const finish = deferred<{ id: string; name: string }>();
++    rpc.mockReturnValueOnce(finish.promise);
++    act(() => duplicate.onPress());
++    act(() => duplicate.onPress());
++    await act(async () => undefined);
++    expect(rpc.mock.calls.filter(([path]) => path === "bots/duplicate")).toEqual([
++      ["bots/duplicate", { botId: "bot-fixture" }],
++    ]);
++    expect(push).not.toHaveBeenCalled();
++    const copy = { id: "bot-c", name: "Bot (copy)" };
++    await act(async () => finish.resolve(copy));
++    expect(dismissAll).toHaveBeenCalledOnce();
++    expect(push).toHaveBeenCalledExactlyOnceWith({
++      pathname: "/thread",
++      params: { botId: "bot-c", name: "Bot (copy)" },
++    });
++
++    act(() => duplicate.onPress());
++    await act(async () => undefined);
++    expect(rpc.mock.calls.filter(([path]) => path === "bots/duplicate")).toHaveLength(1);
++  });
++
++  it("keeps the screen opened over the profile when the copy lands", async () => {
++    profileRpc(async () => []);
++    await render(createElement(BotProfile));
++    const [menu] = (
++      screen.options.unstable_headerRightItems as () => {
++        menu: { items: { label: string; onPress: () => void }[] };
++      }[]
++    )();
++    const duplicate = menu!.menu.items[0]!;
++    const copy = { id: "bot-c", name: "Bot (copy)" };
++    rpc.mockResolvedValueOnce(copy);
++    act(() => duplicate.onPress());
++    isFocused.mockReturnValue(false);
++    await act(async () => undefined);
++    expect(dismissAll).not.toHaveBeenCalled();
++    expect(push).not.toHaveBeenCalled();
++
++    isFocused.mockReturnValue(true);
++    rpc.mockResolvedValueOnce({ id: "bot-d", name: "Bot (copy 2)" });
++    act(() => duplicate.onPress());
++    await act(async () => undefined);
++    expect(rpc.mock.calls.filter(([path]) => path === "bots/duplicate")).toHaveLength(2);
++  });
++
++  it("says when a bot could not be duplicated and stays on the profile", async () => {
++    profileRpc(async () => []);
++    await render(createElement(BotProfile));
++    const [menu] = (
++      screen.options.unstable_headerRightItems as () => {
++        menu: { items: { label: string; onPress: () => void }[] };
++      }[]
++    )();
++    rpc.mockRejectedValueOnce(new Error("offline"));
++    await act(async () => menu!.menu.items[0]!.onPress());
++    expect(alert).toHaveBeenCalledExactlyOnceWith("Could not duplicate bot", expect.any(String));
++    expect(dismissAll).not.toHaveBeenCalled();
++    expect(push).not.toHaveBeenCalled();
++  });
++
+   it.each([
+     ["running", "Running"],
+     ["suspended", "Asleep"],
 diff --git a/apps/mobile/lib/bot-roster.test.ts b/apps/mobile/lib/bot-roster.test.ts
 index 5557cc7ac..a219dd822 100644
 --- a/apps/mobile/lib/bot-roster.test.ts
@@ -205993,10 +206967,18 @@ index 000000000..9ecbe2bbc
 +  expect(i18n._({ id: generateMessageId("Account"), message: "Account" })).toBe("账户");
 +});
 diff --git a/apps/mobile/lib/i18n.test.ts b/apps/mobile/lib/i18n.test.ts
-index 57c38ecfa..398d31986 100644
+index 57c38ecfa..d6a2cd9b2 100644
 --- a/apps/mobile/lib/i18n.test.ts
 +++ b/apps/mobile/lib/i18n.test.ts
-@@ -55,9 +55,9 @@ describe("mobile i18n", () => {
+@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+ 
+ vi.mock("expo-localization", () => ({
+   getLocales: vi.fn(() => [{ languageTag: "en-US" }]),
++  getCalendars: vi.fn(() => []),
+ }));
+ 
+ vi.mock("expo-secure-store", () => ({
+@@ -55,9 +56,9 @@ describe("mobile i18n", () => {
    ] as const)(
      "translates from the shared %s catalog and keeps interpolations",
      async (locale, account, del) => {
@@ -206008,7 +206990,7 @@ index 57c38ecfa..398d31986 100644
        expect(t("Account")).toBe(account);
        expect(t("Delete {name}?", { name: "Scout" })).toBe(del);
        expect(dateLocaleForUi()).toBe(locale);
-@@ -74,9 +74,9 @@ describe("mobile i18n", () => {
+@@ -74,9 +75,9 @@ describe("mobile i18n", () => {
      async (count, label) => {
        // Hermes: every Intl API but PluralRules.
        vi.stubGlobal("Intl", Object.assign(Object.create(Intl), { PluralRules: undefined }));
@@ -206020,8 +207002,31 @@ index 57c38ecfa..398d31986 100644
        expect(
          t("{count, plural, one {# message with {peer}} other {# messages with {peer}}}", {
            count,
+@@ -131,6 +132,22 @@ describe("mobile i18n", () => {
+     expect(dateLocaleForUi()).toBe("ru");
+   });
+ 
++  it("formats dates with the phone's region and clock", async () => {
++    const localization = await import("expo-localization");
++    const gb = [{ languageTag: "en-GB", regionCode: "GB" }] as never;
++    vi.mocked(localization.getLocales).mockReturnValueOnce(gb).mockReturnValueOnce(gb);
++    vi.mocked(localization.getCalendars).mockReturnValueOnce([{ uses24hourClock: true }] as never);
++    const { bootstrapI18n, dateLocaleForUi } = await import("./i18n");
++
++    await expect(bootstrapI18n()).resolves.toBe("en");
++    expect(dateLocaleForUi()).toBe("en-GB-u-hc-h23");
++    expect(dateLocaleForUi("de")).toBe("de-GB-u-hc-h23");
++    expect(dateLocaleForUi("zh-TW")).toBe("zh-TW-u-hc-h23");
++    expect(
++      new Intl.DateTimeFormat(dateLocaleForUi(), { timeStyle: "short" }).resolvedOptions(),
++    ).toMatchObject({ locale: "en-GB-u-hc-h23", hourCycle: "h23" });
++  });
++
+   it("normalizes a regional German stored locale before activation", async () => {
+     const { getItemAsync } = await import("expo-secure-store");
+     vi.mocked(getItemAsync).mockResolvedValue("de-CH");
 diff --git a/apps/mobile/lib/i18n.ts b/apps/mobile/lib/i18n.ts
-index 60a91d049..7e7f25d14 100644
+index 60a91d049..1dd3b88c4 100644
 --- a/apps/mobile/lib/i18n.ts
 +++ b/apps/mobile/lib/i18n.ts
 @@ -1,47 +1,51 @@
@@ -206133,7 +207138,64 @@ index 60a91d049..7e7f25d14 100644
  export function subscribeI18n(listener: () => void): () => void {
    listeners.add(listener);
    return () => {
-@@ -69,13 +93,40 @@ export function useUiLocale(): UiLocale {
+@@ -60,8 +84,55 @@ export function getActiveUiLocale(): UiLocale {
+   return activeLocale;
+ }
+ 
++type DeviceDateFormat = { region: string | null; hourCycle: "h12" | "h23" | null };
++
++const NO_DEVICE_DATE_FORMAT: DeviceDateFormat = { region: null, hourCycle: null };
++let deviceDateFormat = NO_DEVICE_DATE_FORMAT;
++
++/**
++ * The locale dates, times and numbers are formatted in: the app language written the way the
++ * phone's region writes it, on the phone's 12- or 24-hour clock (`en-GB-u-hc-h23`).
++ * A language that already names its own region (zh-CN, zh-TW, pt-BR) keeps that wording.
++ */
+ export function dateLocaleForUi(locale: UiLocale = activeLocale): string {
+-  return locale === "en" ? "en-US" : htmlLangForLocale(locale);
++  const language = htmlLangForLocale(locale);
++  const { region, hourCycle } = deviceDateFormat;
++  let base = language;
++  if (!language.includes("-")) {
++    if (region) base = `${language}-${region}`;
++    else if (locale === "en") base = "en-US";
++  }
++  return hourCycle ? `${base}-u-hc-${hourCycle}` : base;
++}
++
++export function useDateLocale(): string {
++  return useSyncExternalStore(subscribeI18n, dateLocaleForUi, dateLocaleForUi);
++}
++
++export async function refreshDeviceDateFormat(): Promise<void> {
++  try {
++    const { getLocales, getCalendars } = await import("expo-localization");
++    const region = getLocales()[0]?.regionCode;
++    const uses24hourClock = getCalendars()[0]?.uses24hourClock;
++    updateDeviceDateFormat({
++      region: region && /^([A-Z]{2}|\d{3})$/.test(region) ? region : null,
++      hourCycle: uses24hourClock === true ? "h23" : uses24hourClock === false ? "h12" : null,
++    });
++  } catch {
++    // Tests and hosts without native localization keep the last format.
++  }
++}
++
++function updateDeviceDateFormat(format: DeviceDateFormat): void {
++  if (format.region === deviceDateFormat.region && format.hourCycle === deviceDateFormat.hourCycle)
++    return;
++  deviceDateFormat = format;
++  emit();
++}
++
++/** Test-only: set the phone's date preferences without native modules. */
++export function setDeviceDateFormatForTests(format: Partial<DeviceDateFormat>): void {
++  updateDeviceDateFormat({ ...NO_DEVICE_DATE_FORMAT, ...format });
+ }
+ 
+ /** The app language, re-rendering when it changes. Strings come from Lingui's `useLingui`. */
+@@ -69,13 +140,40 @@ export function useUiLocale(): UiLocale {
    return useSyncExternalStore(subscribeI18n, getActiveUiLocale, getActiveUiLocale);
  }
  
@@ -206176,18 +207238,19 @@ index 60a91d049..7e7f25d14 100644
  async function applyDirection(locale: UiLocale): Promise<void> {
    try {
      // Direction follows the active UI locale only (all supported locales are LTR), never the
-@@ -119,9 +170,7 @@ export async function bootstrapI18n(): Promise<UiLocale> {
+@@ -119,9 +217,8 @@ export async function bootstrapI18n(): Promise<UiLocale> {
        ? process.env.EXPO_PUBLIC_DEFAULT_UI_LOCALE
        : null;
    const locale = resolveUiLocale({ stored, envDefault, deviceLanguage: await deviceLanguage() });
 -  activateUiLocale(locale);
 -  await applyDirection(locale);
 -  return locale;
++  await refreshDeviceDateFormat();
 +  return activateUiLocale(locale);
  }
  
  export async function persistUiLocale(locale: UiLocale): Promise<void> {
-@@ -139,9 +188,7 @@ let uiLocaleWriteChain: Promise<void> = Promise.resolve();
+@@ -139,9 +236,7 @@ let uiLocaleWriteChain: Promise<void> = Promise.resolve();
  export async function setUiLocale(locale: UiLocale): Promise<UiLocale> {
    const write = uiLocaleWriteChain.then(async () => {
      await persistUiLocale(locale);
@@ -206198,7 +207261,7 @@ index 60a91d049..7e7f25d14 100644
    });
    uiLocaleWriteChain = write.then(
      () => undefined,
-@@ -150,10 +197,22 @@ export async function setUiLocale(locale: UiLocale): Promise<UiLocale> {
+@@ -150,10 +245,23 @@ export async function setUiLocale(locale: UiLocale): Promise<UiLocale> {
    return write;
  }
  
@@ -206212,6 +207275,7 @@ index 60a91d049..7e7f25d14 100644
 +  const messages = catalogs.get(locale);
 +  if (messages) i18n.load(locale, messages);
    activeLocale = locale;
++  deviceDateFormat = NO_DEVICE_DATE_FORMAT;
    i18n.activate(locale);
    uiLocaleWriteChain = Promise.resolve();
    emit();
@@ -207125,10 +208189,18 @@ index 000000000..5e91bbfba
 +  },
 +} as const;
 diff --git a/apps/mobile/lib/inbox-render.test.tsx b/apps/mobile/lib/inbox-render.test.tsx
-index 831f98ea8..5c99793a5 100644
+index 831f98ea8..387c403f6 100644
 --- a/apps/mobile/lib/inbox-render.test.tsx
 +++ b/apps/mobile/lib/inbox-render.test.tsx
-@@ -248,6 +248,8 @@ const callbacks = {
+@@ -10,6 +10,7 @@ import { BotRow } from "../components/inbox-rows";
+ import type { NativeRowMenu } from "../components/native-row";
+ import { askForModelBeforeFirstBot, createInboxBot } from "./create-inbox-bot";
+ import { scheduleFocusPrompt } from "./focus-prompt";
++import { resetI18nForTests, setDeviceDateFormatForTests } from "./i18n";
+ import { formatThreadTime } from "./inbox";
+ import { onInboxChanged } from "./inbox-changes";
+ import { retainInboxValue } from "./inbox-retention";
+@@ -248,6 +249,8 @@ const callbacks = {
    organizeGroup: action,
    sharing: false,
    snoozeChat: action,
@@ -207137,7 +208209,52 @@ index 831f98ea8..5c99793a5 100644
    spaces: [],
    spaceBusy: false,
    spaceRecoveryId: null,
-@@ -452,7 +454,8 @@ it("renders saved bot rows without a notification setting", () => {
+@@ -375,7 +378,8 @@ it.each(["midnight", "focus", "foreground"])(
+     try {
+       render(<DayList items={items} />);
+       const weekday = formatThreadTime(sixDaysAgo, new Date(2026, 9, 10));
+-      expect(rowLabels()).toEqual(labels("12:30", weekday));
++      const todayTime = formatThreadTime(today, new Date(2026, 9, 10));
++      expect(rowLabels()).toEqual(labels(todayTime, weekday));
+       if (trigger === "focus") {
+         ui.focused = false;
+         render(<DayList items={items} />);
+@@ -396,7 +400,7 @@ it.each(["midnight", "focus", "foreground"])(
+         });
+       }
+       expect(rowLabels()).toEqual(labels(formatThreadTime(today), formatThreadTime(sixDaysAgo)));
+-      expect(formatThreadTime(today)).not.toBe("12:30");
++      expect(formatThreadTime(today)).not.toBe(todayTime);
+       expect(formatThreadTime(sixDaysAgo)).not.toBe(weekday);
+       expect(vi.getTimerCount()).toBe(1);
+       act(() => root.unmount());
+@@ -409,6 +413,25 @@ it.each(["midnight", "focus", "foreground"])(
+   },
+ );
+ 
++it("updates a mounted inbox row when the phone clock changes", () => {
++  const date = new Date(2026, 9, 10, 14, 30);
++  const bot = {
++    id: "helper",
++    name: "Helper",
++    preview: "",
++    updatedAt: date.toISOString(),
++  } as MobileBot;
++  try {
++    setDeviceDateFormatForTests({ region: "US", hourCycle: "h12" });
++    render(<List items={[{ type: "bot", bot }]} day={date.getTime()} />);
++    expect(rowLabels()).toEqual(["Helper, 2:30 PM, No messages yet"]);
++    act(() => setDeviceDateFormatForTests({ region: "US", hourCycle: "h23" }));
++    expect(rowLabels()).toEqual(["Helper, 14:30, No messages yet"]);
++  } finally {
++    act(() => resetI18nForTests());
++  }
++});
++
+ it("renders saved bot rows without a notification setting", () => {
+   // Inboxes saved before notification settings were kept have bots without them.
+   const bots = [
+@@ -452,7 +475,8 @@ it("renders saved bot rows without a notification setting", () => {
      "false",
      "true",
    ]);
@@ -207224,8 +208341,42 @@ index bd89a5109..e9d5a0c88 100644
      const items: InboxSpaceItem[] = [];
      if (spaces.length > 1 || !space.isDefault || allChats.length === 0) {
        items.push({ type: "heading", key: space.id, title: space.name, space });
+diff --git a/apps/mobile/lib/inbox.test.ts b/apps/mobile/lib/inbox.test.ts
+index fa4037a8d..54041a902 100644
+--- a/apps/mobile/lib/inbox.test.ts
++++ b/apps/mobile/lib/inbox.test.ts
+@@ -1,13 +1,27 @@
+-import { describe, expect, it } from "vitest";
++import { afterEach, describe, expect, it } from "vitest";
++import { resetI18nForTests, setDeviceDateFormatForTests } from "./i18n";
+ import { filterBots, formatThreadTime } from "./inbox.js";
+ 
+ const now = new Date(2026, 7, 13, 21, 53, 0);
+ 
+ describe("formatThreadTime", () => {
+-  it("shows a 24-hour clock for today", () => {
++  afterEach(() => resetI18nForTests());
++
++  it("shows the time today on the phone's 24-hour clock", () => {
++    setDeviceDateFormatForTests({ region: "GB", hourCycle: "h23" });
+     expect(formatThreadTime(local(now, 0, 14, 44), now)).toBe("14:44");
+   });
+ 
++  it("shows the time today on the phone's 12-hour clock", () => {
++    setDeviceDateFormatForTests({ region: "GB", hourCycle: "h12" });
++    expect(formatThreadTime(local(now, 0, 14, 44), now).replace(/\s/gu, " ")).toBe("2:44 pm");
++  });
++
++  it("writes dates the way the phone's region does", () => {
++    setDeviceDateFormatForTests({ region: "GB" });
++    expect(formatThreadTime(local(now, 20, 9, 0), now)).toBe("24 Jul");
++  });
++
+   it("shows the weekday within the past week", () => {
+     expect(formatThreadTime(local(now, 2, 10, 0), now)).toBe("Tuesday");
+   });
 diff --git a/apps/mobile/lib/inbox.ts b/apps/mobile/lib/inbox.ts
-index 3e96580c2..73d3c33d5 100644
+index 3e96580c2..9b667ebc9 100644
 --- a/apps/mobile/lib/inbox.ts
 +++ b/apps/mobile/lib/inbox.ts
 @@ -1,3 +1,5 @@
@@ -207234,16 +208385,50 @@ index 3e96580c2..73d3c33d5 100644
  import { snoozeWakeDay } from "@rakazo/core";
  import { dateLocaleForUi } from "./i18n";
  
-@@ -23,6 +25,9 @@ export function formatThreadTime(iso: string, now = new Date()) {
+@@ -12,7 +14,7 @@ export function filterBots<T extends { name: string; preview: string }>(
+   return bots.filter((bot) => `${bot.name} ${bot.preview}`.toLowerCase().includes(needle));
+ }
+ 
+-export function formatThreadTime(iso: string, now = new Date()) {
++export function formatThreadTime(iso: string, now = new Date(), locale = dateLocaleForUi()) {
+   const date = new Date(iso);
+   if (Number.isNaN(date.getTime())) return "";
+ 
+@@ -21,23 +23,26 @@ export function formatThreadTime(iso: string, now = new Date()) {
+   const dayDiff = Math.round((startOfToday - startOfThatDay) / DAY_MS);
+ 
    if (dayDiff <= 0) {
-     return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+-    return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
++    return clockTime(date, locale);
    }
 +  // One calendar day back is 「昨天」, as the reference app's list says it; the weekday only starts
 +  // after that.
 +  if (dayDiff === 1) return i18n._(msg`Yesterday`);
    if (dayDiff < 7) {
-     return date.toLocaleDateString(dateLocaleForUi(), { weekday: "long" });
+-    return date.toLocaleDateString(dateLocaleForUi(), { weekday: "long" });
++    return date.toLocaleDateString(locale, { weekday: "long" });
    }
+-  return date.toLocaleDateString(dateLocaleForUi(), { month: "short", day: "numeric" });
++  return date.toLocaleDateString(locale, { month: "short", day: "numeric" });
+ }
+ 
+ /** When a snoozed chat wakes: the time today, the weekday within a week, or the date. */
+-export function formatSnoozeWake(iso: string, now = new Date()) {
++export function formatSnoozeWake(iso: string, now = new Date(), locale = dateLocaleForUi()) {
+   const date = new Date(iso);
+   if (Number.isNaN(date.getTime())) return "";
+-  const time = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
++  const time = clockTime(date, locale);
+   const day = snoozeWakeDay(date, now);
+-  return day ? `${date.toLocaleDateString(dateLocaleForUi(), day)} ${time}` : time;
++  return day ? `${date.toLocaleDateString(locale, day)} ${time}` : time;
+ }
+ 
+-function pad(value: number) {
+-  return String(value).padStart(2, "0");
++function clockTime(date: Date, locale: string) {
++  return date.toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit" });
+ }
 diff --git a/apps/mobile/lib/inbox/chat-rpc.ts b/apps/mobile/lib/inbox/chat-rpc.ts
 new file mode 100644
 index 000000000..15390c9ea
@@ -208576,18 +209761,32 @@ index 000000000..9e2514e30
 +}
 diff --git a/apps/mobile/lib/inbox/inbox.test.ts b/apps/mobile/lib/inbox/inbox.test.ts
 new file mode 100644
-index 000000000..fa4037a8d
+index 000000000..ec2922caa
 --- /dev/null
 +++ b/apps/mobile/lib/inbox/inbox.test.ts
-@@ -0,0 +1,64 @@
-+import { describe, expect, it } from "vitest";
+@@ -0,0 +1,78 @@
++import { afterEach, describe, expect, it } from "vitest";
++import { resetI18nForTests, setDeviceDateFormatForTests } from "../i18n";
 +import { filterBots, formatThreadTime } from "./inbox.js";
 +
 +const now = new Date(2026, 7, 13, 21, 53, 0);
 +
 +describe("formatThreadTime", () => {
-+  it("shows a 24-hour clock for today", () => {
++  afterEach(() => resetI18nForTests());
++
++  it("shows the time today on the phone's 24-hour clock", () => {
++    setDeviceDateFormatForTests({ region: "GB", hourCycle: "h23" });
 +    expect(formatThreadTime(local(now, 0, 14, 44), now)).toBe("14:44");
++  });
++
++  it("shows the time today on the phone's 12-hour clock", () => {
++    setDeviceDateFormatForTests({ region: "GB", hourCycle: "h12" });
++    expect(formatThreadTime(local(now, 0, 14, 44), now).replace(/\s/gu, " ")).toBe("2:44 pm");
++  });
++
++  it("writes dates the way the phone's region does", () => {
++    setDeviceDateFormatForTests({ region: "GB" });
++    expect(formatThreadTime(local(now, 20, 9, 0), now)).toBe("24 Jul");
 +  });
 +
 +  it("shows the weekday within the past week", () => {
@@ -208646,12 +209845,12 @@ index 000000000..fa4037a8d
 +}
 diff --git a/apps/mobile/lib/inbox/inbox.ts b/apps/mobile/lib/inbox/inbox.ts
 new file mode 100644
-index 000000000..6359e3688
+index 000000000..6850d14c6
 --- /dev/null
 +++ b/apps/mobile/lib/inbox/inbox.ts
 @@ -0,0 +1,43 @@
 +import { snoozeWakeDay } from "@rakazo/core";
-+import { dateLocaleForUi } from "../i18n/i18n";
++import { dateLocaleForUi } from "../i18n";
 +
 +const DAY_MS = 86_400_000;
 +
@@ -208664,7 +209863,7 @@ index 000000000..6359e3688
 +  return bots.filter((bot) => `${bot.name} ${bot.preview}`.toLowerCase().includes(needle));
 +}
 +
-+export function formatThreadTime(iso: string, now = new Date()) {
++export function formatThreadTime(iso: string, now = new Date(), locale = dateLocaleForUi()) {
 +  const date = new Date(iso);
 +  if (Number.isNaN(date.getTime())) return "";
 +
@@ -208673,25 +209872,25 @@ index 000000000..6359e3688
 +  const dayDiff = Math.round((startOfToday - startOfThatDay) / DAY_MS);
 +
 +  if (dayDiff <= 0) {
-+    return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
++    return clockTime(date, locale);
 +  }
 +  if (dayDiff < 7) {
-+    return date.toLocaleDateString(dateLocaleForUi(), { weekday: "long" });
++    return date.toLocaleDateString(locale, { weekday: "long" });
 +  }
-+  return date.toLocaleDateString(dateLocaleForUi(), { month: "short", day: "numeric" });
++  return date.toLocaleDateString(locale, { month: "short", day: "numeric" });
 +}
 +
 +/** When a snoozed chat wakes: the time today, the weekday within a week, or the date. */
-+export function formatSnoozeWake(iso: string, now = new Date()) {
++export function formatSnoozeWake(iso: string, now = new Date(), locale = dateLocaleForUi()) {
 +  const date = new Date(iso);
 +  if (Number.isNaN(date.getTime())) return "";
-+  const time = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
++  const time = clockTime(date, locale);
 +  const day = snoozeWakeDay(date, now);
-+  return day ? `${date.toLocaleDateString(dateLocaleForUi(), day)} ${time}` : time;
++  return day ? `${date.toLocaleDateString(locale, day)} ${time}` : time;
 +}
 +
-+function pad(value: number) {
-+  return String(value).padStart(2, "0");
++function clockTime(date: Date, locale: string) {
++  return date.toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit" });
 +}
 diff --git a/apps/mobile/lib/inbox/last-bot-owner.test.ts b/apps/mobile/lib/inbox/last-bot-owner.test.ts
 new file mode 100644
@@ -215986,6 +217185,26 @@ index 0215443f5..23c436bcc 100644
    await act(async () => row("API key").click());
    expect(field("API key")).not.toBeNull();
    await act(async () => row("API key").click());
+diff --git a/apps/mobile/lib/monitoring.ts b/apps/mobile/lib/monitoring.ts
+index cde7346f5..f14849e2c 100644
+--- a/apps/mobile/lib/monitoring.ts
++++ b/apps/mobile/lib/monitoring.ts
+@@ -82,6 +82,15 @@ export function setMobileMonitoringScreen(next: string | undefined): void {
+   sdk?.addBreadcrumb({ type: "navigation", category: "navigation", data: { to: screen } });
+ }
+ 
++/** Only the action travels with a report. A share can contain personal files, URLs and text. */
++export function recordMobileShareAction(action: "select" | "close" | "sign_in"): void {
++  sdk?.addBreadcrumb({
++    type: "navigation",
++    category: "navigation",
++    data: { screen: "share", action },
++  });
++}
++
+ /** Clear account context synchronously, before a server/session change starts any I/O. */
+ export function resetMobileMonitoring(): void {
+   generation += 1;
 diff --git a/apps/mobile/lib/native-action-button.test.tsx b/apps/mobile/lib/native-action-button.test.tsx
 index 6ff9437b8..dd75df8f4 100644
 --- a/apps/mobile/lib/native-action-button.test.tsx
@@ -224112,6 +225331,263 @@ index 000000000..863146789
 +  expect(back).not.toHaveBeenCalled();
 +  expect(alert).not.toHaveBeenCalled();
 +});
+diff --git a/apps/mobile/lib/share-route.test.tsx b/apps/mobile/lib/share-route.test.tsx
+index a2b87a51a..79aa7fd02 100644
+--- a/apps/mobile/lib/share-route.test.tsx
++++ b/apps/mobile/lib/share-route.test.tsx
+@@ -5,7 +5,12 @@ import {
+   useRoutesWithRemovalPrevented,
+ } from "expo-router/build/global-state/removalPrevention";
+ import { NavigationContext } from "expo-router/build/react-navigation/core/NavigationContext";
+-import type { NavigationAction } from "expo-router/build/react-navigation/routers/types";
++import type { StackNavigationState } from "expo-router/build/react-navigation/routers/StackRouter";
++import { StackRouter } from "expo-router/build/react-navigation/routers/StackRouter";
++import type {
++  NavigationAction,
++  ParamListBase,
++} from "expo-router/build/react-navigation/routers/types";
+ import type { ComponentProps, ReactNode } from "react";
+ import { act, createElement, useLayoutEffect, useState } from "react";
+ import { createRoot } from "react-dom/client";
+@@ -14,27 +19,57 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+ const state = vi.hoisted(() => ({
+   pending: { text: "https://example.com", files: [], arrivedAt: 0, generation: 1 } as unknown,
+   cancel: vi.fn(),
+-  dismissTo: vi.fn(),
+-  reset: vi.fn(),
++  breadcrumb: vi.fn(),
++  report: vi.fn(),
++  dropNextAction: false,
++  protect: new Set<string>(),
+   prevented: new Set<string>() as ReadonlySet<string>,
+   listener: undefined as undefined | ((event: { data: { action: NavigationAction } }) => void),
+   reportBlocked: undefined as undefined | ((action: NavigationAction) => void),
+ }));
++const stackRouter = StackRouter({ initialRouteName: "index" });
++const config = {
++  routeNames: ["index", "note", "share", "thread", "sign-in"],
++  routeParamList: {},
++  routeGetIdList: {},
++};
++let stack: StackNavigationState<ParamListBase>;
++function shareOnStack(...under: string[]) {
++  const names = [...under, "share"];
++  stack = {
++    stale: false,
++    type: "stack",
++    key: "app-stack",
++    routeNames: config.routeNames,
++    index: names.length - 1,
++    routeKeySeq: names.length,
++    routes: names.map((name) => ({ name, key: name })),
++  };
++}
+ // Dispatch reads the committed prevention registry, as the navigation reducer does.
+ // Disabling prevention schedules a React update; it cannot affect a same-tick dispatch.
+ const dispatch = (action: NavigationAction) => {
+-  if (state.prevented.has("share")) state.reportBlocked?.(action);
+-  else state.reset(action);
+-};
+-const router = {
+-  dismissTo: (path: string) => {
+-    if (state.prevented.has("share"))
+-      state.reportBlocked?.({ type: "POP_TO", payload: { name: "index" } });
+-    else state.dismissTo(path);
+-  },
++  if (state.dropNextAction) {
++    state.dropNextAction = false;
++    return;
++  }
++  const result = stackRouter.getStateForAction(
++    stack,
++    action as Parameters<typeof stackRouter.getStateForAction>[1],
++    config,
++  );
++  if (!result || typeof result === "string") return;
++  const removed = stack.routes.filter(
++    (route) => !result.state.routes.some((next) => next.key === route.key),
++  );
++  if (removed.some((route) => state.protect.has(route.key))) return;
++  if (removed.some((route) => state.prevented.has(route.key))) state.reportBlocked?.(action);
++  else stack = result.state;
+ };
+ const navigation = {
+-  dispatch,
++  dispatch: (action: NavigationAction) => dispatch({ source: "share", ...action }),
++  getState: () => stack,
++  isFocused: () => stack.routes[stack.index]?.name === "share",
+   addListener: (_type: string, listener: typeof state.listener) => {
+     state.listener = listener;
+     return () => {
+@@ -46,8 +81,16 @@ vi.mock("expo-router", async () => {
+   const { usePreventRemove } = await import(
+     "expo-router/build/react-navigation/core/usePreventRemove"
+   );
+-  return { useRouter: () => router, useNavigation: () => navigation, usePreventRemove };
++  return {
++    useIsFocused: () => navigation.isFocused(),
++    useNavigation: () => navigation,
++    usePreventRemove,
++  };
+ });
++vi.mock(
++  "expo-router/react-navigation",
++  () => import("expo-router/build/react-navigation/routers/StackRouter"),
++);
+ 
+ function NavigationHarness() {
+   state.prevented = useRoutesWithRemovalPrevented();
+@@ -73,6 +116,10 @@ vi.mock("./incoming-share", () => ({
+   cancelIncomingShare: state.cancel,
+ }));
+ vi.mock("./native", () => ({ useMobileTokens: () => ({}) }));
++vi.mock("./monitoring", () => ({
++  recordMobileShareAction: state.breadcrumb,
++  reportMobileError: state.report,
++}));
+ vi.mock("react-native-safe-area-context", () => ({ useSafeAreaInsets: () => ({ top: 0 }) }));
+ vi.mock("react-native", () => ({
+   Platform: { OS: "ios" },
+@@ -108,76 +155,107 @@ async function render() {
+     root.render(createElement(RemovalPreventionProvider, null, createElement(NavigationHarness))),
+   );
+ }
+-beforeEach(() => vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true));
++const routeNames = () => stack.routes.map((route) => route.name);
++const click = (index: number) => container.querySelectorAll("button")[index]?.click();
++
++beforeEach(() => {
++  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
++  shareOnStack("index");
++});
+ afterEach(async () => {
+   await act(async () => root?.unmount());
+   state.pending = { text: "https://example.com", files: [], arrivedAt: 0, generation: 1 };
++  state.protect.clear();
++  state.dropNextAction = false;
++  vi.useRealTimers();
+   vi.clearAllMocks();
+   vi.unstubAllGlobals();
+ });
+ describe("share route", () => {
+   it("returns safely to the inbox when the share is absent or expired", async () => {
+     state.pending = null;
++    shareOnStack();
+     await render();
+-    expect(state.dismissTo).toHaveBeenCalledWith("/");
++    expect(routeNames()).toEqual(["index"]);
+   });
+-  it("clears the pending share on close and returns to the inbox", async () => {
++  it("closes the picker without removing the screen underneath", async () => {
++    shareOnStack("index", "note");
++    state.protect.add("note");
+     await render();
+-    await act(async () => container.querySelector("button")?.click());
++    await act(async () => click(0));
+     expect(state.cancel).toHaveBeenCalledOnce();
+-    expect(state.dismissTo).toHaveBeenCalledWith("/");
++    expect(routeNames()).toEqual(["index", "note"]);
+   });
+   it("preserves the pending share while redirecting to sign-in", async () => {
+     await render();
+     expect(state.prevented.has("share")).toBe(true);
+     await act(async () => dispatch({ type: "REPLACE", payload: { name: "sign-in" } }));
+-    expect(state.reset).toHaveBeenCalledExactlyOnceWith({
+-      type: "REPLACE",
+-      payload: { name: "sign-in" },
+-    });
++    expect(routeNames()).toEqual(["index", "sign-in"]);
+     expect(state.prevented.has("share")).toBe(false);
+     expect(state.cancel).not.toHaveBeenCalled();
+-    expect(state.dismissTo).not.toHaveBeenCalled();
+   });
+   it("cancels on native back or dismissal", async () => {
+     await render();
+     await act(async () => dispatch({ type: "GO_BACK" }));
+-    expect(state.reset).not.toHaveBeenCalled();
+     expect(state.cancel).toHaveBeenCalledOnce();
+-    expect(state.dismissTo).toHaveBeenCalledWith("/");
++    expect(routeNames()).toEqual(["index"]);
+   });
+-  it.each([
+-    { text: "https://example.com", files: [] },
+-    {
++  it("opens the selected thread while preserving a protected screen and the share", async () => {
++    shareOnStack("index", "note");
++    state.protect.add("note");
++    const share = {
+       text: "",
+-      files: [
+-        { uri: "file:///shared/example.pdf", name: "example.pdf", mimeType: "application/pdf" },
+-      ],
+-    },
+-  ])("opens the selected thread with the pending share intact: %j", async (content) => {
+-    const share = { ...content, arrivedAt: 0, generation: 1 };
++      files: [{ uri: "file:///shared/example.png", name: "example.png", mimeType: "image/png" }],
++      arrivedAt: 0,
++      generation: 1,
++    };
+     state.pending = share;
+     await render();
+-    await act(async () => container.querySelectorAll("button")[1]?.click());
++    await act(async () => click(1));
+     expect(state.prevented.has("share")).toBe(false);
+     expect(state.cancel).not.toHaveBeenCalled();
+-    expect(state.dismissTo).not.toHaveBeenCalled();
+     expect(state.pending).toBe(share);
+-    expect(state.reset).toHaveBeenCalledExactlyOnceWith({
+-      type: "RESET",
+-      payload: {
+-        index: 1,
+-        routes: [{ name: "index" }, { name: "thread", params: { botId: "example", name: "Bot" } }],
+-      },
++    expect(routeNames()).toEqual(["index", "note", "thread"]);
++    expect(stack.routes.at(-1)?.params).toEqual({ botId: "example", name: "Bot" });
++  });
++  it("reports dropped navigation and lets the user close the picker", async () => {
++    vi.useFakeTimers();
++    state.dropNextAction = true;
++    await render();
++    await act(async () => click(1));
++    expect(routeNames()).toEqual(["index", "share"]);
++    expect(state.breadcrumb).toHaveBeenCalledWith("select");
++    await act(async () => vi.runOnlyPendingTimersAsync());
++    expect(state.report).toHaveBeenCalledExactlyOnceWith(expect.any(Error), "mobile.share", {
++      screen: "share",
++      action: "select",
+     });
++    await act(async () => click(0));
++    expect(routeNames()).toEqual(["index"]);
++  });
++  it("keeps the choice when navigation succeeded and the picker is still mounted", async () => {
++    vi.useFakeTimers();
++    await render();
++    await act(async () => click(1));
++    expect(routeNames()).toEqual(["index", "thread"]);
++    await act(async () => vi.runOnlyPendingTimersAsync());
++    expect(state.report).not.toHaveBeenCalled();
++  });
++  it("returns to the existing chat when the picker is above the selected chat", async () => {
++    shareOnStack("index", "thread");
++    stack.routes[1] = { name: "thread", key: "thread", params: { botId: "example" } };
++    await render();
++    await act(async () => click(1));
++    expect(routeNames()).toEqual(["index", "thread"]);
++    expect(stack.routes[1]?.key).toBe("thread");
+   });
+   it("ignores a second selection before leaving the picker", async () => {
+     await render();
+     await act(async () => {
+-      container.querySelectorAll("button")[1]?.click();
+-      container.querySelectorAll("button")[1]?.click();
++      click(1);
++      click(1);
+     });
+-    expect(state.reset).toHaveBeenCalledOnce();
++    expect(state.breadcrumb).toHaveBeenCalledOnce();
+     expect(state.cancel).not.toHaveBeenCalled();
+   });
+ });
 diff --git a/apps/mobile/lib/startup.ts b/apps/mobile/lib/startup.ts
 index eef99b9c7..a487ac6c5 100644
 --- a/apps/mobile/lib/startup.ts
@@ -224291,12 +225767,13 @@ index 000000000..8c747a610
 +}
 diff --git a/apps/mobile/lib/task-steps.test.ts b/apps/mobile/lib/task-steps.test.ts
 new file mode 100644
-index 000000000..3860fcaaf
+index 000000000..0b2e33bdc
 --- /dev/null
 +++ b/apps/mobile/lib/task-steps.test.ts
-@@ -0,0 +1,192 @@
+@@ -0,0 +1,205 @@
 +import type { FrontDeskTask, TaskStep } from "@rakazo/contracts";
-+import { describe, expect, it } from "vitest";
++import { afterEach, beforeEach, describe, expect, it } from "vitest";
++import { resetI18nForTests, setDeviceDateFormatForTests } from "./i18n";
 +import {
 +  groupTasksByDay,
 +  mergeTaskPages,
@@ -224397,11 +225874,21 @@ index 000000000..3860fcaaf
 +});
 +
 +describe("taskClock", () => {
-+  it("reads the moment in the phone's time zone", () => {
++  afterEach(() => resetI18nForTests());
++
++  it("reads the moment on the phone's 24-hour clock", () => {
++    setDeviceDateFormatForTests({ region: "GB", hourCycle: "h23" });
 +    expect(taskClock(new Date(2026, 10, 17, 8, 57).toISOString())).toBe("8:57");
 +    expect(taskClock(new Date(2026, 10, 17, 23, 5, 40).toISOString())).toBe("23:05");
 +    expect(taskClock(undefined)).toBe("");
 +    expect(taskClock("not a date")).toBe("");
++  });
++
++  it("reads the moment on the phone's 12-hour clock", () => {
++    setDeviceDateFormatForTests({ region: "GB", hourCycle: "h12" });
++    expect(taskClock(new Date(2026, 10, 17, 8, 57).toISOString()).replace(/\s/gu, " ")).toBe(
++      "8:57 am",
++    );
 +  });
 +});
 +
@@ -224416,6 +225903,8 @@ index 000000000..3860fcaaf
 +});
 +
 +describe("the rows the Tasks list draws", () => {
++  afterEach(() => resetI18nForTests());
++  beforeEach(() => setDeviceDateFormatForTests({ region: "GB", hourCycle: "h23" }));
 +  it("puts the work's own line under the title, and the elapsed time at the right", () => {
 +    const running = task({ currentStep: "cd /workspace && python3 .tools/run.py" });
 +    expect(taskRowDetail(running)).toBe("cd /workspace && python3 .tools/run.py");
@@ -224489,11 +225978,12 @@ index 000000000..3860fcaaf
 +});
 diff --git a/apps/mobile/lib/task-steps.ts b/apps/mobile/lib/task-steps.ts
 new file mode 100644
-index 000000000..814bb245c
+index 000000000..2dff63fb8
 --- /dev/null
 +++ b/apps/mobile/lib/task-steps.ts
-@@ -0,0 +1,172 @@
+@@ -0,0 +1,173 @@
 +import type { FrontDeskTask, TaskStep, TaskSteps } from "@rakazo/contracts";
++import { dateLocaleForUi } from "./i18n";
 +
 +/**
 + * The work the front desk handed to the back office, as the Bot's own page lists it and as one
@@ -224566,11 +226056,11 @@ index 000000000..814bb245c
 +}
 +
 +/** The clock a row shows: `8:57`, from the moment in the phone's own time zone. */
-+export function taskClock(iso: string | null | undefined): string {
++export function taskClock(iso: string | null | undefined, locale = dateLocaleForUi()): string {
 +  if (!iso) return "";
 +  const at = new Date(iso);
 +  if (Number.isNaN(at.getTime())) return "";
-+  return `${at.getHours()}:${String(at.getMinutes()).padStart(2, "0")}`;
++  return at.toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit" });
 +}
 +
 +/** The day a row belongs under, as the phone counts days. */
@@ -224689,7 +226179,7 @@ index b12a1a56a..7f19b784e 100644
 +  });
  }
 diff --git a/apps/mobile/lib/thread-attachments.test.tsx b/apps/mobile/lib/thread-attachments.test.tsx
-index fe95c8c7f..dc6c477b0 100644
+index fe95c8c7f..033d23694 100644
 --- a/apps/mobile/lib/thread-attachments.test.tsx
 +++ b/apps/mobile/lib/thread-attachments.test.tsx
 @@ -3,10 +3,15 @@
@@ -224722,7 +226212,49 @@ index fe95c8c7f..dc6c477b0 100644
  vi.mock("./use-file-drop", () => ({
    useFileDrop: (_key: unknown, onDrop: NonNullable<typeof fileDrop.onDrop>) => {
      fileDrop.onDrop = onDrop;
-@@ -502,3 +512,100 @@ it("keeps a share for the committed chat when a render of another chat is discar
+@@ -38,6 +48,7 @@ vi.mock("./incoming-share", () => ({
+   takeIncomingShare: vi.fn(),
+ }));
+ vi.mock("./user-error", () => ({ errorText: (_: unknown, fallback: string) => fallback }));
++vi.mock("./monitoring", () => ({ reportMobileError: vi.fn() }));
+ 
+ let root: Root;
+ let attachments: ReturnType<typeof useThreadAttachments>;
+@@ -72,9 +83,11 @@ const twoAttachments = { maxAttachmentsPerMessage: 2 };
+ 
+ function ImportProbe({
+   botId,
++  focused = true,
+   uploadConfig = defaultUploadConfig,
+ }: {
+   botId: string;
++  focused?: boolean;
+   uploadConfig?: { maxAttachmentsPerMessage?: number };
+ }) {
+   attachments = useThreadAttachments({
+@@ -86,6 +99,7 @@ function ImportProbe({
+   useIncomingShareImport({
+     attachments,
+     composerRef: { current: null },
++    focused,
+     readOnly: false,
+     threadKey: botId,
+     uploadConfig,
+@@ -308,6 +322,13 @@ function slowShare() {
+   return { files, settle: () => settle() };
+ }
+ 
++it("checks for a share when the already mounted chat regains focus", () => {
++  mount(<ImportProbe botId="bot-share-focus" focused={false} />);
++  expect(takeIncomingShare).not.toHaveBeenCalled();
++  act(() => root.render(<ImportProbe botId="bot-share-focus" />));
++  expect(takeIncomingShare).toHaveBeenCalledOnce();
++});
++
+ it("holds a share import to the attachment limit when a picker opened before it settles first", async () => {
+   let settlePicker!: (result: Read) => void;
+   vi.mocked(pickDocuments).mockReturnValueOnce(
+@@ -502,3 +523,100 @@ it("keeps a share for the committed chat when a render of another chat is discar
    const kept = committedAttachments.activePendingAttachments;
    expect(kept.map((item) => item.id)).toEqual(["t1"]);
  });
@@ -224824,7 +226356,7 @@ index fe95c8c7f..dc6c477b0 100644
 +  });
 +});
 diff --git a/apps/mobile/lib/thread-attachments.ts b/apps/mobile/lib/thread-attachments.ts
-index 35333e611..8927b390b 100644
+index 35333e611..b8ae27356 100644
 --- a/apps/mobile/lib/thread-attachments.ts
 +++ b/apps/mobile/lib/thread-attachments.ts
 @@ -7,13 +7,14 @@ import type { RefObject } from "react";
@@ -224943,6 +226475,56 @@ index 35333e611..8927b390b 100644
      attachActions,
      attachFrom,
      importingShare,
+@@ -242,16 +266,18 @@ export function useThreadAttachments({
+   };
+ }
+ 
+-/** Takes an incoming share into this chat once its upload limits are known. */
++/** Takes an incoming share when the chat is visible and its upload limits are known. */
+ export function useIncomingShareImport({
+   attachments,
+   composerRef,
++  focused = true,
+   readOnly,
+   threadKey,
+   uploadConfig,
+ }: {
+   attachments: ReturnType<typeof useThreadAttachments>;
+   composerRef: RefObject<ThreadComposerHandle | null>;
++  focused?: boolean;
+   readOnly: boolean;
+   threadKey: string | undefined;
+   uploadConfig?: { maxUploadSizeBytes?: number; maxAttachmentsPerMessage?: number };
+@@ -275,7 +301,7 @@ export function useIncomingShareImport({
+     committedThread.current = threadKey;
+   }, [threadKey]);
+   useEffect(() => {
+-    if (!threadKey || readOnly || !uploadConfig || importingShare.current) return;
++    if (!focused || !threadKey || readOnly || !uploadConfig || importingShare.current) return;
+     const interrupted = interruptedShare.current;
+     interruptedShare.current = null;
+     const share = takeIncomingShare();
+@@ -299,8 +325,12 @@ export function useIncomingShareImport({
+           retryIncomingShare(share);
+           return;
+         }
+-        if (result.failedFiles.length)
++        if (result.failedFiles.length) {
++          reportMobileError(new Error("Shared files could not be read"), "mobile.share", {
++            action: "import",
++          });
+           retryIncomingShare({ ...share, text: "", files: result.failedFiles });
++        }
+         // A drop or a picker opened before the import can add files while it reads, so the
+         // room left is settled against the draft as it is now, as in addAttachments.
+         const maxCount = attachmentMaxCount(uploadConfig);
+@@ -354,5 +384,5 @@ export function useIncomingShareImport({
+     return () => {
+       active = false;
+     };
+-  }, [threadKey, readOnly, uploadConfig, retryTick]);
++  }, [focused, threadKey, readOnly, uploadConfig, retryTick]);
+ }
 diff --git a/apps/mobile/lib/thread-card-width.test.tsx b/apps/mobile/lib/thread-card-width.test.tsx
 index 3a33e3805..38c623298 100644
 --- a/apps/mobile/lib/thread-card-width.test.tsx
@@ -236169,10 +237751,10 @@ index 000000000..ac6a1e5a5
 +}
 diff --git a/apps/mobile/lib/usage-screen.test.tsx b/apps/mobile/lib/usage-screen.test.tsx
 new file mode 100644
-index 000000000..3101802aa
+index 000000000..92e34a098
 --- /dev/null
 +++ b/apps/mobile/lib/usage-screen.test.tsx
-@@ -0,0 +1,403 @@
+@@ -0,0 +1,404 @@
 +// @vitest-environment jsdom
 +
 +import type { UsageDetails } from "@rakazo/contracts";
@@ -236386,6 +237968,7 @@ index 000000000..3101802aa
 +vi.mock("./side-insets", () => ({ useSideInsets: () => ({}) }));
 +vi.mock("./i18n", () => ({
 +  dateLocaleForUi: () => "en-US",
++  useDateLocale: () => "en-US",
 +  useUiLocale: () => "zh-CN",
 +}));
 +vi.mock("./appearance", () => ({
@@ -262951,7 +264534,7 @@ index 73652a3c4..4bdf91d87 100644
 +msgid "Image support unknown"
 +msgstr "Görsel desteği bilinmiyor"
 diff --git a/packages/i18n/locales/zh-CN/messages.po b/packages/i18n/locales/zh-CN/messages.po
-index 422c5af1e..c7edddbe2 100644
+index 422c5af1e..faedbe862 100644
 --- a/packages/i18n/locales/zh-CN/messages.po
 +++ b/packages/i18n/locales/zh-CN/messages.po
 @@ -281,7 +281,7 @@ msgstr "{count} 个需要处理"
@@ -262998,7 +264581,18 @@ index 422c5af1e..c7edddbe2 100644
  #: apps/web/src/pages/VoiceSettingsOverlay.tsx
  msgid "Could not connect this voice provider"
  msgstr "无法连接此语音提供商"
-@@ -4872,6 +4884,10 @@ msgstr "每个名称只能使用一次。"
+@@ -4853,6 +4865,10 @@ msgid "Drag, drop, or paste an image"
+ msgstr "拖放或粘贴图片"
+ 
+ #: apps/web/src/pages/BotContextMenu.tsx
++#: apps/mobile/components/bot-profile-menu.tsx
++msgid "Could not duplicate bot"
++msgstr "无法复制 Bot"
++
+ msgid "Duplicate"
+ msgstr "复制"
+ 
+@@ -4872,6 +4888,10 @@ msgstr "每个名称只能使用一次。"
  msgid "Edit"
  msgstr "编辑"
  
@@ -263009,7 +264603,7 @@ index 422c5af1e..c7edddbe2 100644
  #: apps/mobile/app/bot-settings.tsx
  msgid "Edit avatar"
  msgstr "编辑头像"
-@@ -7332,6 +7348,26 @@ msgstr "暂无记忆"
+@@ -7332,6 +7352,26 @@ msgstr "暂无记忆"
  msgid "Nothing saved yet."
  msgstr "尚未保存任何内容。"
  
@@ -263036,7 +264630,7 @@ index 422c5af1e..c7edddbe2 100644
  #: apps/mobile/app/(settings)/general.tsx
  msgid "Notification settings"
  msgstr "通知设置"
-@@ -7786,8 +7822,8 @@ msgstr "粘贴替换密钥"
+@@ -7786,8 +7826,8 @@ msgstr "粘贴替换密钥"
  
  #: apps/mobile/components/compatible-endpoint-form.tsx
  #: apps/web/src/pages/model-settings/compatible-model-fields.tsx
@@ -263047,7 +264641,7 @@ index 422c5af1e..c7edddbe2 100644
  
  #: apps/web/src/pages/shell/agent-import.tsx
  msgid "Paste the reply"
-@@ -8589,6 +8625,10 @@ msgstr "重置电脑"
+@@ -8589,6 +8629,10 @@ msgstr "重置电脑"
  msgid "Reset computer?"
  msgstr "重置电脑？"
  
@@ -263058,7 +264652,7 @@ index 422c5af1e..c7edddbe2 100644
  #: apps/web/src/pages/Auth.tsx
  msgid "Reset password"
  msgstr "重置密码"
-@@ -9098,6 +9138,10 @@ msgstr "在 MCP 服务器中搜索“{query}”"
+@@ -9098,6 +9142,10 @@ msgstr "在 MCP 服务器中搜索“{query}”"
  msgid "Search models"
  msgstr "搜索模型"
  
@@ -263069,7 +264663,7 @@ index 422c5af1e..c7edddbe2 100644
  #: apps/web/src/pages/shell/shell-sidebar.tsx
  msgid "Search runs"
  msgstr "搜索运行记录"
-@@ -10195,6 +10239,10 @@ msgstr "群组 {names} 也会被删除，包括其中的消息、文件和页面
+@@ -10195,6 +10243,10 @@ msgstr "群组 {names} 也会被删除，包括其中的消息、文件和页面
  msgid "The groups {names} will be deleted too, including their messages, files, and pages."
  msgstr "群组 {names} 也会被删除，包括其中的消息、文件和页面。"
  
@@ -263080,7 +264674,7 @@ index 422c5af1e..c7edddbe2 100644
  #. js-lingui-explicit-id
  #: packages/i18n/src/run-error.ts
  msgid "The model hit its output limit before finishing its reply."
-@@ -11755,3 +11803,394 @@ msgstr "你的语音提供商拒绝了该密钥。"
+@@ -11755,3 +11807,394 @@ msgstr "你的语音提供商拒绝了该密钥。"
  #: apps/web/src/components/vault/VaultItemEditor.tsx
  msgid "ZIP or postal code"
  msgstr "邮政编码"
@@ -263476,10 +265070,21 @@ index 422c5af1e..c7edddbe2 100644
 +msgid "Could not remove the server"
 +msgstr "无法移除这个服务器"
 diff --git a/packages/i18n/locales/zh-TW/messages.po b/packages/i18n/locales/zh-TW/messages.po
-index 796df8775..29c488c8d 100644
+index 796df8775..4a72e1251 100644
 --- a/packages/i18n/locales/zh-TW/messages.po
 +++ b/packages/i18n/locales/zh-TW/messages.po
-@@ -7787,8 +7787,8 @@ msgstr "貼上替換金鑰"
+@@ -4854,6 +4854,10 @@ msgid "Drag, drop, or paste an image"
+ msgstr "拖放或貼上圖片"
+ 
+ #: apps/web/src/pages/BotContextMenu.tsx
++#: apps/mobile/components/bot-profile-menu.tsx
++msgid "Could not duplicate bot"
++msgstr "無法複製 Bot"
++
+ msgid "Duplicate"
+ msgstr "複製"
+ 
+@@ -7787,8 +7791,8 @@ msgstr "貼上替換金鑰"
  
  #: apps/mobile/components/compatible-endpoint-form.tsx
  #: apps/web/src/pages/model-settings/compatible-model-fields.tsx
@@ -263490,7 +265095,7 @@ index 796df8775..29c488c8d 100644
  
  #: apps/web/src/pages/shell/agent-import.tsx
  msgid "Paste the reply"
-@@ -11756,3 +11756,226 @@ msgstr "你的語音供應商拒絕了該金鑰。"
+@@ -11756,3 +11760,226 @@ msgstr "你的語音供應商拒絕了該金鑰。"
  #: apps/web/src/components/vault/VaultItemEditor.tsx
  msgid "ZIP or postal code"
  msgstr "郵遞區號"
@@ -263717,6 +265322,18 @@ index 796df8775..29c488c8d 100644
 +#: apps/web/src/pages/model-settings/provider-page.tsx
 +msgid "Image support unknown"
 +msgstr "是否支援圖片未知"
+diff --git a/packages/logging/src/monitoring.ts b/packages/logging/src/monitoring.ts
+index 4a4ea6293..e3e682f96 100644
+--- a/packages/logging/src/monitoring.ts
++++ b/packages/logging/src/monitoring.ts
+@@ -217,6 +217,7 @@ export function sanitizeMonitoringEvent<T extends MonitoringEvent>(event: T, use
+ export type ClientOperation =
+   | "react.render"
+   | "mobile.startup"
++  | "mobile.share"
+   | "voice.microphone"
+   | "voice.turn"
+   | "rpc.transport"
 diff --git a/packages/logging/src/sentry.test.ts b/packages/logging/src/sentry.test.ts
 index 0176e8170..a6dac0d02 100644
 --- a/packages/logging/src/sentry.test.ts

@@ -176434,7 +176434,7 @@ index 000000000..6ce9c75a1
 +}
 diff --git a/apps/mobile/components/home-hero-body.tsx b/apps/mobile/components/home-hero-body.tsx
 new file mode 100644
-index 000000000..7fa5c2f26
+index 000000000..4ea05283b
 --- /dev/null
 +++ b/apps/mobile/components/home-hero-body.tsx
 @@ -0,0 +1,260 @@
@@ -176657,18 +176657,18 @@ index 000000000..7fa5c2f26
 +      alignItems: "center",
 +      // The reference app leaves the main bot this much air above it and this much under its name.
 +      // The hero's own canvas is wider than its body and its glow reaches the top edge, so the room
-+      // above it is what keeps that edge from being cropped away at 136 pt.
-+      paddingTop: 24,
-+      paddingBottom: 16,
-+      paddingHorizontal: 20,
++      // above it is what keeps that edge from being cropped away at 96 pt.
++      paddingTop: 17,
++      paddingBottom: 11,
++      paddingHorizontal: 14,
 +    },
 +    heroButton: {
 +      alignItems: "center",
 +      alignSelf: "center",
-+      gap: 8,
-+      paddingHorizontal: 16,
-+      paddingVertical: 8,
-+      borderRadius: 28,
++      gap: 6,
++      paddingHorizontal: 11,
++      paddingVertical: 6,
++      borderRadius: 20,
 +      borderCurve: "continuous",
 +      maxWidth: "100%",
 +    },
@@ -176687,12 +176687,12 @@ index 000000000..7fa5c2f26
 +    nameRow: {
 +      flexDirection: "row",
 +      alignItems: "center",
-+      gap: 6,
++      gap: 4,
 +      maxWidth: "100%",
 +    },
 +    name: {
 +      color: native.label,
-+      fontSize: 17,
++      fontSize: 12,
 +      fontWeight: "600",
 +      writingDirection: "auto",
 +    },
@@ -198423,7 +198423,7 @@ index 000000000..efe2ce1d6
 +}
 diff --git a/apps/mobile/lib/avatar-badges.test.ts b/apps/mobile/lib/avatar-badges.test.ts
 new file mode 100644
-index 000000000..5a05ed4bb
+index 000000000..c68864679
 --- /dev/null
 +++ b/apps/mobile/lib/avatar-badges.test.ts
 @@ -0,0 +1,80 @@
@@ -198488,8 +198488,8 @@ index 000000000..5a05ed4bb
 +  it("keeps the yellow star at the lower right of a hero-sized avatar", () => {
 +    const badge = mainBotBadgeLayout(HERO_AVATAR_SIZE);
 +    expect(badge.color.toLowerCase()).toBe("#ffd600");
-+    expect(badge.size).toBeGreaterThan(30);
-+    expect(badge.size).toBeLessThan(42);
++    expect(badge.size).toBeGreaterThan(20);
++    expect(badge.size).toBeLessThan(32);
 +    expect(badge.end).toBeLessThan(2);
 +    expect(badge.bottom).toBeLessThan(0);
 +    expect(badge.icon).toBeGreaterThan(10);
@@ -198509,7 +198509,7 @@ index 000000000..5a05ed4bb
 +});
 diff --git a/apps/mobile/lib/avatar-badges.ts b/apps/mobile/lib/avatar-badges.ts
 new file mode 100644
-index 000000000..139511638
+index 000000000..9637c0f61
 --- /dev/null
 +++ b/apps/mobile/lib/avatar-badges.ts
 @@ -0,0 +1,120 @@
@@ -198543,7 +198543,7 @@ index 000000000..139511638
 + * leads with, and the finished art's own canvas carries the ignition's glow, so the footprint is
 + * the size the hero is drawn at (the manifest's `heroSizePt`), not the body inside it.
 + */
-+export const HERO_AVATAR_SIZE = 136;
++export const HERO_AVATAR_SIZE = 96;
 +
 +/**
 + * The official-matching yellow star on a {@link HERO_AVATAR_SIZE} avatar.
@@ -262310,7 +262310,7 @@ index d2e0ae8db..91bc0b65c 100644
  }
 diff --git a/packages/core/src/openminis-avatar.test.ts b/packages/core/src/openminis-avatar.test.ts
 new file mode 100644
-index 000000000..18173891f
+index 000000000..2ee91de7c
 --- /dev/null
 +++ b/packages/core/src/openminis-avatar.test.ts
 @@ -0,0 +1,167 @@
@@ -262453,13 +262453,13 @@ index 000000000..18173891f
 +    expect(openminisEyeHex(chief, true).toLowerCase()).toBe("#000000");
 +    expect(openminisBodyHex(chief, false).toLowerCase()).toBe("#111111");
 +    expect(openminisEyeHex(chief, false).toLowerCase()).toBe("#ffffff");
-+    const dark = openminisSvg(chief, { size: 136, dark: true, eyeOpen: 1, mood: "calm" });
++    const dark = openminisSvg(chief, { size: 96, dark: true, eyeOpen: 1, mood: "calm" });
 +    expect(dark.toLowerCase()).toContain('fill="#ffffff"');
 +    expect(dark.toLowerCase()).toContain('fill="#000000"');
 +    expect(dark.toLowerCase()).not.toContain("#6366f2");
 +    expect(dark).not.toContain("omGlow");
 +    expect(dark).not.toContain("star");
-+    const light = openminisSvg(chief, { size: 136, dark: false, eyeOpen: 1, mood: "calm" });
++    const light = openminisSvg(chief, { size: 96, dark: false, eyeOpen: 1, mood: "calm" });
 +    expect(light.toLowerCase()).toContain('fill="#111111"');
 +    expect(light.toLowerCase()).not.toContain("#6366f2");
 +  });
@@ -262471,7 +262471,7 @@ index 000000000..18173891f
 +    expect(right.y).toBeLessThan(left.y);
 +    expect(right.width).toBeLessThan(left.width);
 +    const svg = openminisSvg(openminisSpecFor({ name: "小猪包" }), {
-+      size: 136,
++      size: 96,
 +      dark: true,
 +      eyeOpen: 1,
 +      mood: "calm",

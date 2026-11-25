@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# v36 gates: the 136 pt hero, the self-hosted OTA channel, and the web page drawing the same hero.
+# v36 gates: the 96 pt home hero, the self-hosted OTA channel, and the web page drawing the (web) hero.
 # Bundled Lumen pictures were retired in v37 (gates-v37.sh).
 # Run from the patched source tree root (build.sh calls it right after `git apply` and the art
 # copy), or on a copy of that tree to prove each check fails when the work is missing.
@@ -17,20 +17,20 @@ ART="$APPS/assets/lumen-avatars"
 BUILTIN="$APPS/lib/lumen/lumen-builtin-avatars.ts"
 SOURCE="$APPS/lib/lumen/lumen-avatar-source.ts"
 
-# --- 1. The home hero is 136 pt, top to bottom -----------------------------------------------
+# --- 1. The home hero is 96 pt, top to bottom ------------------------------------------------
 want "export const LUMEN_HERO_PT = 136;" "$CORE" "the hero's own size is not 136 pt"
 want "heroSizePt" "$CORE" "the manifest cannot fix the hero's size"
 wantF 'bot.heroSizePt ?? (chief ? LUMEN_HERO_PT : LUMEN_LIST_PT)' "$CORE" \
   "the hero ignores the manifest's own size"
 want "export const LUMEN_CHIEF_LIST_PT = 96;" "$CORE" "the chief's list row lost its 96 pt size"
-want "export const HERO_AVATAR_SIZE = 136;" "$APPS/lib/avatar-badges.ts" \
-  "the home hero's footprint is not 136 pt"
+want "export const HERO_AVATAR_SIZE = 96;" "$APPS/lib/avatar-badges.ts" \
+  "the home hero's footprint is not 96 pt"
 wantF 'size={HERO_AVATAR_SIZE}' "$APPS/components/home-hero-body.tsx" \
   "the home screen does not draw the hero at its footprint"
 wantF 'width: HERO_AVATAR_SIZE,' "$APPS/components/home-hero-body.tsx" \
   "the hero's wrap is not the avatar's footprint"
-wantF 'paddingTop: 24,' "$APPS/components/home-hero-body.tsx" \
-  "the hero has no room above it, so the 136 pt drawing is cropped"
+wantF 'paddingTop: 17,' "$APPS/components/home-hero-body.tsx" \
+  "the hero has no room above it, so the 96 pt drawing is cropped"
 wantF 'overflow: "visible"' "$APPS/components/home-hero-body.tsx" \
   "the hero's wrap clips the avatar"
 

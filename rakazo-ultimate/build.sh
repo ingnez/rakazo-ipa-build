@@ -146,7 +146,7 @@ grep -q 'refreshModels:' packages/contracts/src/rpc.ts
 # tray. The Photos/Vision native module has to be in the tree before prebuild.
 # v37: avatars are drawn in the client as OpenMinis shapes, after the first paint.
 test -f apps/mobile/lib/avatar-badges.ts
-grep -q 'export const HERO_AVATAR_SIZE = 136;' apps/mobile/lib/avatar-badges.ts
+grep -q 'export const HERO_AVATAR_SIZE = 96;' apps/mobile/lib/avatar-badges.ts
 test -f packages/core/src/openminis-avatar.ts
 test -f packages/core/src/openminis-avatar.test.ts
 test -f apps/mobile/components/openminis-bot-avatar.tsx
@@ -411,7 +411,7 @@ bash "$HERE/gates-v34.sh"
 test -f apps/mobile/lib/lumen/lumen-manifest-store.ts
 bash "$HERE/gates-v35.sh"
 
-# v36: the hero is 136 pt and the app has its own update channel. Avatars are no longer a
+# v36: the home hero is 96 pt and the app has its own update channel. Avatars are no longer a
 # bundled picture pack (see gates-v37.sh).
 test -f apps/mobile/lib/lumen/lumen-manifest-store.ts
 bash "$HERE/gates-v36.sh"

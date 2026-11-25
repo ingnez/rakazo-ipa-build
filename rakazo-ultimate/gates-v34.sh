@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# v34 gates: the Lumen avatar, the new app icon, and the thread-wide image gallery.
+# v34 gates: the new app icon, the thread-wide image gallery, and (as of v37) OpenMinis avatars.
 # Run from the patched source tree root (build.sh calls it right after `git apply`), or on a
 # copy of that tree to prove the checks fail when the work is missing.
 set -euo pipefail
@@ -10,10 +10,11 @@ gone() { grep -Rqs -- "$1" "$2" && fail "$3" || true; }
 
 APPS=apps/mobile
 
-# --- 1. The Lumen engine and its 247 emblems ------------------------------------------------
-test -f "$APPS/lib/lumen/lumen-avatar.ts" || fail "the Lumen engine is missing"
+# --- 1. OpenMinis drawing, plus the look-picker engine and its 247 emblems -------------------
+test -f packages/core/src/openminis-avatar.ts || fail "the OpenMinis drawing module is missing"
+test -f "$APPS/components/openminis-bot-avatar.tsx" || fail "the OpenMinis renderer is missing"
+test -f "$APPS/lib/lumen/lumen-avatar.ts" || fail "the look-picker engine is missing"
 test -f "$APPS/lib/lumen/lumen-emblems.ts" || fail "the emblem library is missing"
-test -f "$APPS/components/lumen-bot-avatar.tsx" || fail "the Lumen renderer is missing"
 want "export function lumenFrame" "$APPS/lib/lumen/lumen-avatar.ts" "lumenFrame is missing"
 want "export function lumenLookFor" "$APPS/lib/lumen/lumen-avatar.ts" "lumenLookFor is missing"
 want "export function parseLumenLook" "$APPS/lib/lumen/lumen-avatar.ts" "parseLumenLook is missing"
@@ -27,10 +28,11 @@ PY
 )"
 [ "$COUNT" = "247" ] || fail "the emblem library holds $COUNT emblems, not 247"
 
-# --- 2. Every bot is drawn by it, and the retired bodies are gone ---------------------------
+# --- 2. Every bot is drawn by OpenMinis, and the retired bodies are gone --------------------
 test -f "$APPS/components/bot-avatar.tsx" || fail "BotAvatar is missing"
-want "LumenBotAvatar" "$APPS/components/bot-avatar.tsx" "BotAvatar no longer draws the Lumen body"
-want 'lumenLookFor' "$APPS/components/bot-avatar.tsx" "BotAvatar does not resolve a Lumen look"
+want "OpenMinisBotAvatar" "$APPS/components/bot-avatar.tsx" "BotAvatar no longer draws the OpenMinis body"
+want "openminisSpecFor" "$APPS/components/bot-avatar.tsx" "BotAvatar does not resolve an OpenMinis look"
+gone "LumenBotAvatar" "$APPS/components/bot-avatar.tsx" "BotAvatar still draws the Lumen body"
 for retired in components/mochi-bot-avatar.tsx components/logo-avatar.tsx lib/logo-avatar-clock.ts; do
   [ -e "$APPS/$retired" ] && fail "the retired avatar renderer $retired is still in the tree"
 done
@@ -49,7 +51,8 @@ want "LUMEN_PALETTE" "$APPS/components/bot-look-picker.tsx" "the picker does not
 want "name={name}" "$APPS/app/bot-settings.tsx" "the appearance sheet does not follow the bot's name"
 want "BotLookPicker" "$APPS/app/new-bot.tsx" "the new-bot sheet lost its look picker"
 want "lumenLookFor" "$APPS/components/group-seats.tsx" "group seats still draw the old bodies"
-want "LumenBotAvatar" "$APPS/components/avatar-review-gallery.tsx" "the review gallery does not show Lumen"
+want "OpenMinisBotAvatar" "$APPS/components/avatar-review-gallery.tsx" "the review gallery does not show OpenMinis"
+want "HomeHeroBody" "$APPS/components/avatar-review-gallery.tsx" "the review gallery does not show the home hero"
 
 # --- 4. The icon, the splash and the notification mark are the new ones --------------------
 python3 - <<'PY'

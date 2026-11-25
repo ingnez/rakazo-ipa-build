@@ -144,19 +144,26 @@ grep -q 'refreshModels:' packages/contracts/src/rpc.ts
 # This round: only the orange star on the home hero, live avatars blink, the
 # shipped mark is the Bot icon, and a chat shows stacked images plus a composer
 # tray. The Photos/Vision native module has to be in the tree before prebuild.
+# v37: avatars are drawn in the client as OpenMinis shapes, after the first paint.
 test -f apps/mobile/lib/avatar-badges.ts
 grep -q 'export const HERO_AVATAR_SIZE = 136;' apps/mobile/lib/avatar-badges.ts
-test -f packages/core/src/mochi-avatar.ts
-test -f packages/core/src/mochi-avatar.test.ts
+test -f packages/core/src/openminis-avatar.ts
+test -f packages/core/src/openminis-avatar.test.ts
+test -f apps/mobile/components/openminis-bot-avatar.tsx
 test -f apps/mobile/lib/after-first-paint.ts
-# v34: the avatar a person sees is the Lumen body, drawn after the first paint; the retired
-# dumpling renderer is gone. A patch that brought it back would still compile one, so fail here.
+# The retired dumpling renderer is gone. A patch that brought it back would still compile one, so fail here.
 if [ -e apps/mobile/components/mochi-bot-avatar.tsx ]; then
   echo "::error::the retired dumpling renderer is back in the tree"
   exit 1
 fi
-grep -q 'LumenBotAvatar' apps/mobile/components/bot-avatar.tsx
-grep -q 'useAfterFirstPaint' apps/mobile/components/lumen-bot-avatar.tsx
+grep -q 'OpenMinisBotAvatar' apps/mobile/components/bot-avatar.tsx
+grep -q 'openminisSpecFor' apps/mobile/components/bot-avatar.tsx
+grep -q 'useAfterFirstPaint' apps/mobile/components/openminis-bot-avatar.tsx
+# BotAvatar must not still draw the retired Lumen picture body.
+if grep -q 'LumenBotAvatar' apps/mobile/components/bot-avatar.tsx; then
+  echo "::error::BotAvatar still draws the Lumen body"
+  exit 1
+fi
 test -f apps/mobile/components/image-card-stack.tsx
 test -f apps/mobile/components/composer-attach-tray.tsx
 # The composer's own photo picker module: without it the shipped app falls back to the package,
@@ -394,9 +401,9 @@ grep -q 'stackOwnsLongPress' apps/mobile/components/thread/message-row.tsx
 grep -q 'visibleThreadBlocks' apps/mobile/components/thread/message-bubble.tsx
 grep -q 'NSPhotoLibraryAddUsageDescription' apps/mobile/app.json
 
-# v34: 灯芯 · Lumen everywhere, the new icon and splash, and one image gallery per thread. The
-# checks live in their own script so the same file can prove each of them fails when the work is
-# missing (work/v34/negative-gates.sh, 12/12 mutations exit 1 with an ::error).
+# v34: the new icon and splash, and one image gallery per thread. Avatar drawing itself is
+# OpenMinis as of v37 (gates-v34.sh and gates-v37.sh). The checks live in their own script so
+# the same file can prove each of them fails when the work is missing.
 bash "$HERE/gates-v34.sh"
 
 # v35: the viewer swipes off the UI thread, a message's pictures load one at a time, and a

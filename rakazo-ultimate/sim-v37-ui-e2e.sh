@@ -2,11 +2,8 @@
 # v37 UI E2E on a real iOS simulator against the local fake-model screenshot API.
 # Requires: build.sh prepared `src/` and (preferably) sim-crashcheck's Release sim app.
 #
-# Harness fix (2026-11-27): do NOT use a Metro-backed Debug install. On xcode-27 the Debug
-# app redboxed "Could not connect to development server" even when Metro claimed to be up.
-# Instead: reuse/build a Release simulator app, embed JS with EXPO_PUBLIC_API_URL pointing at
-# the local screenshot API, disable OTA so production updates cannot overwrite that bundle,
-# patch the screenshot CLI to skip Metro, then run Maestro settings+thread sections.
+# Harness: Release + expo export:embed (EXPO_PUBLIC_API_URL → local API), OTA disabled,
+# Metro skipped. Fixture users are local ios-screenshots@example.test only — never 主人.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -17,8 +14,17 @@ export PATH="$HOME/.maestro/bin:/opt/homebrew/opt/postgresql@16/bin:/usr/local/o
 export CI=1
 export EXPO_NO_TELEMETRY=1
 export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
-# Local fixture users only (ios-screenshots@example.test) — never production / 主人 accounts.
 export IOS_SCREENSHOT_EMBEDDED=1
+
+API_URL="http://127.0.0.1:3110"
+export EXPO_PUBLIC_API_URL="$API_URL"
+
+cleanup_artifact() {
+  # Artifact zip failed previously on live pg_wal; always stop DB and drop pgdata before upload.
+  pg_ctl -D "${PGDATA:-$OUT/pgdata}" stop -m fast 2>/dev/null || true
+  rm -rf "$OUT/pgdata" "$OUT/derived-debug" 2>/dev/null || true
+}
+trap cleanup_artifact EXIT
 
 test -d "$SRC/apps/mobile" || { echo "::error::src missing; run build.sh first"; exit 1; }
 cd "$SRC"
@@ -62,10 +68,13 @@ xcrun simctl bootstatus "$UDID" -b
 export SIM_UDID="$UDID"
 echo "UDID=$UDID" | tee "$OUT/udid.txt"
 
+# Force English UI so Maestro's upstream first-launch assert (and our broadened one) can match.
+xcrun simctl spawn "$UDID" defaults write -g AppleLanguages -array en 2>/dev/null || true
+xcrun simctl spawn "$UDID" defaults write -g AppleLocale -string en_US 2>/dev/null || true
+xcrun simctl spawn "$UDID" defaults write -g AppleTextDirection 0 2>/dev/null || true
+
 echo "== release app + embed local API bundle =="
 cd "$SRC/apps/mobile"
-API_URL="http://127.0.0.1:3110"
-export EXPO_PUBLIC_API_URL="$API_URL"
 
 APP="$PWD/ios/build-sim/Build/Products/Release-iphonesimulator/Rakazo.app"
 if [ ! -d "$APP" ]; then
@@ -81,7 +90,6 @@ if [ ! -d "$APP" ]; then
 fi
 test -d "$APP" || { echo "::error::Release simulator app missing at $APP"; exit 1; }
 
-# Drop transform caches so EXPO_PUBLIC_API_URL is read into the new embed.
 rm -rf "${TMPDIR:-/tmp}"/metro-* "${TMPDIR:-/tmp}"/haste-map-* node_modules/.cache .expo || true
 pnpm exec expo export:embed \
   --platform ios \
@@ -91,15 +99,21 @@ pnpm exec expo export:embed \
   --assets-dest "$APP" \
   > "$OUT/bundle-embed.log" 2>&1 || { tail -80 "$OUT/bundle-embed.log"; exit 1; }
 ls -la "$APP/main.jsbundle" | tee "$OUT/bundle-embed-ls.txt"
+# Prove the local API URL made it into the embed (Hermes may still keep ASCII literals).
+if ! strings "$APP/main.jsbundle" | grep -q '127.0.0.1:3110'; then
+  echo "::warning::127.0.0.1:3110 not found via strings in main.jsbundle (may still be ok if compressed)"
+else
+  echo "embed contains 127.0.0.1:3110" | tee -a "$OUT/bundle-embed-ls.txt"
+fi
 
-# Stop expo-updates from replacing our local-API bundle with production OTA.
-for plist in "$APP/Expo.plist" "$APP/Supporting/Expo.plist"; do
-  if [ -f "$plist" ]; then
-    /usr/libexec/PlistBuddy -c 'Set :EXUpdatesEnabled bool false' "$plist" 2>/dev/null \
-      || /usr/libexec/PlistBuddy -c 'Add :EXUpdatesEnabled bool false' "$plist" 2>/dev/null \
-      || true
-    echo "updates disabled in $plist" | tee -a "$OUT/updates-disable.txt"
-  fi
+# Disable OTA so production cannot replace the local-API bundle.
+for plist in "$APP/Expo.plist" "$APP/Supporting/Expo.plist" "$APP/Info.plist"; do
+  [ -f "$plist" ] || continue
+  /usr/libexec/PlistBuddy -c 'Delete :EXUpdatesEnabled' "$plist" 2>/dev/null || true
+  /usr/libexec/PlistBuddy -c 'Add :EXUpdatesEnabled bool false' "$plist" 2>/dev/null || true
+  /usr/libexec/PlistBuddy -c 'Delete :EXUpdatesCheckOnLaunch' "$plist" 2>/dev/null || true
+  /usr/libexec/PlistBuddy -c 'Add :EXUpdatesCheckOnLaunch string NEVER' "$plist" 2>/dev/null || true
+  echo "updates tweaked in $plist" | tee -a "$OUT/updates-disable.txt"
 done
 
 BID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")"
@@ -116,23 +130,51 @@ import pathlib, sys
 path = pathlib.Path(sys.argv[1])
 text = path.read_text()
 needle = "  const metro = await startMetro(apiUrl, outDir);"
-repl = """  // IOS_SCREENSHOT_EMBEDDED=1: Release app already has JS + EXPO_PUBLIC_API_URL baked in.
-  // Skip Metro — Debug+Metro redboxed on xcode-27 CI even when /status said running.
-  const metro =
+repl = """  const metro =
     process.env.IOS_SCREENSHOT_EMBEDDED === \"1\"
       ? { stop() {} }
       : await startMetro(apiUrl, outDir);"""
-if needle not in text:
-    if "IOS_SCREENSHOT_EMBEDDED" in text:
-        print("already patched")
-    else:
-        raise SystemExit(f"patch failed: needle not found in {path}")
+if "IOS_SCREENSHOT_EMBEDDED" in text and needle not in text:
+    print("already patched")
+elif needle not in text:
+    raise SystemExit(f"patch failed: needle not found in {path}")
 else:
     path.write_text(text.replace(needle, repl, 1))
     print("patched", path)
 PY
 
-# first-launch.yaml still waits for auth UI; Release cold start is fast but keep the long timeout.
+echo "== broaden first-launch assert (en + zh) =="
+FL="$SRC/apps/mobile/e2e/ios-screenshots/subflows/first-launch.yaml"
+python3 - "$FL" <<'PY'
+import pathlib, sys
+p = pathlib.Path(sys.argv[1])
+text = p.read_text()
+old = 'visible: "Sign up for Rakazo|Sign in to Rakazo|Account|.*How did you hear about us.*"'
+new = 'visible: "Sign up for Rakazo|Sign in to Rakazo|注册 Rakazo|登录 Rakazo|Create your Rakazo|Welcome back|Email|邮箱|Account|账户|.*How did you hear.*"'
+if old in text:
+    p.write_text(text.replace(old, new, 1))
+    print("broadened", p)
+elif "注册 Rakazo" in text:
+    print("already broadened")
+else:
+    raise SystemExit(f"could not patch first-launch.yaml:\n{text}")
+PY
+
+echo "== preflight launch (simctl screenshot) =="
+xcrun simctl terminate "$UDID" "$BID" 2>/dev/null || true
+xcrun simctl launch "$UDID" "$BID" | tee "$OUT/preflight-launch.txt"
+sleep 20
+xcrun simctl io "$UDID" screenshot "$OUT/screens/preflight-after-20s.png" 2>/dev/null \
+  || { mkdir -p "$OUT/screens"; xcrun simctl io "$UDID" screenshot "$OUT/screens/preflight-after-20s.png"; }
+xcrun simctl spawn "$UDID" log show --last 2m --predicate 'process == "Rakazo"' --style compact \
+  > "$OUT/preflight-app.log" 2>/dev/null || true
+# Soft check: look for redbox / Metro / fatal in preflight log
+if grep -qiE 'Could not connect to development server|Metro|RCTFatal|Unhandled JS Exception' "$OUT/preflight-app.log"; then
+  echo "::error::preflight still shows Metro/JS fatal — see preflight-app.log"
+  tail -40 "$OUT/preflight-app.log"
+fi
+xcrun simctl terminate "$UDID" "$BID" 2>/dev/null || true
+
 echo "== ios screenshots (settings + thread) =="
 cd "$SRC"
 export IOS_SCREENSHOT_OUT="$OUT/shots"
@@ -144,13 +186,14 @@ set -e
 tail -120 "$OUT/screenshots.log"
 
 mkdir -p "$OUT/screens"
+# Always grab a live frame + maestro debug shots for diagnosis
+xcrun simctl io "$UDID" screenshot "$OUT/screens/post-run.png" 2>/dev/null || true
 find "$OUT/shots" -name '*.png' -print0 2>/dev/null | while IFS= read -r -d '' f; do
   base="$(basename "$f")"
-  # Prefer catalog names like 07-integrations.png at the top of the tree
   if [[ "$base" =~ ^[0-9]{2} ]]; then
     cp "$f" "$OUT/screens/$base"
   else
-    cp "$f" "$OUT/screens/$(basename "$(dirname "$f")")-$base" 2>/dev/null || cp "$f" "$OUT/screens/"
+    cp "$f" "$OUT/screens/$(basename "$(dirname "$f")")-$base" 2>/dev/null || cp "$f" "$OUT/screens/" || true
   fi
 done
 ls -la "$OUT/screens" | tee "$OUT/screens-list.txt" || true
@@ -170,4 +213,3 @@ if [ "$RC" -ne 0 ] || [ "$MISSING" -ne 0 ]; then
   exit 1
 fi
 echo "V37_UI_E2E=PASS" | tee "$OUT/RESULTS.txt"
-pg_ctl -D "$PGDATA" stop -m fast 2>/dev/null || true

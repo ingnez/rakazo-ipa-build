@@ -25088,7 +25088,7 @@ index 000000000..7e57db05e
 +  });
 +}
 diff --git a/apps/mobile/app/(settings)/integrations.tsx b/apps/mobile/app/(settings)/integrations.tsx
-index 283b5749e..ce9fb182a 100644
+index 283b5749e..d36dfdbee 100644
 --- a/apps/mobile/app/(settings)/integrations.tsx
 +++ b/apps/mobile/app/(settings)/integrations.tsx
 @@ -10,7 +10,6 @@ import type {
@@ -25218,7 +25218,7 @@ index 283b5749e..ce9fb182a 100644
    const [pluginCount, setPluginCount] = useState(PLUGIN_PAGE_SIZE);
    const [gitUrl, setGitUrl] = useState("");
    const [sourceKind, setSourceKind] = useState<SourceKind | null>(null);
-@@ -218,39 +228,50 @@ export default function Integrations() {
+@@ -218,39 +228,64 @@ export default function Integrations() {
      pluginsLoaded: pluginsState !== "loading",
      pluginsUnavailable: pluginsState === "partial",
    });
@@ -25234,6 +25234,20 @@ index 283b5749e..ce9fb182a 100644
    const showFeatured = !query.trim();
    const catalogApps = useMemo(() => filterConnectionCatalogItems(catalog, query), [catalog, query]);
 -  const renderedApps = catalogApps.slice(0, visibleCount);
++  const filtering = Boolean(query.trim());
++  // Outside a search, connected catalog apps sit under Connected; the browse list leaves them out.
++  const browseApps = useMemo(
++    () =>
++      filtering
++        ? catalogApps
++        : catalogApps.filter((item) => !isCatalogItemConnected(connections, item)),
++    [catalogApps, filtering, connections],
++  );
++  const connectedCatalog = useMemo(
++    () =>
++      filtering ? [] : catalog.filter((item) => isCatalogItemConnected(connections, item)),
++    [catalog, filtering, connections],
++  );
    const { plugins, pluginForApp } = useMemo(
      () => browsablePlugins(pluginEntries, catalog),
      [pluginEntries, catalog],
@@ -25267,9 +25281,9 @@ index 283b5749e..ce9fb182a 100644
 +  const tabApps = useMemo(
 +    () =>
 +      tab === "all"
-+        ? catalogApps
-+        : catalogApps.filter((item) => integrationCategoryFor(item.name, item.slug) === tab),
-+    [catalogApps, tab],
++        ? browseApps
++        : browseApps.filter((item) => integrationCategoryFor(item.name, item.slug) === tab),
++    [browseApps, tab],
 +  );
 +  const tabPlugins = useMemo(
 +    () =>
@@ -25293,7 +25307,7 @@ index 283b5749e..ce9fb182a 100644
  
    const detailItem = useMemo(() => {
      if (!detailKey) return null;
-@@ -461,6 +482,17 @@ export default function Integrations() {
+@@ -461,6 +496,17 @@ export default function Integrations() {
      return () => subscription.remove();
    }, []);
  
@@ -25311,7 +25325,7 @@ index 283b5749e..ce9fb182a 100644
    useEffect(() => {
      if (!detailKey) {
        setTools([]);
-@@ -531,14 +563,14 @@ export default function Integrations() {
+@@ -531,14 +577,14 @@ export default function Integrations() {
          accessibilityRole="button"
          accessibilityLabel={params.name}
          onPress={() => openPlugin(params)}
@@ -25329,7 +25343,7 @@ index 283b5749e..ce9fb182a 100644
              {summary}
            </Text>
          </View>
-@@ -576,9 +608,9 @@ export default function Integrations() {
+@@ -576,9 +622,9 @@ export default function Integrations() {
              ? { ios: "exclamationmark.circle", android: "alert-circle-outline" as const }
              : null;
      return (
@@ -25341,7 +25355,7 @@ index 283b5749e..ce9fb182a 100644
            {server.name}
          </Text>
          <View style={styles.connectionStatus}>
-@@ -591,7 +623,7 @@ export default function Integrations() {
+@@ -591,7 +637,7 @@ export default function Integrations() {
                <NativeSymbol {...symbol} size={14} color={color} />
              </View>
            ) : null}
@@ -25350,12 +25364,13 @@ index 283b5749e..ce9fb182a 100644
          </View>
          {server.enabled &&
          state !== "connected" &&
-@@ -610,12 +642,12 @@ export default function Integrations() {
+@@ -610,12 +656,13 @@ export default function Integrations() {
    }
  
    function renderConnected() {
 -    const apps = connectorPlugins.length + standaloneServers.length + sources.length;
-+    const apps = connectorPlugins.length + matchedServers.length + sources.length;
++    const apps =
++      connectedCatalog.length + connectorPlugins.length + matchedServers.length + sources.length;
      return (
        <>
          {apps || mcpError ? (
@@ -25365,7 +25380,15 @@ index 283b5749e..ce9fb182a 100644
              {mcpError ? (
                <View>
                  <Text style={styles.error}>{mcpError}</Text>
-@@ -637,15 +669,15 @@ export default function Integrations() {
+@@ -627,6 +674,7 @@ export default function Integrations() {
+                 />
+               </View>
+             ) : null}
++            {connectedCatalog.map((item) => renderAppRow(item, item.name))}
+             {connectorPlugins.map((install) => {
+               const servers = mcpServers.filter((server) => server.installId === install.id);
+               return renderInstalledPlugin(
+@@ -637,15 +685,15 @@ export default function Integrations() {
                  servers.some(mcpServerNeedsSignIn),
                );
              })}
@@ -25385,7 +25408,7 @@ index 283b5749e..ce9fb182a 100644
                      {source.kind === "api"
                        ? "OpenAPI"
                        : source.kind === "graphql"
-@@ -915,67 +947,56 @@ export default function Integrations() {
+@@ -915,67 +963,56 @@ export default function Integrations() {
      }
    }
  
@@ -25495,7 +25518,7 @@ index 283b5749e..ce9fb182a 100644
      );
    }
  
-@@ -1002,6 +1023,9 @@ export default function Integrations() {
+@@ -1002,6 +1039,9 @@ export default function Integrations() {
      } else beginSource(option.kind, option.preset);
    }
  
@@ -25505,7 +25528,7 @@ index 283b5749e..ce9fb182a 100644
    useLayoutEffect(() => {
      if (!iosAtLeast(26)) return;
      navigation.setOptions({
-@@ -1023,8 +1047,14 @@ export default function Integrations() {
+@@ -1023,8 +1063,14 @@ export default function Integrations() {
      } satisfies NativeStackNavigationOptions);
    }, [navigation, sourcePresets, t]);
  
@@ -25521,7 +25544,7 @@ index 283b5749e..ce9fb182a 100644
        <ScrollView
          style={sideInsets}
          contentContainerStyle={styles.content}
-@@ -1054,63 +1084,112 @@ export default function Integrations() {
+@@ -1054,63 +1100,112 @@ export default function Integrations() {
              onAdd={() => void addSource()}
              onClose={closeAdding}
            />
@@ -25680,7 +25703,7 @@ index 283b5749e..ce9fb182a 100644
              ) : null}
  
              {catalogError ? (
-@@ -1125,147 +1204,137 @@ export default function Integrations() {
+@@ -1125,147 +1220,137 @@ export default function Integrations() {
                </View>
              ) : null}
  
@@ -243090,6 +243113,57 @@ index f19b6b1d4..9a03140f9 100644
  <key>CFBundleName</key><string>$(PRODUCT_NAME)</string>
  <key>CFBundleIdentifier</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
  <key>CFBundleExecutable</key><string>$(EXECUTABLE_NAME)</string>
+diff --git a/apps/web/e2e/call-controls.spec.ts b/apps/web/e2e/call-controls.spec.ts
+index 0cded4f0e..9d7ced40c 100644
+--- a/apps/web/e2e/call-controls.spec.ts
++++ b/apps/web/e2e/call-controls.spec.ts
+@@ -56,29 +56,38 @@ test("an active call keeps a chat read-aloud from starting", async ({ page }, te
+   const callButton = page.getByTestId("call-button");
+   await expect(callButton).toHaveAttribute("data-voice-ready", "");
+   // After the reload only the durable reply is on screen, so the locator is unambiguous.
+-  const speak = page
+-    .getByTestId("message-bot-bubble")
+-    .filter({ hasText: replyText })
+-    .getByRole("button", { name: "Speak this reply" });
+-  await expect(speak).toBeEnabled();
++  const message = page
++    .locator("[data-message-id]")
++    .filter({ has: page.getByTestId("message-bot-bubble").filter({ hasText: replyText }) })
++    .last();
++  const readAloud = page.getByRole("menuitem", { name: "Read aloud" });
++  const openMessageMenu = async () => {
++    await message.hover();
++    await message.getByRole("button", { name: "More" }).click();
++  };
++  await openMessageMenu();
++  await expect(readAloud).toBeEnabled();
++  await page.keyboard.press("Escape");
+ 
+   // The call owns the speaker: starting another read must stay unavailable for its length.
+   await callButton.click();
+   const call = page.getByTestId("call-view");
+   await expect(call).toBeVisible();
+-  await expect(speak).toBeDisabled();
+ 
+   await call.getByRole("button", { name: "Minimize call" }).click();
+   const returnBar = page.getByTestId("call-return-bar");
+   await expect(returnBar).toBeVisible();
+   await expect(call).toBeHidden();
+-  await expect(speak).toBeDisabled();
++  await openMessageMenu();
++  await expect(readAloud).toBeDisabled();
+   await captureScreenshot(page, testInfo, "read-aloud-paused-during-call");
++  await page.keyboard.press("Escape");
+ 
+   // Hanging up hands the speaker back to the chat.
+   await returnBar.click();
+   await expect(call).toBeVisible();
+   await call.getByRole("button", { name: "Hang up" }).click();
+   await expect(call).toBeHidden();
+-  await expect(speak).toBeEnabled();
++  await openMessageMenu();
++  await expect(readAloud).toBeEnabled();
+ });
 diff --git a/apps/web/e2e/chat/app-connect-card.spec.ts b/apps/web/e2e/chat/app-connect-card.spec.ts
 new file mode 100644
 index 000000000..61d596ec8
@@ -243640,10 +243714,10 @@ index 000000000..724bbe85b
 +});
 diff --git a/apps/web/e2e/chat/group-chats.spec.ts b/apps/web/e2e/chat/group-chats.spec.ts
 new file mode 100644
-index 000000000..60396bfe8
+index 000000000..6f8681558
 --- /dev/null
 +++ b/apps/web/e2e/chat/group-chats.spec.ts
-@@ -0,0 +1,341 @@
+@@ -0,0 +1,342 @@
 +import type { Page } from "@playwright/test";
 +import { expect, test } from "@playwright/test";
 +import {
@@ -243805,17 +243879,18 @@ index 000000000..60396bfe8
 +  const transcript = page.getByTestId("transcript");
 +  await expect(transcript.getByText("Researcher", { exact: true }).first()).toBeVisible();
 +  await expect(transcript.getByText("Research Writer", { exact: true }).first()).toBeVisible();
-+  const researcherSpeak = transcript
-+    .locator("div")
++  const researcherMessage = transcript
++    .locator("[data-message-id]")
 +    .filter({ has: page.getByText("Researcher", { exact: true }) })
-+    .filter({ has: page.getByRole("button", { name: "Speak this reply" }) })
-+    .first()
-+    .getByRole("button", { name: "Speak this reply" });
++    .filter({ has: page.getByTestId("message-bot-bubble") })
++    .first();
++  await researcherMessage.hover();
++  await researcherMessage.getByRole("button", { name: "More" }).click();
 +  const [speechRequest] = await Promise.all([
 +    page.waitForRequest(
 +      (request) => request.url().includes("/api/voice/speak") && request.method() === "POST",
 +    ),
-+    researcherSpeak.click(),
++    page.getByRole("menuitem", { name: "Read aloud" }).click(),
 +  ]);
 +  expect(speechRequest.postDataJSON()).toMatchObject({ botId: researcherId });
 +  await captureScreenshot(page, testInfo, "group-transcript");
@@ -245593,6 +245668,35 @@ index 000000000..1016e5786
 +    }
 +  }
 +});
+diff --git a/apps/web/e2e/group-chats.spec.ts b/apps/web/e2e/group-chats.spec.ts
+index 0ae20bb2d..4065336d6 100644
+--- a/apps/web/e2e/group-chats.spec.ts
++++ b/apps/web/e2e/group-chats.spec.ts
+@@ -159,17 +159,18 @@ test("create group from + and see two bots in one transcript", async ({ page },
+   const transcript = page.getByTestId("transcript");
+   await expect(transcript.getByText("Researcher", { exact: true }).first()).toBeVisible();
+   await expect(transcript.getByText("Research Writer", { exact: true }).first()).toBeVisible();
+-  const researcherSpeak = transcript
+-    .locator("div")
++  const researcherMessage = transcript
++    .locator("[data-message-id]")
+     .filter({ has: page.getByText("Researcher", { exact: true }) })
+-    .filter({ has: page.getByRole("button", { name: "Speak this reply" }) })
+-    .first()
+-    .getByRole("button", { name: "Speak this reply" });
++    .filter({ has: page.getByTestId("message-bot-bubble") })
++    .first();
++  await researcherMessage.hover();
++  await researcherMessage.getByRole("button", { name: "More" }).click();
+   const [speechRequest] = await Promise.all([
+     page.waitForRequest(
+       (request) => request.url().includes("/api/voice/speak") && request.method() === "POST",
+     ),
+-    researcherSpeak.click(),
++    page.getByRole("menuitem", { name: "Read aloud" }).click(),
+   ]);
+   expect(speechRequest.postDataJSON()).toMatchObject({ botId: researcherId });
+   await captureScreenshot(page, testInfo, "group-transcript");
 diff --git a/apps/web/e2e/shell/activity-status-filter.spec.ts b/apps/web/e2e/shell/activity-status-filter.spec.ts
 new file mode 100644
 index 000000000..67cf9a093
@@ -245784,7 +245888,7 @@ index e4b3ef378..b96e73009 100644
    "Personal credential": "Kişisel kimlik bilgisi",
    "Pick a voice": "Bir ses seç",
 diff --git a/apps/web/scripts/translations-zh-CN.json b/apps/web/scripts/translations-zh-CN.json
-index c5ee244dc..f1d0067e9 100644
+index c5ee244dc..a2c185cf2 100644
 --- a/apps/web/scripts/translations-zh-CN.json
 +++ b/apps/web/scripts/translations-zh-CN.json
 @@ -406,7 +406,7 @@
@@ -245796,6 +245900,15 @@ index c5ee244dc..f1d0067e9 100644
    "Paste your API key": "粘贴你的 API 密钥",
    "Personal credential": "个人凭据",
    "Pick a voice": "选择语音",
+@@ -725,5 +725,7 @@
+   "Credentials are encrypted and never sent to the model.": "凭据已加密，不会发送给模型。",
+   "Rename section": "重命名分组",
+   "Could not rename section": "无法重命名分组",
+-  "{count, plural, one {# message with {peer}} other {# messages with {peer}}}": "{count, plural, other {与 {peer} 的 # 条消息}}"
++  "{count, plural, one {# message with {peer}} other {# messages with {peer}}}": "{count, plural, other {与 {peer} 的 # 条消息}}",
++  "Read aloud": "朗读",
++  "Stop reading aloud": "停止朗读"
+ }
 diff --git a/apps/web/server/forwarded-for.test.ts b/apps/web/server/forwarded-for.test.ts
 new file mode 100644
 index 000000000..dad8eb103
@@ -248557,6 +248670,362 @@ index 2f5df3108..b0470938d 100644
      });
    });
  
+diff --git a/apps/web/src/pages/shell/message-hover-actions.tsx b/apps/web/src/pages/shell/message-hover-actions.tsx
+index a2ebe4998..9630d52bd 100644
+--- a/apps/web/src/pages/shell/message-hover-actions.tsx
++++ b/apps/web/src/pages/shell/message-hover-actions.tsx
+@@ -13,7 +13,16 @@ import {
+   PopoverTrigger,
+   useCopyText,
+ } from "@rakazo/ui-web";
+-import { Check, Copy, MessageSquareDot, MoreHorizontal, Reply, Smile } from "lucide-react";
++import {
++  Check,
++  Copy,
++  MessageSquareDot,
++  MoreHorizontal,
++  Reply,
++  Smile,
++  Square,
++  Volume2,
++} from "lucide-react";
+ import { useState } from "react";
+ import { MessageHoverMetadata } from "../../components/MessageHoverMetadata";
+ 
+@@ -24,6 +33,7 @@ export function MessageHoverActions({
+   onMarkUnread,
+   markedUnread = false,
+   onReact,
++  speech,
+ }: {
+   message: ThreadMessage;
+   side: "start" | "end";
+@@ -31,6 +41,7 @@ export function MessageHoverActions({
+   onMarkUnread: (message: ThreadMessage) => void;
+   markedUnread?: boolean;
+   onReact: (message: ThreadMessage, reaction: MessageReaction) => Promise<void>;
++  speech?: { speaking: boolean; disabled: boolean; onSpeak: () => void };
+ }) {
+   const { t } = useLingui();
+   const [copiedNow, copy, copyFailed, resetCopy, copyFailedText] = useCopyText();
+@@ -57,7 +68,10 @@ export function MessageHoverActions({
+     "grid h-11 w-11 place-items-center text-muted-foreground transition-colors hover:text-foreground [@media(hover:hover)_and_(pointer:fine)]:h-7 [@media(hover:hover)_and_(pointer:fine)]:w-7";
+ 
+   return (
+-    <MessageHoverMetadata pinned={moreOpen || reactionsOpen || copied} side={side}>
++    <MessageHoverMetadata
++      pinned={moreOpen || reactionsOpen || copied || Boolean(speech?.speaking)}
++      side={side}
++    >
+       <div data-testid="message-hover-actions" className="flex items-center gap-0.5">
+         {canReactToThreadMessage(message) ? (
+           <Popover open={reactionsOpen} onOpenChange={setReactionsOpen}>
+@@ -86,6 +100,16 @@ export function MessageHoverActions({
+             </PopoverContent>
+           </Popover>
+         ) : null}
++        {speech?.speaking ? (
++          <button
++            type="button"
++            aria-label={t`Stop reading aloud`}
++            onClick={speech.onSpeak}
++            className={iconButtonClass}
++          >
++            <Square size={13} strokeWidth={1.7} />
++          </button>
++        ) : null}
+         <button
+           type="button"
+           aria-label={t`Reply`}
+@@ -130,6 +154,18 @@ export function MessageHoverActions({
+               <Copy size={14} strokeWidth={1.7} />
+               <Trans>Copy</Trans>
+             </DropdownMenuItem>
++            {speech && !speech.speaking ? (
++              <DropdownMenuItem
++                disabled={speech.disabled}
++                onClick={() => {
++                  setMoreOpen(false);
++                  speech.onSpeak();
++                }}
++              >
++                <Volume2 size={14} strokeWidth={1.7} />
++                <Trans>Read aloud</Trans>
++              </DropdownMenuItem>
++            ) : null}
+           </DropdownMenuContent>
+         </DropdownMenu>
+       </div>
+diff --git a/apps/web/src/pages/shell/message-image-row.tsx b/apps/web/src/pages/shell/message-image-row.tsx
+new file mode 100644
+index 000000000..408e9a3d8
+--- /dev/null
++++ b/apps/web/src/pages/shell/message-image-row.tsx
+@@ -0,0 +1,62 @@
++import { plural } from "@lingui/core/macro";
++import { useLingui } from "@lingui/react/macro";
++import { cn } from "@rakazo/ui-web";
++import type { ArtifactTarget } from "../../lib/artifact-open";
++import { ArtifactImage } from "./message-cards";
++
++export type RowImage = {
++  artifactId: string;
++  name: string;
++  target: ArtifactTarget;
++};
++
++/**
++ * Consecutive pictures in one message, as a short row. Up to three tiles; the last shows +N when
++ * more remain. Each tile opens its own preview (our existing ArtifactImage dialog).
++ */
++export function MessageImageRow({
++  images,
++  align,
++}: {
++  images: RowImage[];
++  align: "start" | "end";
++}) {
++  const { t } = useLingui();
++  const shown = images.slice(0, 3);
++  const rest = images.length - 2;
++  return (
++    <div
++      className={cn(
++        "flex max-w-full gap-2",
++        align === "end" ? "justify-end" : "justify-start",
++        shown.length > 2 ? "w-[32.5rem]" : shown.length > 1 ? "w-[21.5rem]" : undefined,
++      )}
++      role="group"
++      aria-label={t`${plural(images.length, { one: "# picture", other: "# pictures" })}`}
++    >
++      {shown.map((image, position) => {
++        const counts = images.length > 3 && position === shown.length - 1;
++        return (
++          <div
++            key={`${image.artifactId}-${position}`}
++            className="relative min-w-0 shrink basis-[10.5rem]"
++          >
++            <ArtifactImage
++              target={image.target}
++              artifactId={image.artifactId}
++              name={counts ? "" : image.name}
++            />
++            {counts ? (
++              <span
++                className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-2xl bg-black/50 text-heading1 font-medium text-white tabular-nums"
++                aria-hidden
++              >
++                {`+${rest}`}
++              </span>
++            ) : null}
++          </div>
++        );
++      })}
++    </div>
++  );
++}
+diff --git a/apps/web/src/pages/shell/message-view.test.tsx b/apps/web/src/pages/shell/message-view.test.tsx
+index c2efbe052..aa011a41c 100644
+--- a/apps/web/src/pages/shell/message-view.test.tsx
++++ b/apps/web/src/pages/shell/message-view.test.tsx
+@@ -312,38 +312,46 @@ it("names the person a reply quotes instead of saying You", () => {
+   );
+ });
+ 
+-it("speaks the message it renders", () => {
++function readAloudItem() {
++  return [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
++    (entry) => entry.textContent === "Read aloud",
++  );
++}
++
++async function openMore() {
++  const trigger = container.querySelector<HTMLButtonElement>('button[aria-label="More"]');
++  await act(async () => trigger?.click());
++}
++
++it("reads the message aloud from its menu", async () => {
+   const onSpeak = vi.fn();
+   renderView("bot", [{ kind: "text", text: "Hello" }], { onSpeak, voiceReady: true });
+-  const button = [...container.querySelectorAll("button")].find(
+-    (node) => node.textContent === "Speak",
+-  );
+-  act(() => button?.click());
++  await openMore();
++  await act(async () => readAloudItem()?.click());
+   expect(onSpeak).toHaveBeenCalledTimes(1);
+   expect(onSpeak.mock.calls[0]?.[0]).toMatchObject({ id: "message" });
+ });
+ 
+-it("disables starting a read while a call holds the speaker, keeping stop available", () => {
++it("disables starting a read while a call holds the speaker, keeping stop available", async () => {
+   renderView("bot", [{ kind: "text", text: "Hello" }], {
+     voiceReady: true,
+     callHoldsSpeaker: true,
+   });
+-  const startButtons = () => [
+-    ...container.querySelectorAll<HTMLButtonElement>('button[aria-label="Speak this reply"]'),
+-  ];
+-  expect(startButtons().length).toBeGreaterThan(0);
+-  for (const button of startButtons()) expect(button.disabled).toBe(true);
++  await openMore();
++  expect(readAloudItem()?.getAttribute("aria-disabled")).toBe("true");
+ 
++  const onSpeak = vi.fn();
+   renderView("bot", [{ kind: "text", text: "Hello" }], {
+     voiceReady: true,
+     callHoldsSpeaker: true,
+     speaking: true,
++    onSpeak,
+   });
+-  const stopButtons = () => [
+-    ...container.querySelectorAll<HTMLButtonElement>('button[aria-label="Stop speaking"]'),
+-  ];
+-  expect(stopButtons().length).toBeGreaterThan(0);
+-  for (const button of stopButtons()) expect(button.disabled).toBe(false);
++  const stop = container.querySelector<HTMLButtonElement>(
++    'button[aria-label="Stop reading aloud"]',
++  );
++  act(() => stop?.click());
++  expect(onSpeak).toHaveBeenCalledTimes(1);
+ });
+ 
+ it("opens one counted peer line without an inline reply toggle", () => {
+diff --git a/apps/web/src/pages/shell/message-view.tsx b/apps/web/src/pages/shell/message-view.tsx
+index 266b38d1c..c1eb4baad 100644
+--- a/apps/web/src/pages/shell/message-view.tsx
++++ b/apps/web/src/pages/shell/message-view.tsx
+@@ -9,9 +9,10 @@ import type {
+   MessageReaction,
+   ThreadMessage,
+ } from "@rakazo/contracts";
++import { consecutiveImageRun } from "@rakazo/contracts";
+ import type { ChildBotBlock, PeerExchange } from "@rakazo/core";
+ import { isPeerReceiptBlocks, isToolActivityBlock, otherAuthor } from "@rakazo/core";
+-import { BotAvatar, Button, cn, resolvePersonaColorDef } from "@rakazo/ui-web";
++import { BotAvatar, cn, resolvePersonaColorDef } from "@rakazo/ui-web";
+ import { UserRound } from "lucide-react";
+ import { memo, useCallback, useMemo } from "react";
+ import { ArtifactFileCard } from "../../components/ArtifactFileCard";
+@@ -53,6 +54,7 @@ import {
+   McpApprovalCard,
+ } from "./message-cards";
+ import { MessageHoverActions } from "./message-hover-actions";
++import { MessageImageRow } from "./message-image-row";
+ 
+ export const MessageView = memo(function MessageView({
+   artifactTarget,
+@@ -192,7 +194,6 @@ export const MessageView = memo(function MessageView({
+     },
+     [mentions, onOpenBot, peerBot],
+   );
+-  const speak = () => onSpeak(message);
+   const replyBotId = message.replyPreview?.botId ?? replyParent?.botId;
+   const author = message.role === "user" ? otherAuthor(message.author, meId) : undefined;
+   const replyAuthor = otherAuthor(message.replyPreview?.author ?? replyParent?.author, meId);
+@@ -243,6 +244,7 @@ export const MessageView = memo(function MessageView({
+   // Anchored below the speaker and reply line so the rail centers on the bubble itself.
+   // A message with text and attachments anchors it on its first text bubble.
+   const textAnchorIndex = message.blocks.findIndex((block) => block.kind === "text");
++  const hasText = textAnchorIndex !== -1;
+   const hoverAnchorIndex =
+     textAnchorIndex === -1
+       ? message.blocks.findIndex((block) => block.kind === "ask")
+@@ -256,6 +258,11 @@ export const MessageView = memo(function MessageView({
+       onMarkUnread={onMarkUnread}
+       markedUnread={markedUnread}
+       onReact={onReact}
++      speech={
++        voiceReady && !isLive && hasText && message.role !== "user"
++          ? { speaking, disabled: callHoldsSpeaker && !speaking, onSpeak: () => onSpeak(message) }
++          : undefined
++      }
+     />
+   );
+   if (isNarration) {
+@@ -316,19 +323,6 @@ export const MessageView = memo(function MessageView({
+                 }
+                 return null;
+               })}
+-              {!isLive && voiceReady && message.blocks.some((block) => block.kind === "text") ? (
+-                <Button
+-                  variant="text"
+-                  size="xs"
+-                  aria-label={speaking ? t`Stop speaking` : t`Speak this reply`}
+-                  // Stopping the speech in progress stays available; a call blocks new reads.
+-                  disabled={callHoldsSpeaker && !speaking}
+-                  onClick={speak}
+-                  className="font-normal"
+-                >
+-                  {speaking ? <Trans>Stop</Trans> : <Trans>Speak</Trans>}
+-                </Button>
+-              ) : null}
+             </div>
+           </div>
+           {hoverActions}
+@@ -537,17 +531,33 @@ export const MessageView = memo(function MessageView({
+             );
+           }
+           if (block.kind === "image") {
++            const run = consecutiveImageRun(blocks, i);
++            if (!run) return null;
++            const align = message.role === "user" ? "end" : "start";
++            if (run.length === 1) {
++              return (
++                <div
++                  key={i}
++                  className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
++                >
++                  <ArtifactImage
++                    target={artifactTarget}
++                    artifactId={block.artifactId}
++                    name={block.name}
++                  />
++                </div>
++              );
++            }
+             return (
+-              <div
++              <MessageImageRow
+                 key={i}
+-                className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
+-              >
+-                <ArtifactImage
+-                  target={artifactTarget}
+-                  artifactId={block.artifactId}
+-                  name={block.name}
+-                />
+-              </div>
++                align={align}
++                images={run.map((picture) => ({
++                  artifactId: picture.artifactId,
++                  name: picture.name ?? "image",
++                  target: artifactTarget,
++                }))}
++              />
+             );
+           }
+           if (block.kind === "file") {
+@@ -608,19 +618,6 @@ export const MessageView = memo(function MessageView({
+                       {block.text}
+                     </ChatMarkdown>
+                   </div>
+-                  {voiceReady ? (
+-                    <Button
+-                      variant="text"
+-                      size="xs"
+-                      aria-label={speaking ? t`Stop speaking` : t`Speak this reply`}
+-                      // Stopping the speech in progress stays available; a call blocks new reads.
+-                      disabled={callHoldsSpeaker && !speaking}
+-                      onClick={speak}
+-                      className="mt-2 font-normal"
+-                    >
+-                      {speaking ? <Trans>Stop</Trans> : <Trans>Speak</Trans>}
+-                    </Button>
+-                  ) : null}
+                 </div>
+                 {i === hoverAnchorIndex ? hoverActions : null}
+               </div>
 diff --git a/apps/worker/turbo.json b/apps/worker/turbo.json
 deleted file mode 100644
 index 7ede8d6b9..000000000
@@ -253265,7 +253734,7 @@ index 1a3bc9b19..71eb2490e 100644
  /**
   * Whether the run may post another durable interim chat message right now.
 diff --git a/packages/chat-ui/package.json b/packages/chat-ui/package.json
-index 1332b299d..322db218f 100644
+index 1332b299d..a25c565c9 100644
 --- a/packages/chat-ui/package.json
 +++ b/packages/chat-ui/package.json
 @@ -4,6 +4,7 @@
@@ -253276,6 +253745,14 @@ index 1332b299d..322db218f 100644
      "./mermaid": "./src/mermaid.ts",
      "./native": "./src/markdown.native.tsx",
      "./web": "./src/markdown.web.tsx"
+@@ -21,6 +22,7 @@
+     "mermaid": "11.17.2",
+     "prism-react-renderer": "2.4.1",
+     "react-markdown": "10.1.0",
++    "remark-breaks": "4.0.0",
+     "remark-gfm": "4.0.1",
+     "remark-parse": "11.0.0",
+     "unified": "11.0.5"
 diff --git a/packages/chat-ui/src/hooks.ts b/packages/chat-ui/src/hooks.ts
 new file mode 100644
 index 000000000..1b886b647
@@ -254103,6 +254580,50 @@ index 05ea75925..ae669ebf0 100644
                )}
              </DiagramSurfaceContext.Provider>
            </LinkFaviconsPausedContext.Provider>
+diff --git a/packages/chat-ui/src/markdown.web.test.tsx b/packages/chat-ui/src/markdown.web.test.tsx
+index 53afc48b4..c7fdba531 100644
+--- a/packages/chat-ui/src/markdown.web.test.tsx
++++ b/packages/chat-ui/src/markdown.web.test.tsx
+@@ -747,6 +747,18 @@ describe("web markdown code copy", () => {
+   });
+ });
+ 
++describe("web markdown line breaks", () => {
++  it("keeps a single newline inside a paragraph as a line break", () => {
++    const holder = document.createElement("div");
++    holder.innerHTML = renderToStaticMarkup(
++      <ChatMarkdown>{"Which one?\n\nA. First\nB. Second"}</ChatMarkdown>,
++    );
++    const options = holder.querySelectorAll("p")[1];
++    expect(options?.querySelectorAll("br")).toHaveLength(1);
++    expect(options?.textContent).toBe("A. First\nB. Second");
++  });
++});
++
+ describe("web markdown prose fences", () => {
+   const draft =
+     "Dear team, this line of prose is far wider than a bubble, so it wraps instead of scrolling.";
+diff --git a/packages/chat-ui/src/markdown.web.tsx b/packages/chat-ui/src/markdown.web.tsx
+index a0e97f140..5fc6a8209 100644
+--- a/packages/chat-ui/src/markdown.web.tsx
++++ b/packages/chat-ui/src/markdown.web.tsx
+@@ -13,6 +13,7 @@ import {
+ } from "react";
+ import type { Components } from "react-markdown";
+ import ReactMarkdown from "react-markdown";
++import remarkBreaks from "remark-breaks";
+ import remarkGfm from "remark-gfm";
+ import remarkParse from "remark-parse";
+ import { unified } from "unified";
+@@ -741,7 +742,7 @@ export function LinkifiedText({
+   );
+ }
+ 
+-const remarkPlugins = [remarkGfm];
++const remarkPlugins = [remarkGfm, remarkBreaks];
+ const rehypePlugins = [preserveSkippedTableText];
+ 
+ // MarkdownImage decides what an image source may do, so it receives the source as written.
 diff --git a/packages/chat-ui/src/native-test-stubs.tsx b/packages/chat-ui/src/native-test-stubs.tsx
 index 5299f66e8..c303eea5d 100644
 --- a/packages/chat-ui/src/native-test-stubs.tsx
@@ -254488,6 +255009,34 @@ index eca1f50a3..2fdde1f31 100644
    "request_secret",
    "generate_secret",
    "list_secrets",
+diff --git a/packages/contracts/src/consecutive-image-run.test.ts b/packages/contracts/src/consecutive-image-run.test.ts
+new file mode 100644
+index 000000000..131fc31e2
+--- /dev/null
++++ b/packages/contracts/src/consecutive-image-run.test.ts
+@@ -0,0 +1,22 @@
++import { describe, expect, it } from "vitest";
++import { consecutiveImageRun } from "./events.js";
++
++describe("consecutiveImageRun", () => {
++  it("returns null when the index is not a picture", () => {
++    expect(consecutiveImageRun([{ kind: "text" }], 0)).toBeNull();
++  });
++
++  it("returns null when the index is not the first of its run", () => {
++    const items = [{ kind: "image" }, { kind: "image" }];
++    expect(consecutiveImageRun(items, 1)).toBeNull();
++  });
++
++  it("returns a lone picture as a run of one", () => {
++    expect(consecutiveImageRun([{ kind: "image" }], 0)).toEqual([{ kind: "image" }]);
++  });
++
++  it("returns the full consecutive run", () => {
++    const items = [{ kind: "image" }, { kind: "image" }, { kind: "file" }];
++    expect(consecutiveImageRun(items, 0)).toEqual([{ kind: "image" }, { kind: "image" }]);
++  });
++});
 diff --git a/packages/contracts/src/domain.ts b/packages/contracts/src/domain.ts
 index d45cd5ae9..ea95a4df2 100644
 --- a/packages/contracts/src/domain.ts
@@ -254865,7 +255414,7 @@ index d45cd5ae9..ea95a4df2 100644
  export type ThreadSnapshot = z.infer<typeof ThreadSnapshotSchema>;
  
 diff --git a/packages/contracts/src/events.ts b/packages/contracts/src/events.ts
-index 277ebf5d3..cf40587c4 100644
+index 277ebf5d3..222f86638 100644
 --- a/packages/contracts/src/events.ts
 +++ b/packages/contracts/src/events.ts
 @@ -6,6 +6,35 @@ import { McpTransportSchema } from "./mcp.js";
@@ -254938,6 +255487,36 @@ index 277ebf5d3..cf40587c4 100644
    }),
    z.object({
      kind: z.literal("child_bot"),
+@@ -438,6 +483,29 @@ export type HistoryToolStep = Extract<MessageBlock, { kind: "steps" }>["steps"][
+   calls?: ToolStepCall[];
+ };
+ 
++/**
++ * The run of consecutive pictures that starts at `index`, or null when `index` is not a picture or
++ * not the first of its run. A lone picture is a run of one. Web and mobile both group a message's
++ * pictures by it; `isPicture` narrows which image blocks a client draws as pictures.
++ */
++export function consecutiveImageRun<T extends { kind: string }>(
++  items: readonly T[],
++  index: number,
++  isPicture: (item: T) => boolean = () => true,
++): (T & { kind: "image" })[] | null {
++  const matches = (item: T | undefined): item is T & { kind: "image" } =>
++    item?.kind === "image" && isPicture(item);
++  const first = items[index];
++  if (!matches(first) || matches(items[index - 1])) return null;
++  const pictures = [first];
++  for (let at = index + 1; at < items.length; at += 1) {
++    const item = items[at];
++    if (!matches(item)) break;
++    pictures.push(item);
++  }
++  return pictures;
++}
++
+ /**
+  * Something the bot did on its computer, shown in the terminal's Activity view: a shell
+  * command (with a redacted output tail) or a file/app action, whose `command` is the path or
 diff --git a/packages/contracts/src/grok-bot.ts b/packages/contracts/src/grok-bot.ts
 new file mode 100644
 index 000000000..8785a2bce
@@ -263641,7 +264220,7 @@ index e4aceef75..02d63b037 100644
 +msgid "Image support unknown"
 +msgstr "Bildunterstützung unbekannt"
 diff --git a/packages/i18n/locales/en/messages.po b/packages/i18n/locales/en/messages.po
-index eb2063571..4b635c9d2 100644
+index eb2063571..ef243689c 100644
 --- a/packages/i18n/locales/en/messages.po
 +++ b/packages/i18n/locales/en/messages.po
 @@ -7786,8 +7786,8 @@ msgstr "Paste a replacement key"
@@ -263655,7 +264234,7 @@ index eb2063571..4b635c9d2 100644
  
  #: apps/web/src/pages/shell/agent-import.tsx
  msgid "Paste the reply"
-@@ -11755,3 +11755,99 @@ msgstr "Your voice provider key was rejected."
+@@ -11755,3 +11755,106 @@ msgstr "Your voice provider key was rejected."
  #: apps/web/src/components/vault/VaultItemEditor.tsx
  msgid "ZIP or postal code"
  msgstr "ZIP or postal code"
@@ -263755,6 +264334,13 @@ index eb2063571..4b635c9d2 100644
 +#: apps/web/src/pages/model-settings/provider-page.tsx
 +msgid "Image support unknown"
 +msgstr "Image support unknown"
++
++msgid "Read aloud"
++msgstr "Read aloud"
++
++msgid "Stop reading aloud"
++msgstr "Stop reading aloud"
++
 diff --git a/packages/i18n/locales/es/messages.po b/packages/i18n/locales/es/messages.po
 index bcddddb57..6cd3b2795 100644
 --- a/packages/i18n/locales/es/messages.po
@@ -264658,7 +265244,7 @@ index 73652a3c4..4bdf91d87 100644
 +msgid "Image support unknown"
 +msgstr "Görsel desteği bilinmiyor"
 diff --git a/packages/i18n/locales/zh-CN/messages.po b/packages/i18n/locales/zh-CN/messages.po
-index 422c5af1e..28aadb789 100644
+index 422c5af1e..f2a3458d0 100644
 --- a/packages/i18n/locales/zh-CN/messages.po
 +++ b/packages/i18n/locales/zh-CN/messages.po
 @@ -281,7 +281,7 @@ msgstr "{count} 个需要处理"
@@ -264787,7 +265373,20 @@ index 422c5af1e..28aadb789 100644
  #: apps/web/src/pages/shell/shell-sidebar.tsx
  msgid "Search runs"
  msgstr "搜索运行记录"
-@@ -10195,6 +10243,10 @@ msgstr "群组 {names} 也会被删除，包括其中的消息、文件和页面
+@@ -9754,6 +9802,12 @@ msgstr "朗读消息"
+ msgid "Speak this reply"
+ msgstr "朗读这条回复"
+ 
++msgid "Read aloud"
++msgstr "朗读"
++
++msgid "Stop reading aloud"
++msgstr "停止朗读"
++
+ #: apps/web/src/components/call/CallCard.tsx
+ msgid "Speaking"
+ msgstr "正在说话"
+@@ -10195,6 +10249,10 @@ msgstr "群组 {names} 也会被删除，包括其中的消息、文件和页面
  msgid "The groups {names} will be deleted too, including their messages, files, and pages."
  msgstr "群组 {names} 也会被删除，包括其中的消息、文件和页面。"
  
@@ -264798,7 +265397,7 @@ index 422c5af1e..28aadb789 100644
  #. js-lingui-explicit-id
  #: packages/i18n/src/run-error.ts
  msgid "The model hit its output limit before finishing its reply."
-@@ -11755,3 +11807,414 @@ msgstr "你的语音提供商拒绝了该密钥。"
+@@ -11755,3 +11813,414 @@ msgstr "你的语音提供商拒绝了该密钥。"
  #: apps/web/src/components/vault/VaultItemEditor.tsx
  msgid "ZIP or postal code"
  msgstr "邮政编码"
@@ -266600,6 +267199,65 @@ index cca4371db..9c095407d 100644
 -  const chatEyes = [...tags(chat, "rect"), ...tags(chat, "ellipse")];
 -  for (const eye of eyes) expect(chatEyes).toContainEqual(expect.objectContaining(eye));
  });
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index 9f54a9a13..bc6e8c0c2 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -1145,6 +1145,9 @@ importers:
+       react-markdown:
+         specifier: 10.1.0
+         version: 10.1.0(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1)
++      remark-breaks:
++        specifier: 4.0.0
++        version: 4.0.0
+       remark-gfm:
+         specifier: 4.0.1
+         version: 4.0.1(supports-color@8.1.1)
+@@ -10323,6 +10326,9 @@ packages:
+   mdast-util-mdxjs-esm@2.0.1:
+     resolution: {integrity: sha512-EcmOpxsZ96CvlP03NghtH1EsLtr0n9Tm4lPUJUBccV9RwUOneqSycg19n5HGzCf+10LozMRSObtVr3ee1WoHtg==}
+ 
++  mdast-util-newline-to-break@2.0.0:
++    resolution: {integrity: sha512-MbgeFca0hLYIEx/2zGsszCSEJJ1JSCdiY5xQxRcLDDGa8EPvlLPupJ4DSajbMPAnC0je8jfb9TiUATnxxrHUog==}
++
+   mdast-util-phrasing@4.1.0:
+     resolution: {integrity: sha512-TqICwyvJJpBwvGAMZjj4J2n0X8QWp21b9l0o7eXyVJ25YNWYbJDVIyD1bZXE6WtV6RmKJVYmQAKWa0zWOABz2w==}
+ 
+@@ -11887,6 +11893,9 @@ packages:
+     resolution: {integrity: sha512-NgRBy2Nx/bE+9F27nVHnqcN5HjyLmecqsqx2PJHu3/IEtADD4WuxuXIVExD5PoSDFVrl78dOonfcOe5O+5nbzQ==}
+     hasBin: true
+ 
++  remark-breaks@4.0.0:
++    resolution: {integrity: sha512-IjEjJOkH4FuJvHZVIW0QCDWxcG96kCq7An/KVH2NfJe6rKZU2AsHeB3OEjPNRxi4QC34Xdx7I2KGYn6IpT7gxQ==}
++
+   remark-gfm@4.0.1:
+     resolution: {integrity: sha512-1quofZ2RQ9EWdeN34S79+KExV1764+wCUGop5CPL1WGdD0ocPpu91lzPGbwWMECpEpd42kJGQwzRfyov9j4yNg==}
+ 
+@@ -24071,6 +24080,11 @@ snapshots:
+     transitivePeerDependencies:
+       - supports-color
+ 
++  mdast-util-newline-to-break@2.0.0:
++    dependencies:
++      '@types/mdast': 4.0.4
++      mdast-util-find-and-replace: 3.0.2
++
+   mdast-util-phrasing@4.1.0:
+     dependencies:
+       '@types/mdast': 4.0.4
+@@ -26019,6 +26033,12 @@ snapshots:
+     dependencies:
+       jsesc: 3.1.0
+ 
++  remark-breaks@4.0.0:
++    dependencies:
++      '@types/mdast': 4.0.4
++      mdast-util-newline-to-break: 2.0.0
++      unified: 11.0.5
++
+   remark-gfm@4.0.1(supports-color@8.1.1):
+     dependencies:
+       '@types/mdast': 4.0.4
 diff --git a/scripts/build-server.mjs b/scripts/build-server.mjs
 index 2bec7b3ac..5606d5389 100644
 --- a/scripts/build-server.mjs

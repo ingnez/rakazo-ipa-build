@@ -191754,6 +191754,50 @@ index 975d0670b..63d70a3ec 100644
          ) : (
            <NativeSymbol ios="person.3" android="people-outline" size={size} color={color} />
          )}
+diff --git a/apps/mobile/e2e/ios-screenshots/flows/settings.yaml b/apps/mobile/e2e/ios-screenshots/flows/settings.yaml
+index 9b5c95ded..40576696a 100644
+--- a/apps/mobile/e2e/ios-screenshots/flows/settings.yaml
++++ b/apps/mobile/e2e/ios-screenshots/flows/settings.yaml
+@@ -67,8 +67,13 @@ name: Settings
+ - takeScreenshot: 06-models
+ - openLink: "rakazo:///integrations"
+ - extendedWaitUntil:
+-    visible: "Search apps"
++    visible: "Search apps.*"
+     timeout: 15000
++- extendedWaitUntil:
++    visible: ".*Connected.*"
++    timeout: 15000
++- assertVisible: ".*Fixture Gmail.*"
++- assertVisible: ".*已连接|Connected.*"
+ - waitForAnimationToEnd:
+     timeout: 3000
+ - takeScreenshot: 07-integrations
+diff --git a/apps/mobile/e2e/ios-screenshots/flows/thread.yaml b/apps/mobile/e2e/ios-screenshots/flows/thread.yaml
+index 0f9413f2b..b34a3b7d1 100644
+--- a/apps/mobile/e2e/ios-screenshots/flows/thread.yaml
++++ b/apps/mobile/e2e/ios-screenshots/flows/thread.yaml
+@@ -51,10 +51,20 @@ name: Thread
+       visible: ".*Reply.*"
+     commands:
+       - assertVisible: ".*Copy.*"
++      - assertVisible: ".*Speak message|朗读消息.*"
+       - waitForAnimationToEnd:
+           timeout: 3000
+       - takeScreenshot: 04-message-actions
+       - tapOn: "Copy"
++- scrollUntilVisible:
++    element: ".*Fixture picture stack.*"
++    direction: DOWN
++    timeout: 15000
++    visibilityPercentage: 40
++- assertVisible: ".*2.*图片|2 images|Fixture picture stack.*"
++- waitForAnimationToEnd:
++    timeout: 3000
++- takeScreenshot: 04b-image-stack
+ - openLink: "rakazo:///thread?botId=${RAKAZO_SCREENSHOT_BOT_ID}&name=Researcher"
+ - scrollUntilVisible:
+     element: ".*launch-notes.txt.*"
 diff --git a/apps/mobile/ios-widgets/Assets.xcassets/AppMark.imageset/app-mark.png b/apps/mobile/ios-widgets/Assets.xcassets/AppMark.imageset/app-mark.png
 index 8e90572a9be4f0a44da5b834630061164aa75cf4..91ec680a9b61d2640e428b3eee94fa725df71f1f 100644
 GIT binary patch
@@ -266396,6 +266440,84 @@ index f268a3ee9..99af0b91b 100644
        >
          {state === "copied" ? text(copiedLabel) || words.t("copied") : name}
        </button>
+diff --git a/packages/testkit/src/cli/ios-screenshot-seed.ts b/packages/testkit/src/cli/ios-screenshot-seed.ts
+index cecb6a498..f58937ccb 100644
+--- a/packages/testkit/src/cli/ios-screenshot-seed.ts
++++ b/packages/testkit/src/cli/ios-screenshot-seed.ts
+@@ -77,6 +77,52 @@ interface MeRow {
+ /** Finishes a plan checkout in the billing provider, as paying does in production. */
+ export type CompleteCheckout = (customerId: string) => void;
+ 
++
++async function ensureConnectedCatalogApp(
++  prisma: ReturnType<typeof createDb>["prisma"],
++  spaceId: string,
++  userId: string,
++) {
++  const existing = await prisma.connection.findFirst({
++    where: { spaceId, userId, provider: "gmail", status: "connected" },
++  });
++  if (existing) return existing;
++  return prisma.connection.create({
++    data: {
++      spaceId,
++      userId,
++      connectorId: "composio",
++      provider: "gmail",
++      displayName: "Fixture Gmail",
++      status: "connected",
++      metadata: {},
++    },
++  });
++}
++
++async function ensureImageStackMessage(
++  prisma: ReturnType<typeof createDb>["prisma"],
++  input: { threadId: string; botId: string; imageIds: string[] },
++) {
++  const marker = "Fixture picture stack";
++  const messages = await prisma.message.findMany({ where: { threadId: input.threadId } });
++  const already = messages.some((message) => JSON.stringify(message.blocks).includes(marker));
++  if (already) return;
++  await createThreadMessage(prisma, {
++    threadId: input.threadId,
++    role: "bot",
++    botId: input.botId,
++    blocks: [
++      { kind: "text", text: marker },
++      ...input.imageIds.map((artifactId, index) => ({
++        kind: "image" as const,
++        artifactId,
++        name: `stack-${index + 1}.png`,
++      })),
++    ],
++  });
++}
++
+ export async function seedIosScreenshotFixture(input: {
+   apiUrl: string;
+   databaseUrl: string;
+@@ -284,6 +330,7 @@ export async function seedIosScreenshotFixture(input: {
+     ),
+   );
+   const image = await upload(IMAGE_NAME, "image/png", chartPng());
++  const imageTwo = await upload("launch-chart-2.png", "image/png", chartPng());
+   const pdf = await upload("launch-brief.pdf", "application/pdf", briefPdf());
+   // An empty archive: a type no client previews.
+   const archive = await upload(
+@@ -345,6 +392,12 @@ export async function seedIosScreenshotFixture(input: {
+       botId: researcher.id,
+     });
+     await ensureRequestCards(db.prisma, { threadId: support.threadId, botId: support.id });
++    await ensureConnectedCatalogApp(db.prisma, me.spaceId, me.userId);
++    await ensureImageStackMessage(db.prisma, {
++      threadId: researcher.threadId,
++      botId: researcher.id,
++      imageIds: [image.id, imageTwo.id],
++    });
+     await ensurePayments(db.prisma, {
+       spaceId: me.spaceId,
+       userId: me.userId,
 diff --git a/packages/testkit/src/cli/performance-stack.ts b/packages/testkit/src/cli/performance-stack.ts
 index 1ba3c8a76..817cc0be1 100644
 --- a/packages/testkit/src/cli/performance-stack.ts

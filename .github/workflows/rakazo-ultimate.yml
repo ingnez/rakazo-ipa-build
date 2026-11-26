@@ -9,12 +9,13 @@ on:
     inputs:
       prepare_only: { type: boolean, default: false }
       bundle_releases: { type: string, default: "" }
+      skip_ui_e2e: { type: boolean, default: false }
 permissions: { contents: read, actions: read }
 concurrency: { group: "rakazo-ios-${{ github.ref }}", cancel-in-progress: false }
 jobs:
   build:
     runs-on: xcode-27
-    timeout-minutes: 300
+    timeout-minutes: 360
     steps:
       - { uses: actions/checkout@v4, with: { ref: "${{ github.ref }}" } }
       - name: Build
@@ -27,3 +28,8 @@ jobs:
         run: bash rakazo-ultimate/sim-crashcheck.sh
         env: { GH_TOKEN: "${{ github.token }}", BUNDLE_RELEASES: "${{ inputs.bundle_releases }}" }
       - { if: always(), uses: actions/upload-artifact@v4, with: { name: rakazo-sim-check, path: rakazo-ultimate/sim-check/, if-no-files-found: warn, retention-days: 30 } }
+      - name: v37 UI E2E (fake model + Maestro)
+        if: ${{ !inputs.skip_ui_e2e && !inputs.prepare_only }}
+        timeout-minutes: 180
+        run: bash rakazo-ultimate/sim-v37-ui-e2e.sh
+      - { if: always(), uses: actions/upload-artifact@v4, with: { name: rakazo-v37-ui-e2e, path: rakazo-ultimate/sim-v37-ui/, if-no-files-found: warn, retention-days: 30 } }

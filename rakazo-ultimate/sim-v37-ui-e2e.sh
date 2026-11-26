@@ -160,6 +160,40 @@ else:
     raise SystemExit(f"could not patch first-launch.yaml:\n{text}")
 PY
 
+echo "== dismiss onboarding tour after each launch (sign-in shows TourStage first) =="
+python3 - "$SRC/apps/mobile/e2e/ios-screenshots/subflows" <<'PY'
+import pathlib, sys
+d = pathlib.Path(sys.argv[1])
+block = """- extendedWaitUntil:
+    visible: "开始使用|Get started|Sign up for Rakazo|Sign in to Rakazo|Account"
+    timeout: 120000
+- tapOn:
+    text: "开始使用|Get started"
+    optional: true
+"""
+for name in ("first-launch.yaml", "launch-app.yaml"):
+    p = d / name
+    t = p.read_text()
+    if "开始使用" in t:
+        print("already", name); continue
+    lines = t.split("\n")
+    out, i, done = [], 0, False
+    while i < len(lines):
+        out.append(lines[i])
+        if not done and lines[i].startswith("- launchApp:"):
+            i += 1
+            while i < len(lines) and lines[i].startswith("    "):
+                out.append(lines[i]); i += 1
+            out.append(block.rstrip("\n"))
+            done = True
+            continue
+        i += 1
+    if not done:
+        raise SystemExit("no launchApp in " + name)
+    p.write_text("\n".join(out))
+    print("patched", name)
+PY
+
 echo "== preflight launch (simctl screenshot) =="
 xcrun simctl terminate "$UDID" "$BID" 2>/dev/null || true
 xcrun simctl launch "$UDID" "$BID" | tee "$OUT/preflight-launch.txt"

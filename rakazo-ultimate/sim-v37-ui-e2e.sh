@@ -27,6 +27,12 @@ export EXPO_PUBLIC_E2E_MEMORY_STORE=1
 # Screenshot API fan-out (me/usage/billing/thread) saturates the default pool
 # (max=4 → db.pool.saturated). Harness-only bump; not a prod change.
 export DB_POOL_MAX="${DB_POOL_MAX:-16}"
+# Same for the API-keys pool (packages/db hard-codes max=2; sign-in checks keys on every
+# request, so with 2 slots the app's 8s request timeout fires under startup load).
+# Applied by patch-harness-load.py; production keeps its own value.
+export DB_KEY_POOL_MAX="${DB_KEY_POOL_MAX:-8}"
+# info instead of the backend's pinned warn: db.pool.saturated / rpc.procedure lines in logs.
+export IOS_SCREENSHOT_LOG_LEVEL="${IOS_SCREENSHOT_LOG_LEVEL:-info}"
 
 cleanup_artifact() {
   # Artifact zip failed previously on live pg_wal; always stop DB and drop pgdata before upload.
@@ -48,7 +54,7 @@ if ! pg_isready -h 127.0.0.1 -p 5433 -q 2>/dev/null; then
   if [ ! -d "$PGDATA" ]; then
     initdb -D "$PGDATA" --auth-local=trust --auth-host=trust
   fi
-  pg_ctl -D "$PGDATA" -l "$OUT/postgres.log" -o "-p 5433 -k $OUT" start
+  pg_ctl -D "$PGDATA" -l "$OUT/postgres.log" -o "-p 5433 -k $OUT -c max_connections=200 -c fsync=off -c synchronous_commit=off -c full_page_writes=off" start
   for i in $(seq 1 30); do pg_isready -h 127.0.0.1 -p 5433 -q && break; sleep 1; done
 fi
 export DATABASE_URL="postgres://$(whoami)@127.0.0.1:5433/postgres"
@@ -117,6 +123,11 @@ echo "== patch E2E code + overlay Maestro flows (idempotent) =="
 # never stack needle rewrites of the same settings/thread/sign-in block.
 python3 "$HERE/e2e-harness/patch-thread-mime-and-settings.py" "$SRC"
 python3 "$HERE/e2e-harness/patch-rpc-log-a11y-scroll.py" "$SRC"
+# Harness API: contract procedures with no handler -> 501 + empty view instead of 500
+# (models/scenarios), warm-up before Maestro, keys-pool size, Models page testIDs.
+python3 "$HERE/e2e-harness/patch-unimplemented-procedures.py" "$SRC"
+python3 "$HERE/e2e-harness/patch-harness-load.py" "$SRC"
+python3 "$HERE/e2e-harness/patch-models-testids.py" "$SRC"
 python3 "$HERE/e2e-harness/apply-e2e-flow-overlays.py" "$SRC"
 python3 "$HERE/e2e-harness/patch-memory-store.py" "$SRC/apps/mobile/index.ts"
 python3 "$HERE/e2e-harness/patch-seed-run-as-system.py" \

@@ -79,9 +79,20 @@ name: Settings
 - takeScreenshot: 05-password-mismatch
 - tapOn: "Back"
 - openLink: "rakazo:///models"
+# Titles here are locale-mixed (the fork hard-codes 日常帮助 / 场景模型), so wait on ids:
+# the page, the main-model group, the scenes group; and no error banner.
 - extendedWaitUntil:
-    visible: "Main model"
-    timeout: 15000
+    visible:
+      id: "settings-models-screen"
+    timeout: 20000
+- extendedWaitUntil:
+    visible:
+      id: "settings-models-main"
+    timeout: 20000
+- assertVisible:
+    id: "settings-models-scenarios"
+- assertNotVisible:
+    id: "settings-models-error"
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 06-models

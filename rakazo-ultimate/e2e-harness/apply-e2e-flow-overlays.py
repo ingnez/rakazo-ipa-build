@@ -28,6 +28,10 @@ MARKERS = {
         'id: "settings-row-integrations"',
         "General|通用",
         'assertVisible: ".*Screenshot User.*"',
+        'id: "settings-models-screen"',
+        'id: "settings-models-main"',
+        'id: "settings-models-scenarios"',
+        'id: "settings-models-error"',
     ),
     "flows/thread.yaml": (
         'element: ".*The fixture workspace is ready.*"\n    direction: UP',
@@ -37,6 +41,7 @@ MARKERS = {
     ),
     "subflows/sign-in.yaml": (
         "Could not save your sign-in",
+        ".*Request timed out.*",
         'visible: "Account|.*How did you hear about us.*|Could not save your sign-in"',
     ),
 }

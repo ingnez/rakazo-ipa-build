@@ -15,11 +15,37 @@ appId: com.rakazo.app
 - inputText: ${RAKAZO_SCREENSHOT_PASSWORD}
 - hideKeyboard
 - tapOn: "Sign in"
-# If Keychain/SecureStore still fails, fail here with a clear screen instead of
-# timing out waiting for Account / onboarding survey.
+# The sign-in POST can outlast the app's 8s request timeout while the shared runner is busy
+# (the screen then says "Request timed out" and clears the password). A person taps Sign in
+# again; do the same, twice at most. Any other outcome (including Keychain/SecureStore
+# save failure) still fails here with a clear screen.
 - extendedWaitUntil:
-    visible: "Account|.*How did you hear about us.*|Could not save your sign-in"
-    timeout: 20000
+    visible: "Account|.*How did you hear about us.*|Could not save your sign-in|.*Request timed out.*"
+    timeout: 45000
+- runFlow:
+    when:
+      visible: ".*Request timed out.*"
+    commands:
+      - tapOn: "Password"
+      - eraseText: 60
+      - inputText: ${RAKAZO_SCREENSHOT_PASSWORD}
+      - hideKeyboard
+      - tapOn: "Sign in"
+      - extendedWaitUntil:
+          visible: "Account|.*How did you hear about us.*|Could not save your sign-in|.*Request timed out.*"
+          timeout: 45000
+- runFlow:
+    when:
+      visible: ".*Request timed out.*"
+    commands:
+      - tapOn: "Password"
+      - eraseText: 60
+      - inputText: ${RAKAZO_SCREENSHOT_PASSWORD}
+      - hideKeyboard
+      - tapOn: "Sign in"
+      - extendedWaitUntil:
+          visible: "Account|.*How did you hear about us.*|Could not save your sign-in"
+          timeout: 60000
 - runFlow:
     when:
       visible: ".*Could not save your sign-in.*"

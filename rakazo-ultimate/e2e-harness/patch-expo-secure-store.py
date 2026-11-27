@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Replace expo-secure-store's SecureStore.js with an in-memory Map for E2E embeds."""
+"""Replace expo-secure-store with a file-backed store for E2E embeds.
+
+In-memory Maps die when openLink relaunches JS. Keychain rejects unsigned
+Release sims. expo-file-system Documents survive relaunch and need no Keychain.
+"""
 import pathlib
 import sys
 
@@ -28,26 +32,71 @@ for p in found:
 if not targets:
     raise SystemExit(f"expo-secure-store build/SecureStore.js not found under {root}")
 
-# Match the package's ESM export style (Metro resolves main: build/SecureStore.js).
-body = """// E2E harness replacement: in-memory SecureStore (see sim-v37-ui-e2e.sh).
-const memory = new Map();
+body = r'''// E2E harness: file-backed SecureStore (survives openLink relaunch; no Keychain).
+import {
+  documentDirectory,
+  getInfoAsync,
+  readAsStringAsync,
+  writeAsStringAsync,
+} from "expo-file-system";
+
+const PATH = `${documentDirectory || ""}e2e-secure-store.json`;
+let cache = null;
+let writeChain = Promise.resolve();
+
+async function load() {
+  if (cache) return cache;
+  try {
+    const info = await getInfoAsync(PATH);
+    if (info.exists) {
+      cache = JSON.parse(await readAsStringAsync(PATH)) || {};
+    } else {
+      cache = {};
+    }
+  } catch {
+    cache = {};
+  }
+  return cache;
+}
+
+function persist() {
+  const snapshot = JSON.stringify(cache || {});
+  writeChain = writeChain.then(async () => {
+    try {
+      await writeAsStringAsync(PATH, snapshot);
+    } catch {
+      // Keep the in-memory cache if the write fails.
+    }
+  });
+  return writeChain;
+}
+
 export async function getItemAsync(key, _options = {}) {
-  return memory.has(key) ? memory.get(key) : null;
+  const data = await load();
+  return Object.prototype.hasOwnProperty.call(data, key) ? data[key] : null;
 }
 export async function setItemAsync(key, value, _options = {}) {
-  memory.set(key, String(value));
+  const data = await load();
+  data[key] = String(value);
+  cache = data;
+  await persist();
 }
 export async function deleteItemAsync(key, _options = {}) {
-  memory.delete(key);
+  const data = await load();
+  delete data[key];
+  cache = data;
+  await persist();
 }
 export async function isAvailableAsync() {
   return true;
 }
 export function getItem(key, _options = {}) {
-  return memory.has(key) ? memory.get(key) : null;
+  return cache && Object.prototype.hasOwnProperty.call(cache, key) ? cache[key] : null;
 }
 export function setItem(key, value, _options = {}) {
-  memory.set(key, String(value));
+  cache = cache || {};
+  cache[key] = String(value);
+  void persist();
 }
 export function canUseBiometricAuthentication() {
   return false;
@@ -59,7 +108,7 @@ export const ALWAYS_THIS_DEVICE_ONLY = 3;
 export const WHEN_PASSCODE_SET_THIS_DEVICE_ONLY = 4;
 export const WHEN_UNLOCKED = 5;
 export const WHEN_UNLOCKED_THIS_DEVICE_ONLY = 6;
-"""
+'''
 
 for t in targets:
     bak = pathlib.Path(str(t) + ".pre-e2e")

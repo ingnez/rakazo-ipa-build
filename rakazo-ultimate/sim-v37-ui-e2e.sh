@@ -3,7 +3,8 @@
 # Requires: build.sh prepared `src/` and (preferably) sim-crashcheck's Release sim app.
 #
 # Harness: Release + expo export:embed (EXPO_PUBLIC_API_URL → local API), OTA disabled,
-# Metro skipped, EXPO_PUBLIC_E2E_MEMORY_STORE=1 (unsigned-sim Keychain workaround).
+# Metro skipped, EXPO_PUBLIC_E2E_MEMORY_STORE=1 (file-backed SecureStore; no Keychain).
+# Pre-approves rakazo:// + taps Open for the iOS Open-in-Bot deep-link dialog.
 # Fixture users are local ios-screenshots@example.test only — never 主人.
 set -euo pipefail
 
@@ -73,6 +74,35 @@ xcrun simctl bootstatus "$UDID" -b
 export SIM_UDID="$UDID"
 echo "UDID=$UDID" | tee "$OUT/udid.txt"
 
+echo "== pre-approve rakazo:// deep links (skip Open in Bot? dialog) =="
+APPROVAL="$HOME/Library/Developer/CoreSimulator/Devices/$UDID/data/Library/Preferences/com.apple.launchservices.schemeapproval.plist"
+mkdir -p "$(dirname "$APPROVAL")"
+# Key form used by CoreSimulatorBridge for custom schemes (Maestro #940 / Expo #43791).
+/usr/libexec/PlistBuddy -c "Delete :com.apple.CoreSimulator.CoreSimulatorBridge-->rakazo" "$APPROVAL" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Add :com.apple.CoreSimulator.CoreSimulatorBridge-->rakazo string com.rakazo.app" "$APPROVAL" 2>/dev/null \
+  || /usr/libexec/PlistBuddy -c "Set :com.apple.CoreSimulator.CoreSimulatorBridge-->rakazo com.rakazo.app" "$APPROVAL" 2>/dev/null \
+  || echo "::warning::could not write schemeapproval.plist"
+# Also try the Bridge without CoreSimulator prefix variants seen in the wild.
+/usr/libexec/PlistBuddy -c "Delete :com.apple.CoreSimulator.CoreSimulatorBridge-->rakazo" "$APPROVAL" 2>/dev/null || true
+python3 - "$APPROVAL" <<'PY'
+import pathlib, plistlib, sys
+p = pathlib.Path(sys.argv[1])
+data = {}
+if p.exists():
+    try:
+        data = plistlib.loads(p.read_bytes())
+    except Exception:
+        data = {}
+# Several key spellings appear across Xcode versions.
+for key in (
+    "com.apple.CoreSimulator.CoreSimulatorBridge-->rakazo",
+    "com.apple.CoreSimulator.CoreSimulatorBridge-->Rakazo",
+):
+    data[key] = "com.rakazo.app"
+p.write_bytes(plistlib.dumps(data, fmt=plistlib.FMT_XML))
+print("wrote", p, "keys", list(data))
+PY
+
 # Force English UI so Maestro's upstream first-launch assert (and our broadened one) can match.
 xcrun simctl spawn "$UDID" defaults write -g AppleLanguages -array en 2>/dev/null || true
 xcrun simctl spawn "$UDID" defaults write -g AppleLocale -string en_US 2>/dev/null || true
@@ -85,6 +115,8 @@ python3 "$HERE/e2e-harness/patch-seed-run-as-system.py" \
   "$SRC/packages/testkit/src/cli/ios-screenshot-seed.ts"
 python3 "$HERE/e2e-harness/patch-sign-in-guard.py" \
   "$SRC/apps/mobile/e2e/ios-screenshots/subflows/sign-in.yaml"
+python3 "$HERE/e2e-harness/patch-open-in-bot.py" \
+  "$SRC/apps/mobile/e2e/ios-screenshots"
 python3 "$HERE/e2e-harness/patch-expo-secure-store.py" "$SRC/apps/mobile"
 cd "$SRC/apps/mobile"
 

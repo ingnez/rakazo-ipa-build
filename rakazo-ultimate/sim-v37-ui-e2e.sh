@@ -3,7 +3,8 @@
 # Requires: build.sh prepared `src/` and (preferably) sim-crashcheck's Release sim app.
 #
 # Harness: Release + expo export:embed (EXPO_PUBLIC_API_URL → local API), OTA disabled,
-# Metro skipped. Fixture users are local ios-screenshots@example.test only — never 主人.
+# Metro skipped, EXPO_PUBLIC_E2E_MEMORY_STORE=1 (unsigned-sim Keychain workaround).
+# Fixture users are local ios-screenshots@example.test only — never 主人.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -18,6 +19,10 @@ export IOS_SCREENSHOT_EMBEDDED=1
 
 API_URL="http://127.0.0.1:3110"
 export EXPO_PUBLIC_API_URL="$API_URL"
+# Unsigned Release sims (esp. iOS 27 + CODE_SIGNING_ALLOWED=NO) often cannot write
+# Keychain; sign-in then fails with "Could not save your sign-in on this device".
+# E2E keeps the session in memory only — flag is set only for this embed, never OTA/IPA.
+export EXPO_PUBLIC_E2E_MEMORY_STORE=1
 
 cleanup_artifact() {
   # Artifact zip failed previously on live pg_wal; always stop DB and drop pgdata before upload.
@@ -74,6 +79,13 @@ xcrun simctl spawn "$UDID" defaults write -g AppleLocale -string en_US 2>/dev/nu
 xcrun simctl spawn "$UDID" defaults write -g AppleTextDirection 0 2>/dev/null || true
 
 echo "== release app + embed local API bundle =="
+echo "== patch E2E memory SecureStore + seed runAsSystem + sign-in guard =="
+python3 "$HERE/e2e-harness/patch-memory-store.py" "$SRC/apps/mobile/index.ts"
+python3 "$HERE/e2e-harness/patch-seed-run-as-system.py" \
+  "$SRC/packages/testkit/src/cli/ios-screenshot-seed.ts"
+python3 "$HERE/e2e-harness/patch-sign-in-guard.py" \
+  "$SRC/apps/mobile/e2e/ios-screenshots/subflows/sign-in.yaml"
+python3 "$HERE/e2e-harness/patch-expo-secure-store.py" "$SRC/apps/mobile"
 cd "$SRC/apps/mobile"
 
 APP="$PWD/ios/build-sim/Build/Products/Release-iphonesimulator/Rakazo.app"

@@ -24,6 +24,9 @@ export EXPO_PUBLIC_API_URL="$API_URL"
 # Keychain; sign-in then fails with "Could not save your sign-in on this device".
 # E2E keeps the session in memory only — flag is set only for this embed, never OTA/IPA.
 export EXPO_PUBLIC_E2E_MEMORY_STORE=1
+# Screenshot API fan-out (me/usage/billing/thread) saturates the default pool
+# (max=4 → db.pool.saturated). Harness-only bump; not a prod change.
+export DB_POOL_MAX="${DB_POOL_MAX:-16}"
 
 cleanup_artifact() {
   # Artifact zip failed previously on live pg_wal; always stop DB and drop pgdata before upload.
@@ -111,6 +114,7 @@ xcrun simctl spawn "$UDID" defaults write -g AppleTextDirection 0 2>/dev/null ||
 echo "== release app + embed local API bundle =="
 echo "== patch E2E memory SecureStore + seed runAsSystem + sign-in guard =="
 python3 "$HERE/e2e-harness/patch-thread-mime-and-settings.py" "$SRC"
+python3 "$HERE/e2e-harness/patch-rpc-log-a11y-scroll.py" "$SRC"
 python3 "$HERE/e2e-harness/patch-memory-store.py" "$SRC/apps/mobile/index.ts"
 python3 "$HERE/e2e-harness/patch-seed-run-as-system.py" \
   "$SRC/packages/testkit/src/cli/ios-screenshot-seed.ts"

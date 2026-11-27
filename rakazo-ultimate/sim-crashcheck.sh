@@ -23,11 +23,18 @@ print((pro or phones)[-1]["udid"])')"
 xcrun simctl boot "$UDID" || true
 xcrun simctl bootstatus "$UDID" -b
 
-xcodebuild -workspace Rakazo.xcworkspace -scheme Rakazo -configuration Release \
-  -destination "platform=iOS Simulator,id=$UDID" -derivedDataPath build-sim \
-  ONLY_ACTIVE_ARCH=YES ARCHS=arm64 \
-  CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build \
-  > "$OUT/xcodebuild-sim.log" 2>&1 || { tail -80 "$OUT/xcodebuild-sim.log"; exit 1; }
+# Expo's module scan has a hard 5 s timeout that a loaded runner can miss ("Build again to retry
+# the scan", run 46033915178); a second build is incremental and only repeats the failed phase.
+for attempt in 1 2 3; do
+  xcodebuild -workspace Rakazo.xcworkspace -scheme Rakazo -configuration Release \
+    -destination "platform=iOS Simulator,id=$UDID" -derivedDataPath build-sim \
+    ONLY_ACTIVE_ARCH=YES ARCHS=arm64 \
+    CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build \
+    > "$OUT/xcodebuild-sim.log.$attempt" 2>&1 && break
+  echo "xcodebuild attempt $attempt failed"; grep -E "error:|timed out" "$OUT/xcodebuild-sim.log.$attempt" | head -5
+  [ "$attempt" = 3 ] && { tail -80 "$OUT/xcodebuild-sim.log.$attempt"; exit 1; }
+done
+cp "$OUT/xcodebuild-sim.log.$attempt" "$OUT/xcodebuild-sim.log"
 tail -3 "$OUT/xcodebuild-sim.log"
 
 APP="$PWD/build-sim/Build/Products/Release-iphonesimulator/Rakazo.app"

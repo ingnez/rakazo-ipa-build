@@ -1,0 +1,38 @@
+appId: com.rakazo.app
+---
+# Opens the fixture Researcher thread and waits for it to be usable.
+# The app gives every request 8s; on the shared runner the API stalled 6-17s at times
+# (run 45966108508), which leaves the thread blank under "Could not reach the server" until the
+# screen is opened again. Reopening is what a person does, so do it, at most twice.
+# (patch-open-in-bot.py adds the optional "Open" tap after this top-level openLink.)
+- openLink: "rakazo:///thread?botId=${RAKAZO_SCREENSHOT_BOT_ID}&name=Researcher"
+- extendedWaitUntil:
+    visible: "Message Researcher"
+    timeout: 90000
+- runFlow:
+    when:
+      visible: ".*Could not reach the server.*"
+    commands:
+      - waitForAnimationToEnd:
+          timeout: 8000
+      - openLink: "rakazo:///thread?botId=${RAKAZO_SCREENSHOT_BOT_ID}&name=Researcher"
+      - tapOn:
+          text: "Open"
+          optional: true
+      - extendedWaitUntil:
+          visible: "Message Researcher"
+          timeout: 90000
+- runFlow:
+    when:
+      visible: ".*Could not reach the server.*"
+    commands:
+      - waitForAnimationToEnd:
+          timeout: 15000
+      - openLink: "rakazo:///thread?botId=${RAKAZO_SCREENSHOT_BOT_ID}&name=Researcher"
+      - tapOn:
+          text: "Open"
+          optional: true
+      - extendedWaitUntil:
+          visible: "Message Researcher"
+          timeout: 90000
+- assertNotVisible: ".*Could not reach the server.*"

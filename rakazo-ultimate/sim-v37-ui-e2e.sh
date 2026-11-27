@@ -35,6 +35,7 @@ export DB_KEY_POOL_MAX="${DB_KEY_POOL_MAX:-8}"
 export IOS_SCREENSHOT_LOG_LEVEL="${IOS_SCREENSHOT_LOG_LEVEL:-info}"
 
 cleanup_artifact() {
+  [ -n "${SAMPLER_PID:-}" ] && kill "$SAMPLER_PID" 2>/dev/null || true
   # Artifact zip failed previously on live pg_wal; always stop DB and drop pgdata before upload.
   pg_ctl -D "${PGDATA:-$OUT/pgdata}" stop -m fast 2>/dev/null || true
   rm -rf "$OUT/pgdata" "$OUT/derived-debug" 2>/dev/null || true
@@ -128,6 +129,9 @@ python3 "$HERE/e2e-harness/patch-rpc-log-a11y-scroll.py" "$SRC"
 python3 "$HERE/e2e-harness/patch-unimplemented-procedures.py" "$SRC"
 python3 "$HERE/e2e-harness/patch-harness-load.py" "$SRC"
 python3 "$HERE/e2e-harness/patch-models-testids.py" "$SRC"
+python3 "$HERE/e2e-harness/patch-harness-telemetry.py" "$SRC"
+python3 "$HERE/e2e-harness/patch-incoming-calls-backoff.py" "$SRC"
+python3 "$HERE/e2e-harness/verify-flow-assertions.py" "$SRC" > "$OUT/flow-assertions-static.txt" 2>&1 || true
 python3 "$HERE/e2e-harness/apply-e2e-flow-overlays.py" "$SRC"
 python3 "$HERE/e2e-harness/patch-memory-store.py" "$SRC/apps/mobile/index.ts"
 python3 "$HERE/e2e-harness/patch-seed-run-as-system.py" \
@@ -271,6 +275,14 @@ if grep -qiE 'Could not connect to development server|Metro|RCTFatal|Unhandled J
 fi
 xcrun simctl terminate "$UDID" "$BID" 2>/dev/null || true
 
+# Whole-runner telemetry: run 45966108508 had 6-17s API stalls and minute-long app launches
+# with no record of CPU/memory. Sample every 10s into the artifact folder.
+( while true; do
+    { date -u +%H:%M:%S; sysctl -n vm.loadavg; vm_stat | head -6;
+      top -l 1 -n 8 -o cpu -stats pid,command,cpu,mem 2>/dev/null | tail -9; echo; } >> "$OUT/sys-sample.log" 2>&1
+    sleep 10
+  done ) &
+SAMPLER_PID=$!
 echo "== ios screenshots (settings + thread) =="
 cd "$SRC"
 export IOS_SCREENSHOT_OUT="$OUT/shots"

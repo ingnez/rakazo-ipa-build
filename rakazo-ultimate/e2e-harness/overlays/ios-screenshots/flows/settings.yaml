@@ -11,24 +11,46 @@ name: Settings
 - extendedWaitUntil:
     visible:
       id: "settings-account-hub"
-    timeout: 20000
+    timeout: 60000
 - extendedWaitUntil:
     visible:
       id: "settings-row-profile"
-    timeout: 15000
+    timeout: 45000
 - assertVisible:
     id: "settings-row-vault"
 - assertVisible:
     id: "settings-row-integrations"
-- assertVisible: ".*Screenshot User.*"
+# The hub reads `me` on focus with an 8s request timeout and ignores failure, so one slow
+# answer leaves "Your account" until the next focus (run 45966108508: me took 10-17s).
+# Wait for the name; if it is still the fallback, leave and come back (re-reads me), as a person would.
+- extendedWaitUntil:
+    visible: ".*Screenshot User.*"
+    timeout: 30000
+    optional: true
+- runFlow:
+    when:
+      notVisible: ".*Screenshot User.*"
+    commands:
+      - tapOn:
+          id: "settings-row-profile"
+      - waitForAnimationToEnd:
+          timeout: 5000
+      - tapOn: "Back"
+      - extendedWaitUntil:
+          visible:
+            id: "settings-account-hub"
+          timeout: 45000
+- extendedWaitUntil:
+    visible: ".*Screenshot User.*"
+    timeout: 90000
 - scrollUntilVisible:
     element: "General|通用"
     direction: DOWN
-    timeout: 15000
+    timeout: 45000
     visibilityPercentage: 40
 - extendedWaitUntil:
     visible: "General|通用"
-    timeout: 10000
+    timeout: 30000
 - assertNotVisible: "(?s).*__[A-Za-z0-9]+__.*"
 - assertNotVisible: "(?is).*[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}.*"
 - assertNotVisible: "(?s).*c[a-z0-9]{24}.*"
@@ -38,7 +60,7 @@ name: Settings
 - tapOn: "General|通用"
 - extendedWaitUntil:
     visible: "Stream replies"
-    timeout: 10000
+    timeout: 30000
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 02-general
@@ -50,14 +72,14 @@ name: Settings
 - openLink: "rakazo:///profile"
 - extendedWaitUntil:
     visible: ".*Change password.*"
-    timeout: 15000
+    timeout: 45000
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 03-profile
 - openLink: "rakazo:///change-password"
 - extendedWaitUntil:
     visible: "Current password"
-    timeout: 15000
+    timeout: 45000
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 04-change-password
@@ -73,7 +95,7 @@ name: Settings
     index: 1
 - extendedWaitUntil:
     visible: "Passwords do not match"
-    timeout: 10000
+    timeout: 30000
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 05-password-mismatch
@@ -84,11 +106,23 @@ name: Settings
 - extendedWaitUntil:
     visible:
       id: "settings-models-screen"
-    timeout: 20000
+    timeout: 60000
+# The groups render once `me` has loaded; a read that outlasts the app's 8s timeout shows
+# the page's Retry instead, as it would for a person.
 - extendedWaitUntil:
     visible:
       id: "settings-models-main"
-    timeout: 20000
+    timeout: 30000
+    optional: true
+- runFlow:
+    when:
+      visible: "Retry"
+    commands:
+      - tapOn: "Retry"
+- extendedWaitUntil:
+    visible:
+      id: "settings-models-main"
+    timeout: 90000
 - assertVisible:
     id: "settings-models-scenarios"
 - assertNotVisible:
@@ -99,10 +133,10 @@ name: Settings
 - openLink: "rakazo:///integrations"
 - extendedWaitUntil:
     visible: "Search apps.*"
-    timeout: 15000
+    timeout: 45000
 - extendedWaitUntil:
     visible: ".*Connected.*"
-    timeout: 15000
+    timeout: 45000
 - assertVisible: ".*Fixture Gmail.*"
 - assertVisible: ".*已连接|Connected.*"
 - waitForAnimationToEnd:
@@ -112,42 +146,42 @@ name: Settings
 - tapOn: "MCP server"
 - extendedWaitUntil:
     visible: "Remote MCP server"
-    timeout: 10000
+    timeout: 30000
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 08-integrations-advanced
 - openLink: "rakazo:///voice"
 - extendedWaitUntil:
     visible: ".*This device.*"
-    timeout: 15000
+    timeout: 45000
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 09-voice
 - openLink: "rakazo:///ai-data-sharing"
 - extendedWaitUntil:
     visible: "AI data sharing"
-    timeout: 15000
+    timeout: 45000
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 10-ai-data-sharing
 - openLink: "rakazo:///labs"
 - extendedWaitUntil:
     visible: "Board"
-    timeout: 15000
+    timeout: 45000
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 10b-labs
 - openLink: "rakazo:///routine?botId=${RAKAZO_SCREENSHOT_BOT_ID}&botName=Researcher&routineId=${RAKAZO_SCREENSHOT_ROUTINE_ID}"
 - extendedWaitUntil:
     visible: ".*Weekly fixture review.*"
-    timeout: 15000
+    timeout: 45000
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 11-routine
 - openLink: "rakazo:///routine-runs?routineId=${RAKAZO_SCREENSHOT_ROUTINE_ID}&botName=Researcher"
 - extendedWaitUntil:
     visible: ".*Run history.*"
-    timeout: 15000
+    timeout: 45000
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 11b-routine-runs
@@ -155,7 +189,7 @@ name: Settings
 - scrollUntilVisible:
     element: "Advanced"
     direction: DOWN
-    timeout: 15000
+    timeout: 45000
 - tapOn: "Advanced"
 - waitForAnimationToEnd:
     timeout: 3000
@@ -163,21 +197,21 @@ name: Settings
 - openLink: "rakazo:///bot-profile?botId=${RAKAZO_SCREENSHOT_BOT_ID}&name=Researcher"
 - extendedWaitUntil:
     visible: ".*Routines.*"
-    timeout: 15000
+    timeout: 45000
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 13-bot-profile
 - tapOn: "Bot actions"
 - extendedWaitUntil:
     visible: "Clear conversation"
-    timeout: 10000
+    timeout: 30000
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 14-bot-profile-menu
 - tapOn: "Delete…"
 - extendedWaitUntil:
     visible: ".*will be deleted too.*"
-    timeout: 15000
+    timeout: 45000
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 14-bot-delete-warning
@@ -185,14 +219,14 @@ name: Settings
 - openLink: "rakazo:///group-settings?groupId=${RAKAZO_SCREENSHOT_GROUP_ID}"
 - extendedWaitUntil:
     visible: ".*Delete group.*"
-    timeout: 15000
+    timeout: 45000
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 15-group-settings
 - openLink: "rakazo:///computer?botId=${RAKAZO_SCREENSHOT_BOT_ID}&name=Researcher"
 - extendedWaitUntil:
     visible: ".*Take control.*|.*Open computer.*"
-    timeout: 20000
+    timeout: 60000
 # The computer boots and its desktop loads after the page opens; Maestro cannot see inside the
 # screen, so give it a few seconds before the shot.
 - extendedWaitUntil:
@@ -206,12 +240,12 @@ name: Settings
 - scrollUntilVisible:
     element: ".*Delete account.*"
     direction: DOWN
-    timeout: 20000
+    timeout: 60000
     visibilityPercentage: 50
 - tapOn: "Delete account"
 - extendedWaitUntil:
     visible: ".*Delete your account.*"
-    timeout: 10000
+    timeout: 30000
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 17-delete-prompt
@@ -219,11 +253,11 @@ name: Settings
 - openLink: "rakazo:///general"
 - extendedWaitUntil:
     visible: "Language"
-    timeout: 15000
+    timeout: 45000
 - tapOn: "Language"
 - extendedWaitUntil:
     visible: "Deutsch"
-    timeout: 10000
+    timeout: 30000
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 18-language
@@ -231,7 +265,7 @@ name: Settings
 - scrollUntilVisible:
     element: "Artifacts"
     direction: DOWN
-    timeout: 15000
+    timeout: 45000
 - assertVisible: "Artifacts"
 - waitForAnimationToEnd:
     timeout: 3000
@@ -240,7 +274,7 @@ name: Settings
 # Only the Artifacts screen has the search field; the sheet must have closed.
 - extendedWaitUntil:
     visible: "Search artifacts.*"
-    timeout: 15000
+    timeout: 45000
 - assertNotVisible: "General"
 - waitForAnimationToEnd:
     timeout: 3000
@@ -249,7 +283,7 @@ name: Settings
 - scrollUntilVisible:
     element: "Haptics"
     direction: UP
-    timeout: 15000
+    timeout: 45000
     visibilityPercentage: 100
     centerElement: true
 - waitForAnimationToEnd:

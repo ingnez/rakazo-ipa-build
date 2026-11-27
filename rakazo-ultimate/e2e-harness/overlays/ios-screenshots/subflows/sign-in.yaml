@@ -8,7 +8,7 @@ appId: com.rakazo.app
       - tapOn: "Sign in"
 - extendedWaitUntil:
     visible: "Sign in to Rakazo"
-    timeout: 15000
+    timeout: 60000
 - tapOn: "Email"
 - inputText: ${RAKAZO_ACTIVE_EMAIL}
 - tapOn: "Password"
@@ -63,4 +63,4 @@ appId: com.rakazo.app
 # A new account answers the signup survey before the inbox.
 - extendedWaitUntil:
     visible: "Account|.*How did you hear about us.*"
-    timeout: 40000
+    timeout: 90000

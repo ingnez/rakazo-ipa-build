@@ -18,6 +18,7 @@ OVERLAYS = (
     "flows/settings.yaml",
     "flows/thread.yaml",
     "subflows/sign-in.yaml",
+    "subflows/open-thread.yaml",
 )
 
 MARKERS = {
@@ -27,13 +28,16 @@ MARKERS = {
         'id: "settings-row-vault"',
         'id: "settings-row-integrations"',
         "General|通用",
-        'assertVisible: ".*Screenshot User.*"',
+        'visible: ".*Screenshot User.*"',
+        'id: "settings-row-profile"\n      - waitForAnimationToEnd',
         'id: "settings-models-screen"',
         'id: "settings-models-main"',
         'id: "settings-models-scenarios"',
         'id: "settings-models-error"',
     ),
     "flows/thread.yaml": (
+        "runFlow: ../subflows/open-thread.yaml",
+        'tapOn: "Chat actions"',
         'element: ".*The fixture workspace is ready.*"\n    direction: UP',
         'visible: ".*The fixture workspace is ready.*"',
         "takeScreenshot: 01-thread",
@@ -43,6 +47,10 @@ MARKERS = {
         "Could not save your sign-in",
         ".*Request timed out.*",
         'visible: "Account|.*How did you hear about us.*|Could not save your sign-in"',
+    ),
+    "subflows/open-thread.yaml": (
+        'visible: "Message Researcher"',
+        ".*Could not reach the server.*",
     ),
 }
 

@@ -422,6 +422,8 @@ test -f apps/mobile/components/openminis-bot-avatar.tsx
 bash "$HERE/gates-v37.sh"
 
 npm i -g pnpm@12.18.0
+# Fast e2e path: the tree is patched and pnpm is on PATH; the native app comes from an earlier run.
+if [ -n "${SKIP_NATIVE:-}" ]; then exit 0; fi
 pnpm install --frozen-lockfile
 
 cd apps/mobile

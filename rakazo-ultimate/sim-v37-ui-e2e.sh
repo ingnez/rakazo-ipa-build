@@ -161,6 +161,11 @@ if [ ! -d "$APP" ]; then
 fi
 test -d "$APP" || { echo "::error::Release simulator app missing at $APP"; exit 1; }
 
+# The fork added ~160 UI strings (file card label "{name}: {detail}", usage rows, link previews, ...)
+# without extracting them into the Lingui catalogs. A message missing from the compiled catalog is
+# returned raw, so the screen shows literal "{name}" placeholders (run 46025550372 hierarchy:
+# accessibilityText "{name}: {detail}"). Extract (no --clean) so the bundle compiles them.
+( cd "$SRC" && (pnpm exec lingui extract || npx --no-install lingui extract) 2>&1 | tail -20 ) | tee "$OUT/lingui-extract.log" || true
 rm -rf "${TMPDIR:-/tmp}"/metro-* "${TMPDIR:-/tmp}"/haste-map-* node_modules/.cache .expo || true
 pnpm exec expo export:embed \
   --platform ios \

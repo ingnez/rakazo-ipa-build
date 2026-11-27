@@ -10,6 +10,11 @@ on:
       prepare_only: { type: boolean, default: false }
       bundle_releases: { type: string, default: "" }
       skip_ui_e2e: { type: boolean, default: false }
+      # Skip the device .ipa build; still builds the simulator app, uploads it (rakazo-sim-app) and runs the UI e2e.
+      sim_only: { type: boolean, default: false }
+      # FAST PATH: run id of an earlier run that uploaded rakazo-sim-app. Skips every native build
+      # (clone + patch + that app + Maestro only), so a retry takes minutes instead of about an hour.
+      reuse_sim_app_run: { type: string, default: "" }
 permissions: { contents: read, actions: read }
 concurrency: { group: "rakazo-ios-${{ github.ref }}", cancel-in-progress: false }
 jobs:
@@ -19,15 +24,39 @@ jobs:
     steps:
       - { uses: actions/checkout@v4, with: { ref: "${{ github.ref }}" } }
       - name: Build
+        if: ${{ inputs.reuse_sim_app_run == '' }}
         run: bash rakazo-ultimate/build.sh
-        env: { PREPARE_ONLY: "${{ inputs.prepare_only && '1' || '' }}" }
+        env: { PREPARE_ONLY: "${{ (inputs.prepare_only || inputs.sim_only) && '1' || '' }}" }
+      - name: Prepare tree only (fast path)
+        if: ${{ inputs.reuse_sim_app_run != '' }}
+        run: bash rakazo-ultimate/build.sh
+        env: { SKIP_NATIVE: "1" }
+      - name: Fetch simulator app from an earlier run (fast path)
+        if: ${{ inputs.reuse_sim_app_run != '' }}
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          set -euxo pipefail
+          D="$RUNNER_TEMP/simapp"; rm -rf "$D"; mkdir -p "$D"
+          gh run download "${{ inputs.reuse_sim_app_run }}" -R "$GITHUB_REPOSITORY" -n rakazo-sim-app -D "$D"
+          DEST="rakazo-ultimate/src/apps/mobile/ios/build-sim/Build/Products/Release-iphonesimulator"
+          mkdir -p "$DEST"
+          ditto -x -k "$D/Rakazo-sim.zip" "$DEST"
+          test -f "$DEST/Rakazo.app/Info.plist"
       - { if: always(), uses: actions/upload-artifact@v4, with: { name: rakazo-ultimate-ipa, path: rakazo-ultimate/Rakazo-unsigned.ipa, if-no-files-found: warn, retention-days: 30 } }
       - { if: always(), uses: actions/upload-artifact@v4, with: { name: rakazo-ultimate-log, path: rakazo-ultimate/xcodebuild.log, if-no-files-found: warn, retention-days: 30 } }
       - name: Simulator launch check
+        if: ${{ inputs.reuse_sim_app_run == '' }}
         timeout-minutes: 150
         run: bash rakazo-ultimate/sim-crashcheck.sh
         env: { GH_TOKEN: "${{ github.token }}", BUNDLE_RELEASES: "${{ inputs.bundle_releases }}" }
-      - { if: always(), uses: actions/upload-artifact@v4, with: { name: rakazo-sim-check, path: rakazo-ultimate/sim-check/, if-no-files-found: warn, retention-days: 30 } }
+      - name: Package simulator app (for the fast path)
+        if: ${{ always() && inputs.reuse_sim_app_run == '' }}
+        run: |
+          APP="rakazo-ultimate/src/apps/mobile/ios/build-sim/Build/Products/Release-iphonesimulator/Rakazo.app"
+          mkdir -p rakazo-ultimate/sim-app
+          if [ -d "$APP" ]; then ditto -c -k --keepParent "$APP" rakazo-ultimate/sim-app/Rakazo-sim.zip; fi
+      - { if: "${{ always() && inputs.reuse_sim_app_run == '' }}", uses: actions/upload-artifact@v4, with: { name: rakazo-sim-app, path: rakazo-ultimate/sim-app/, if-no-files-found: warn, retention-days: 14 } }
+      - { if: "${{ always() && inputs.reuse_sim_app_run == '' }}", uses: actions/upload-artifact@v4, with: { name: rakazo-sim-check, path: rakazo-ultimate/sim-check/, if-no-files-found: warn, retention-days: 30 } }
       - name: v37 UI E2E (fake model + Maestro)
         if: ${{ !inputs.skip_ui_e2e && !inputs.prepare_only }}
         timeout-minutes: 180

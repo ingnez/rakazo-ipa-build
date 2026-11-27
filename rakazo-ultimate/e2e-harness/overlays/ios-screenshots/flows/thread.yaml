@@ -39,8 +39,9 @@ name: Thread
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 02b-composer-typed
+# No hideKeyboard here: the chat composer is a custom input and Maestro cannot dismiss its keyboard
+# (run 46025550372 failed on it). The next step navigates to another screen, which drops focus.
 - eraseText: 40
-- hideKeyboard
 - openLink: "rakazo:///group-thread?groupId=${RAKAZO_SCREENSHOT_GROUP_ID}&name=Launch%20team"
 - extendedWaitUntil:
     visible: ".*The fixture launch plan is ready.*"

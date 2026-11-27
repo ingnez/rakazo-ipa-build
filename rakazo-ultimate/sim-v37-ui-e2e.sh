@@ -132,6 +132,8 @@ python3 "$HERE/e2e-harness/patch-models-testids.py" "$SRC"
 python3 "$HERE/e2e-harness/patch-harness-telemetry.py" "$SRC"
 python3 "$HERE/e2e-harness/patch-incoming-calls-backoff.py" "$SRC"
 python3 "$HERE/e2e-harness/patch-seed-connected-app.py" "$SRC"
+python3 "$HERE/e2e-harness/patch-app-testids-and-null-guard.py" "$SRC"
+python3 "$HERE/e2e-harness/patch-harness-hierarchy.py" "$SRC"
 python3 "$HERE/e2e-harness/apply-e2e-flow-overlays.py" "$SRC"
 # Static selector check against the FINAL flows (after overlays); needs PyYAML (run 45994571354 lacked it).
 python3 -c "import yaml" 2>/dev/null || python3 -m pip install --user --quiet pyyaml >/dev/null 2>&1 || true

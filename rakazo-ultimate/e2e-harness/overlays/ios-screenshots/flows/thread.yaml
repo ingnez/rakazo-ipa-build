@@ -19,12 +19,12 @@ name: Thread
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 01-thread
-# The file card renders under READY. It is one accessible Pressable, so Maestro sees its label and
-# not its child Text, and the visible title drops the extension ("launch-notes", "121 B · txt"):
-# never match ".txt" (run 45994571354). Name, size, or the sheet's first line each identify it. Small
+# The file card renders under READY. No text selector ever matched it (runs 45994571354,
+# 46011113796: not ".txt", not the size, not the sheet text), so it is found by its testID. Small
 # swipes, so the card is not scrolled past between two checks (run 45981903828 ended at the live end).
 - scrollUntilVisible:
-    element: ".*(launch-notes|121 B|Confirm the pricing page copy).*"
+    element:
+      id: "file-attachment-card"
     direction: DOWN
     timeout: 45000
     visibilityPercentage: 60
@@ -83,23 +83,6 @@ name: Thread
     timeout: 3000
 - takeScreenshot: 04b-image-stack
 - runFlow: ../subflows/open-thread.yaml
-# A fresh open lands on the live end; the file card sits ABOVE the Launch dashboard card and the
-# picture stack, so it is reached by scrolling UP (DOWN was a no-op there). Centre it so it is not
-# left under the glass header, whose overlap kept it under 100% visible.
-- scrollUntilVisible:
-    element: ".*(launch-notes|121 B|Confirm the pricing page copy).*"
-    direction: UP
-    timeout: 60000
-    visibilityPercentage: 80
-    speed: 20
-    centerElement: true
-- tapOn: ".*(launch-notes|121 B|Confirm the pricing page copy).*"
-- extendedWaitUntil:
-    visible: ".*Collect three customer quotes.*"
-    timeout: 45000
-- waitForAnimationToEnd:
-    timeout: 3000
-- takeScreenshot: 05-attachment-preview
 # The catalog's offline billing has invites on, so the Pro account always sees the gift.
 - runFlow: ../subflows/open-thread.yaml
 # "Invite a friend" lives in the chat header's "Chat actions" menu (the fork's header), and only
@@ -130,3 +113,25 @@ name: Thread
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 06-invite
+- runFlow: ../subflows/open-thread.yaml
+# LAST on purpose (run 46011113796: the card never matched by text, so this step cost the whole
+# thread flow). The card has a testID now; the harness also saves hierarchy-thread-probe.json.
+# A fresh open lands on the live end; the file card sits ABOVE the Launch dashboard card and the
+# picture stack, so it is reached by scrolling UP (DOWN was a no-op there). Centre it so it is not
+# left under the glass header, whose overlap kept it under 100% visible.
+- scrollUntilVisible:
+    element:
+      id: "file-attachment-card"
+    direction: UP
+    timeout: 60000
+    visibilityPercentage: 80
+    speed: 20
+    centerElement: true
+- tapOn:
+    id: "file-attachment-card"
+- extendedWaitUntil:
+    visible: ".*(Collect three customer quotes|launch-notes).*"
+    timeout: 45000
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: 05-attachment-preview

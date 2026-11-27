@@ -289,10 +289,20 @@ xcrun simctl terminate "$UDID" "$BID" 2>/dev/null || true
 # with no record of CPU/memory. Sample every 10s into the artifact folder.
 ( while true; do
     { date -u +%H:%M:%S; sysctl -n vm.loadavg; vm_stat | head -6;
-      top -l 1 -n 8 -o cpu -stats pid,command,cpu,mem 2>/dev/null | tail -9; echo; } >> "$OUT/sys-sample.log" 2>&1
+      ps -Ao pid,pcpu,rss,comm -r 2>/dev/null | head -10; echo; } >> "$OUT/sys-sample.log" 2>&1
     sleep 10
   done ) &
 SAMPLER_PID=$!
+# Runs 46025550372 / 46039935285 showed load average 100-330 on this runner (API event loop stalled
+# 5-9 s, so `me` outran the app's 8 s timeout). Stop Spotlight indexing the build/pnpm trees, and
+# let the machine settle (1-min load under 25, at most 6 min) before Maestro starts.
+sudo -n mdutil -a -i off >/dev/null 2>&1 || true
+for i in $(seq 1 72); do
+  L="$(sysctl -n vm.loadavg | awk '{print int($2)}')"
+  [ "$L" -lt 25 ] && break
+  echo "waiting for load to settle: $L"; sleep 5
+done
+echo "load before Maestro: $(sysctl -n vm.loadavg)" | tee -a "$OUT/sys-sample.log"
 echo "== ios screenshots (settings + thread) =="
 cd "$SRC"
 export IOS_SCREENSHOT_OUT="$OUT/shots"

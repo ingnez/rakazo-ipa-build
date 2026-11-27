@@ -210,7 +210,7 @@ name: Settings
 - takeScreenshot: 14-bot-profile-menu
 - tapOn: "Delete…"
 - extendedWaitUntil:
-    visible: ".*will be deleted too.*"
+    visible: ".*(will be|are) deleted too.*"
     timeout: 45000
 - waitForAnimationToEnd:
     timeout: 3000

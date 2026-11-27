@@ -34,10 +34,12 @@ MARKERS = {
         'id: "settings-models-main"',
         'id: "settings-models-scenarios"',
         'id: "settings-models-error"',
+        ".*(will be|are) deleted too.*",
     ),
     "flows/thread.yaml": (
         "runFlow: ../subflows/open-thread.yaml",
         'tapOn: "Chat actions"',
+        "direction: UP\n    timeout: 60000\n    visibilityPercentage: 80\n    speed: 20\n    centerElement: true",
         'element: ".*The fixture workspace is ready.*"\n    direction: UP',
         'visible: ".*The fixture workspace is ready.*"',
         "takeScreenshot: 01-thread",

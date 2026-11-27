@@ -131,6 +131,7 @@ python3 "$HERE/e2e-harness/patch-harness-load.py" "$SRC"
 python3 "$HERE/e2e-harness/patch-models-testids.py" "$SRC"
 python3 "$HERE/e2e-harness/patch-harness-telemetry.py" "$SRC"
 python3 "$HERE/e2e-harness/patch-incoming-calls-backoff.py" "$SRC"
+python3 "$HERE/e2e-harness/patch-seed-connected-app.py" "$SRC"
 python3 "$HERE/e2e-harness/verify-flow-assertions.py" "$SRC" > "$OUT/flow-assertions-static.txt" 2>&1 || true
 python3 "$HERE/e2e-harness/apply-e2e-flow-overlays.py" "$SRC"
 python3 "$HERE/e2e-harness/patch-memory-store.py" "$SRC/apps/mobile/index.ts"

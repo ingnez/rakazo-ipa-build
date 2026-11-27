@@ -425,6 +425,7 @@ npm i -g pnpm@12.18.0
 # Fast e2e path: the tree is patched and pnpm is on PATH; the native app comes from an earlier run.
 if [ -n "${SKIP_NATIVE:-}" ]; then exit 0; fi
 pnpm install --frozen-lockfile
+bash "$HERE/lingui-extract.sh" "$PWD"
 
 cd apps/mobile
 # The config is dynamic, so a patch-level drift is reported rather than repaired.

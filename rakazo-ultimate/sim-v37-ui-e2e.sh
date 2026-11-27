@@ -132,8 +132,10 @@ python3 "$HERE/e2e-harness/patch-models-testids.py" "$SRC"
 python3 "$HERE/e2e-harness/patch-harness-telemetry.py" "$SRC"
 python3 "$HERE/e2e-harness/patch-incoming-calls-backoff.py" "$SRC"
 python3 "$HERE/e2e-harness/patch-seed-connected-app.py" "$SRC"
-python3 "$HERE/e2e-harness/verify-flow-assertions.py" "$SRC" > "$OUT/flow-assertions-static.txt" 2>&1 || true
 python3 "$HERE/e2e-harness/apply-e2e-flow-overlays.py" "$SRC"
+# Static selector check against the FINAL flows (after overlays); needs PyYAML (run 45994571354 lacked it).
+python3 -c "import yaml" 2>/dev/null || python3 -m pip install --user --quiet pyyaml >/dev/null 2>&1 || true
+python3 "$HERE/e2e-harness/verify-flow-assertions.py" "$SRC" > "$OUT/flow-assertions-static.txt" 2>&1 || true
 python3 "$HERE/e2e-harness/patch-memory-store.py" "$SRC/apps/mobile/index.ts"
 python3 "$HERE/e2e-harness/patch-seed-run-as-system.py" \
   "$SRC/packages/testkit/src/cli/ios-screenshot-seed.ts"
@@ -293,6 +295,10 @@ pnpm ios:screenshots -- --section settings --section thread > "$OUT/screenshots.
 RC=$?
 set -e
 tail -120 "$OUT/screenshots.log"
+# Final UI hierarchy (the screen the failing flow stopped on), the file the Maestro error tells you to read.
+( maestro --udid "$UDID" hierarchy > "$OUT/hierarchy-after.json" 2>"$OUT/hierarchy-after.err" ) & HP=$!
+( sleep 60; kill "$HP" 2>/dev/null ) >/dev/null 2>&1 &
+wait "$HP" 2>/dev/null || true
 
 mkdir -p "$OUT/screens"
 # Always grab a live frame + maestro debug shots for diagnosis

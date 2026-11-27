@@ -137,8 +137,10 @@ name: Settings
 - extendedWaitUntil:
     visible: ".*Connected.*"
     timeout: 45000
-- assertVisible: ".*Fixture Gmail.*"
-- assertVisible: ".*已连接|Connected.*"
+# ConnectAppRow is one accessible Pressable labelled "<title> <pill>" ("Gmail Connected"); its
+# subtitle ("Fixture Gmail", the account name) is a hidden child, so only the label is matchable
+# (run 45994571354: the screenshot showed Gmail + Connected + Fixture Gmail, yet the assert failed).
+- assertVisible: ".*Gmail (Connected|已连接).*"
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 07-integrations
@@ -152,7 +154,9 @@ name: Settings
 - takeScreenshot: 08-integrations-advanced
 - openLink: "rakazo:///voice"
 - extendedWaitUntil:
-    visible: ".*This device.*"
+    # The Provider row is one accessible MenuPicker: label "Provider", value "This device". Maestro
+    # may expose either, so accept both (the screenshot that follows is taken after 3s of settling).
+    visible: ".*(This device|Provider).*"
     timeout: 45000
 - waitForAnimationToEnd:
     timeout: 3000

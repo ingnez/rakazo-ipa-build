@@ -59,6 +59,12 @@ for f in (src / "apps/mobile").rglob("*.tsx"):
         continue
     for m in re.finditer(r'testID=(?:"([^"]+)"|\{`([^`]+)`\}|\{"([^"]+)"\})', f.read_text(errors="ignore")):
         test_ids.add(next(g for g in m.groups() if g))
+# Settings rows get `settings-row-<href without the leading slash, slashes as dashes>` from
+# account.tsx's settingsLink(); derive the ids from the hrefs listed there.
+_acc = src / "apps/mobile/app/(settings)/account.tsx"
+if _acc.exists():
+    for m in re.finditer(r'href: "(/[A-Za-z0-9/_-]+)"', _acc.read_text()):
+        test_ids.add("settings-row-" + m.group(1).lstrip("/").replace("/", "-"))
 corpus_l = [c for c in corpus if c]
 
 def check_text(pattern: str) -> str:

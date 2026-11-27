@@ -19,10 +19,12 @@ name: Thread
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 01-thread
-# The file card (accessibility label "launch-notes.txt: 121 B · txt") renders under READY. Small
+# The file card renders under READY. It is one accessible Pressable, so Maestro sees its label and
+# not its child Text, and the visible title drops the extension ("launch-notes", "121 B · txt"):
+# never match ".txt" (run 45994571354). Name, size, or the sheet's first line each identify it. Small
 # swipes, so the card is not scrolled past between two checks (run 45981903828 ended at the live end).
 - scrollUntilVisible:
-    element: ".*launch-notes.txt.*"
+    element: ".*(launch-notes|121 B|Confirm the pricing page copy).*"
     direction: DOWN
     timeout: 45000
     visibilityPercentage: 60
@@ -85,13 +87,13 @@ name: Thread
 # picture stack, so it is reached by scrolling UP (DOWN was a no-op there). Centre it so it is not
 # left under the glass header, whose overlap kept it under 100% visible.
 - scrollUntilVisible:
-    element: ".*launch-notes.txt.*"
+    element: ".*(launch-notes|121 B|Confirm the pricing page copy).*"
     direction: UP
     timeout: 60000
     visibilityPercentage: 80
     speed: 20
     centerElement: true
-- tapOn: ".*launch-notes.txt.*"
+- tapOn: ".*(launch-notes|121 B|Confirm the pricing page copy).*"
 - extendedWaitUntil:
     visible: ".*Collect three customer quotes.*"
     timeout: 45000

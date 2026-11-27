@@ -479,10 +479,16 @@ grep -q 'EXUpdates (' Podfile.lock ||
   { echo "::error::expo-updates was not autolinked, so the update channel is dead"; exit 1; }
 # A simulator-only check needs the prepared project, not the device build.
 if [ -n "${PREPARE_ONLY:-}" ]; then exit 0; fi
-xcodebuild -workspace Rakazo.xcworkspace -scheme Rakazo -configuration Release \
-  -destination 'generic/platform=iOS' -derivedDataPath build \
-  CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build \
-  | tee "$HERE/xcodebuild.log"
+# Expo's module scan has a hard 5 s timeout a loaded runner can miss ("Build again to retry the
+# scan"); the second build is incremental and repeats only that phase.
+for attempt in 1 2 3; do
+  xcodebuild -workspace Rakazo.xcworkspace -scheme Rakazo -configuration Release \
+    -destination 'generic/platform=iOS' -derivedDataPath build \
+    CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build \
+    | tee "$HERE/xcodebuild.log" && break
+  [ "$attempt" = 3 ] && exit 1
+  echo "xcodebuild attempt $attempt failed; retrying"
+done
 
 rm -rf Payload && mkdir -p Payload
 cp -R build/Build/Products/Release-iphoneos/Rakazo.app Payload/

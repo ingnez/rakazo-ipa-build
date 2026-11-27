@@ -28207,15 +28207,15 @@ index 408ddab44..2d5a4969c 100644
                />
              </SettingsGroup>
 +            <SettingsGroup label="小组长">
-+              {bot.sectionId ? (
++              {bot?.sectionId ? (
 +                <>
 +                  <SettingsSwitch
 +                    label="设为小组长"
-+                    value={leadSectionId === bot.sectionId}
++                    value={leadSectionId === bot?.sectionId}
 +                    onChange={(value) => {
 +                      if (!botId) return;
 +                      setError(null);
-+                      leadSave.update(value ? bot.sectionId : null);
++                      leadSave.update(value ? (bot?.sectionId ?? null) : null);
 +                    }}
 +                  />
 +                  <Text style={[styles.hint, { color: tokens.mutedForeground }]}>

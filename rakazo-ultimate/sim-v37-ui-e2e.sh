@@ -110,6 +110,7 @@ xcrun simctl spawn "$UDID" defaults write -g AppleTextDirection 0 2>/dev/null ||
 
 echo "== release app + embed local API bundle =="
 echo "== patch E2E memory SecureStore + seed runAsSystem + sign-in guard =="
+python3 "$HERE/e2e-harness/patch-thread-mime-and-settings.py" "$SRC"
 python3 "$HERE/e2e-harness/patch-memory-store.py" "$SRC/apps/mobile/index.ts"
 python3 "$HERE/e2e-harness/patch-seed-run-as-system.py" \
   "$SRC/packages/testkit/src/cli/ios-screenshot-seed.ts"

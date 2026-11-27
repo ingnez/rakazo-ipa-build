@@ -112,14 +112,16 @@ xcrun simctl spawn "$UDID" defaults write -g AppleLocale -string en_US 2>/dev/nu
 xcrun simctl spawn "$UDID" defaults write -g AppleTextDirection 0 2>/dev/null || true
 
 echo "== release app + embed local API bundle =="
-echo "== patch E2E memory SecureStore + seed runAsSystem + sign-in guard =="
+echo "== patch E2E code + overlay Maestro flows (idempotent) =="
+# Code patches first (no Maestro YAML). Flow YAML comes only from overlays —
+# never stack needle rewrites of the same settings/thread/sign-in block.
 python3 "$HERE/e2e-harness/patch-thread-mime-and-settings.py" "$SRC"
 python3 "$HERE/e2e-harness/patch-rpc-log-a11y-scroll.py" "$SRC"
+python3 "$HERE/e2e-harness/apply-e2e-flow-overlays.py" "$SRC"
 python3 "$HERE/e2e-harness/patch-memory-store.py" "$SRC/apps/mobile/index.ts"
 python3 "$HERE/e2e-harness/patch-seed-run-as-system.py" \
   "$SRC/packages/testkit/src/cli/ios-screenshot-seed.ts"
-python3 "$HERE/e2e-harness/patch-sign-in-guard.py" \
-  "$SRC/apps/mobile/e2e/ios-screenshots/subflows/sign-in.yaml"
+# Additive Open-in-Bot taps after overlays (idempotent; does not rewrite hub waits).
 python3 "$HERE/e2e-harness/patch-open-in-bot.py" \
   "$SRC/apps/mobile/e2e/ios-screenshots"
 python3 "$HERE/e2e-harness/patch-expo-secure-store.py" "$SRC/apps/mobile"

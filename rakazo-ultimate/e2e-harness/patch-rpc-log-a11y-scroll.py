@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
-"""Harness round: log real /rpc path + 500 body; InsetRow a11y; settings testID;
-scroll thread READY assert; keep asserts (do not delete)."""
+"""Harness: log real /rpc path + 500 body; InsetRow a11y; account testIDs.
+
+Maestro flow YAML is owned by apply-e2e-flow-overlays.py — not this script.
+"""
 import pathlib
 import sys
 
@@ -106,7 +108,10 @@ else:
 # ---------------------------------------------------------------------------
 inset = src / "apps/mobile/components/sand/inset-group.tsx"
 it = inset.read_text()
-if "a11y-leading" in it or "InsetRow leading a11y-hidden" in it:
+if (
+    "Decorative glyphs must not join the row" in it
+    or "const spoken =" in it
+):
     print("InsetRow leading a11y already patched")
 else:
     old_lead = "      {leading}\n      <View style={styles.titleColumn}>"
@@ -263,114 +268,6 @@ else:
     account.write_text(ac)
     print("patched account.tsx testIDs")
 
-# ---------------------------------------------------------------------------
-# 4) settings.yaml — regex + id; keep waiting for hub content (do not drop assert)
-# ---------------------------------------------------------------------------
-settings = src / "apps/mobile/e2e/ios-screenshots/flows/settings.yaml"
-st = settings.read_text()
-old_wait = '''- openLink: "rakazo:///account"
-# Account hub is long: General/通用 sits under 设置, below Bot + 权限. Locale may be zh.
-- extendedWaitUntil:
-    visible: "Screenshot User|连接应用|Vault|Account"
-    timeout: 15000
-'''
-new_wait = '''- openLink: "rakazo:///account"
-# Account hub: InsetRow a11y label is "title, detail" (and icons used to leak SF names).
-# Prefer testID; regex keeps a text fallback. Do not drop this readiness check.
-- extendedWaitUntil:
-    visible:
-      id: "settings-account-hub"
-    timeout: 20000
-- extendedWaitUntil:
-    visible:
-      id: "settings-row-profile"
-    timeout: 15000
-- assertVisible:
-    id: "settings-row-vault"
-- assertVisible:
-    id: "settings-row-integrations"
-- assertVisible: ".*Screenshot User.*"
-'''
-if 'id: "settings-account-hub"' in st:
-    print("settings.yaml hub id wait already present")
-elif old_wait in st:
-    settings.write_text(st.replace(old_wait, new_wait, 1))
-    print("patched settings.yaml selectors")
-else:
-    # Maybe prior patch form without comment
-    old2 = '''- openLink: "rakazo:///account"
-- extendedWaitUntil:
-    visible: "Screenshot User|连接应用|Vault|Account"
-    timeout: 15000
-'''
-    if old2 in st:
-        settings.write_text(st.replace(old2, new_wait, 1))
-        print("patched settings.yaml selectors (alt)")
-    else:
-        raise SystemExit("settings.yaml hub wait block not found")
-
-# ---------------------------------------------------------------------------
-# 5) thread.yaml — scroll READY into view, then assert (keep assert)
-# ---------------------------------------------------------------------------
-thread = src / "apps/mobile/e2e/ios-screenshots/flows/thread.yaml"
-tt = thread.read_text()
-old_ready = '''- openLink: "rakazo:///thread?botId=${RAKAZO_SCREENSHOT_BOT_ID}&name=Researcher"
-- extendedWaitUntil:
-    visible: ".*The fixture workspace is ready.*"
-    timeout: 20000
-- waitForAnimationToEnd:
-    timeout: 3000
-- takeScreenshot: 01-thread
-'''
-new_ready = '''- openLink: "rakazo:///thread?botId=${RAKAZO_SCREENSHOT_BOT_ID}&name=Researcher"
-# Newer fixture messages (Launch dashboard / picture stack) pin the live end; READY
-# sits above the fold. Scroll it on-screen, then assert — do not drop the check.
-- scrollUntilVisible:
-    element: ".*The fixture workspace is ready.*"
-    direction: UP
-    timeout: 25000
-    visibilityPercentage: 40
-- extendedWaitUntil:
-    visible: ".*The fixture workspace is ready.*"
-    timeout: 10000
-- waitForAnimationToEnd:
-    timeout: 3000
-- takeScreenshot: 01-thread
-'''
-# Only treat as done when READY itself is scrolled (not a later scrollUntilVisible).
-ready_scroll_marker = (
-    'element: ".*The fixture workspace is ready.*"\n'
-    "    direction: UP"
-)
-if ready_scroll_marker in tt:
-    print("thread.yaml READY scroll already present")
-elif old_ready in tt:
-    tt = tt.replace(old_ready, new_ready, 1)
-    # Second READY wait (before long-press) — also scroll
-    old_ready2 = '''- openLink: "rakazo:///thread?botId=${RAKAZO_SCREENSHOT_BOT_ID}&name=Researcher"
-- extendedWaitUntil:
-    visible: ".*The fixture workspace is ready.*"
-    timeout: 20000
-- longPressOn:
-    text: ".*The fixture workspace is ready.*"
-'''
-    new_ready2 = '''- openLink: "rakazo:///thread?botId=${RAKAZO_SCREENSHOT_BOT_ID}&name=Researcher"
-- scrollUntilVisible:
-    element: ".*The fixture workspace is ready.*"
-    direction: UP
-    timeout: 25000
-    visibilityPercentage: 40
-- extendedWaitUntil:
-    visible: ".*The fixture workspace is ready.*"
-    timeout: 10000
-- longPressOn:
-    text: ".*The fixture workspace is ready.*"
-'''
-    if old_ready2 in tt:
-        tt = tt.replace(old_ready2, new_ready2, 1)
-    thread.write_text(tt)
-    print("patched thread.yaml READY scroll")
-else:
-    raise SystemExit("thread.yaml first READY block not found")
-
-print("patch-rpc-log-a11y-scroll done")
+# Maestro flow YAML (settings/thread/sign-in) is owned by
+# apply-e2e-flow-overlays.py — never needle-rewrite those files from this script.
+print("patch-rpc-log-a11y-scroll done (code only; flows via overlays)")

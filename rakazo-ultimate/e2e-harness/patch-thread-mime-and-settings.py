@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Install mimeType sanitization + fixture/settings fixes into the prepared src tree."""
+"""Install mimeType sanitization + fixture seed fix into the prepared src tree.
+
+Maestro flow YAML is owned by apply-e2e-flow-overlays.py overlays — not this script.
+"""
 import pathlib
 import shutil
 import sys
@@ -56,33 +59,5 @@ elif old in st:
 else:
     raise SystemExit("seed image stack map not found")
 
-# 4) settings General scroll (en|zh)
-settings = src / "apps/mobile/e2e/ios-screenshots/flows/settings.yaml"
-yt = settings.read_text()
-if "General|通用" in yt:
-    print("settings already has General|通用")
-else:
-    old = '''- openLink: "rakazo:///account"
-- extendedWaitUntil:
-    visible: "General"
-    timeout: 15000
-'''
-    new = '''- openLink: "rakazo:///account"
-# Account hub is long: General/通用 sits under 设置, below Bot + 权限.
-- extendedWaitUntil:
-    visible: "Screenshot User|连接应用|Vault|Account"
-    timeout: 15000
-- scrollUntilVisible:
-    element: "General|通用"
-    direction: DOWN
-    timeout: 15000
-    visibilityPercentage: 40
-- extendedWaitUntil:
-    visible: "General|通用"
-    timeout: 10000
-'''
-    if old not in yt:
-        raise SystemExit("settings General block not found")
-    yt = yt.replace(old, new, 1).replace('- tapOn: "General"\n', '- tapOn: "General|通用"\n', 1)
-    settings.write_text(yt)
-    print("settings General scroll patched")
+# Settings / thread Maestro YAML lives in e2e-harness/overlays/ and is applied by
+# apply-e2e-flow-overlays.py — do not needle-rewrite those flows here.

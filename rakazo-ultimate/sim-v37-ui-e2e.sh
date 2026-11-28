@@ -320,7 +320,11 @@ wait "$HP" 2>/dev/null || true
 mkdir -p "$OUT/screens"
 # Always grab a live frame + maestro debug shots for diagnosis
 xcrun simctl io "$UDID" screenshot "$OUT/screens/post-run.png" 2>/dev/null || true
-find "$OUT/shots" "$OUT/shots-compose" -name '*.png' -print0 2>/dev/null | while IFS= read -r -d '' f; do
+# Skip a missing shots-compose: with pipefail, find exits 1 if a path does not exist and
+# aborts the script after a green Maestro run (46131920777: all 3 sections passed, no RESULTS.txt).
+FIND_SHOTS=("$OUT/shots")
+[ -d "$OUT/shots-compose" ] && FIND_SHOTS+=("$OUT/shots-compose")
+find "${FIND_SHOTS[@]}" -name '*.png' -print0 2>/dev/null | while IFS= read -r -d '' f; do
   base="$(basename "$f")"
   if [[ "$base" =~ ^[0-9]{2} ]]; then
     cp "$f" "$OUT/screens/$base"
@@ -333,11 +337,11 @@ ls -la "$OUT/screens" | tee "$OUT/screens-list.txt" || true
 need=(01-thread 07-integrations 04-message-actions 04b-image-stack 05-new-bot-en 11-new-bot-zh 12-new-bot-picked-zh 14-after-create-zh 15-usage-zh)
 MISSING=0
 for n in "${need[@]}"; do
-  if ! find "$OUT/shots" "$OUT/shots-compose" -name "*${n}*" 2>/dev/null | grep -q .; then
+  if ! find "${FIND_SHOTS[@]}" -name "*${n}*" 2>/dev/null | grep -q .; then
     echo "::error::missing screenshot $n"
     MISSING=1
   else
-    echo "found screenshot $n: $(find "$OUT/shots" "$OUT/shots-compose" -name "*${n}*" 2>/dev/null | head -1)"
+    echo "found screenshot $n: $(find "${FIND_SHOTS[@]}" -name "*${n}*" 2>/dev/null | head -1)"
   fi
 done
 if [ "$RC" -ne 0 ] || [ "$MISSING" -ne 0 ]; then

@@ -1,11 +1,19 @@
 #!/usr/bin/env python3
-"""Replace expo-secure-store with a file-backed store for E2E embeds.
+"""Replace expo-secure-store with a file-backed store for E2E embeds (CI only).
 
 In-memory Maps die when openLink relaunches JS. Keychain rejects unsigned
 Release sims. expo-file-system Documents survive relaunch and need no Keychain.
 """
 import pathlib
 import sys
+import os
+
+if os.environ.get("GITHUB_ACTIONS") != "true" and os.environ.get("E2E_HARNESS_ALLOW_LOCAL") != "1":
+    raise SystemExit(
+        "refusing to patch expo-secure-store outside GitHub Actions: it rewrites the dependency in "
+        "place, and an OTA exported from this tree would ship the fake store (users signed out on "
+        "every app kill). Set E2E_HARNESS_ALLOW_LOCAL=1 only in a throwaway tree."
+    )
 
 root = pathlib.Path(sys.argv[1]).resolve()
 found = []
@@ -32,40 +40,73 @@ for p in found:
 if not targets:
     raise SystemExit(f"expo-secure-store build/SecureStore.js not found under {root}")
 
-body = r'''// E2E harness: file-backed SecureStore (survives openLink relaunch; no Keychain).
+body = r'''// E2E harness: file-backed SecureStore (CI simulator only; never in an IPA or OTA).
+// Unsigned Release sims cannot use the Keychain, so the session lives in Documents.
+//
+// It persists for real across app kills, so flows/persist.yaml can prove a session survives a
+// kill. The first sign-out (the session token deleted while one is stored) flips the store to
+// memory-only for the rest of the run (tombstone file), which is what the screenshot flows were
+// written against: each of their relaunches starts signed out.
+// The import must be expo-file-system/legacy: on expo-file-system 58 the main entry's legacy
+// functions throw, which silently made the old version of this store memory-only.
 import {
+  deleteAsync,
   documentDirectory,
   getInfoAsync,
   readAsStringAsync,
   writeAsStringAsync,
-} from "expo-file-system";
+} from "expo-file-system/legacy";
 
-const PATH = `${documentDirectory || ""}e2e-secure-store.json`;
+const DIR = documentDirectory || "";
+const PATH = `${DIR}e2e-secure-store.json`;
+const TOMBSTONE = `${DIR}e2e-secure-store.ephemeral`;
+const SESSION_KEY = "rakazo.session_token";
 let cache = null;
+let ephemeral = false;
+let loading = null;
 let writeChain = Promise.resolve();
 
 async function load() {
   if (cache) return cache;
-  try {
-    const info = await getInfoAsync(PATH);
-    if (info.exists) {
-      cache = JSON.parse(await readAsStringAsync(PATH)) || {};
-    } else {
-      cache = {};
+  if (!loading) loading = (async () => {
+    let data = {};
+    try {
+      if ((await getInfoAsync(TOMBSTONE)).exists) {
+        ephemeral = true;
+      } else if ((await getInfoAsync(PATH)).exists) {
+        data = JSON.parse(await readAsStringAsync(PATH)) || {};
+      }
+    } catch (error) {
+      console.warn("[e2e-secure-store] load failed", String(error));
     }
-  } catch {
-    cache = {};
-  }
-  return cache;
+    cache = cache || data;
+    return cache;
+  })();
+  return loading;
 }
 
 function persist() {
+  if (ephemeral) return writeChain;
   const snapshot = JSON.stringify(cache || {});
   writeChain = writeChain.then(async () => {
+    if (ephemeral) return;
     try {
       await writeAsStringAsync(PATH, snapshot);
-    } catch {
-      // Keep the in-memory cache if the write fails.
+    } catch (error) {
+      console.warn("[e2e-secure-store] write failed", String(error));
+    }
+  });
+  return writeChain;
+}
+
+async function goEphemeral() {
+  ephemeral = true;
+  writeChain = writeChain.then(async () => {
+    try {
+      await writeAsStringAsync(TOMBSTONE, "1");
+      await deleteAsync(PATH, { idempotent: true });
+    } catch (error) {
+      console.warn("[e2e-secure-store] tombstone failed", String(error));
     }
   });
   return writeChain;
@@ -83,9 +124,11 @@ export async function setItemAsync(key, value, _options = {}) {
 }
 export async function deleteItemAsync(key, _options = {}) {
   const data = await load();
+  const signingOut = key === SESSION_KEY && Boolean(data[key]) && !ephemeral;
   delete data[key];
   cache = data;
-  await persist();
+  if (signingOut) await goEphemeral();
+  else await persist();
 }
 export async function isAvailableAsync() {
   return true;

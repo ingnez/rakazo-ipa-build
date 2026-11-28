@@ -1,0 +1,68 @@
+appId: com.rakazo.app
+name: Session survives app kill
+---
+# 主人 2026-11-28: every kill from the app switcher signed him out (the OTA shipped this harness's
+# fake store, memory-only). A signed-in person who kills the app and opens it again must land on
+# the inbox, never the welcome tour or sign-in. Fixture account only, never a real one.
+- runFlow:
+    file: ../subflows/sign-in.yaml
+    env:
+      RAKAZO_ACTIVE_EMAIL: ${RAKAZO_SCREENSHOT_EMAIL}
+- extendedWaitUntil:
+    visible: "Personal|Screenshot User|Account"
+    timeout: 120000
+- takeScreenshot: P1-signed-in
+# Kill 1: stop the process, launch again without clearing app data.
+- stopApp
+- launchApp:
+    stopApp: false
+- extendedWaitUntil:
+    visible: "Personal|Screenshot User|Account|开始使用|Get started|Sign up for Rakazo|Sign in to Rakazo"
+    timeout: 150000
+# A rejected session would redirect a few seconds after the inbox drew; watch for 10s.
+- extendedWaitUntil:
+    notVisible: "Personal|Screenshot User|Account"
+    timeout: 10000
+    optional: true
+- takeScreenshot: P2-after-kill-1
+- assertNotVisible: "开始使用|Get started|Sign up for Rakazo|Sign in to Rakazo"
+- assertVisible: "Personal|Screenshot User|Account"
+# Kill 2: the relaunched session must itself survive the next kill.
+- stopApp
+- launchApp:
+    stopApp: false
+- extendedWaitUntil:
+    visible: "Personal|Screenshot User|Account|开始使用|Get started|Sign up for Rakazo|Sign in to Rakazo"
+    timeout: 150000
+- extendedWaitUntil:
+    notVisible: "Personal|Screenshot User|Account"
+    timeout: 10000
+    optional: true
+- takeScreenshot: P3-after-kill-2
+- assertNotVisible: "开始使用|Get started|Sign up for Rakazo|Sign in to Rakazo"
+- assertVisible: "Personal|Screenshot User|Account"
+# Sign out, so the sections after this one start signed out on every relaunch as they were
+# written (the harness store turns memory-only after this first sign-out).
+- retry:
+    maxRetries: 2
+    commands:
+      - openLink: "rakazo:///account"
+      - tapOn:
+          text: "Open"
+          optional: true
+      - extendedWaitUntil:
+          visible:
+            id: "settings-account-hub"
+          timeout: 60000
+      - scrollUntilVisible:
+          element: "Sign out"
+          direction: DOWN
+          timeout: 20000
+      - tapOn: "Sign out"
+      - tapOn:
+          text: "Sign out anyway"
+          optional: true
+      - extendedWaitUntil:
+          visible: "开始使用|Get started|Sign up for Rakazo|Sign in to Rakazo"
+          timeout: 60000
+- takeScreenshot: P4-signed-out

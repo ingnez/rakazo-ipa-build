@@ -18,6 +18,7 @@ OVERLAYS = (
     "flows/settings.yaml",
     "flows/thread.yaml",
     "flows/compose.yaml",
+    "flows/persist.yaml",
     "subflows/sign-in.yaml",
     "subflows/open-thread.yaml",
 )
@@ -51,6 +52,13 @@ MARKERS = {
         "为 Bot 取个名字",
         "takeScreenshot: 11-new-bot-zh",
         ".*(Colour|Emblem).*",
+    ),
+    "flows/persist.yaml": (
+        "- stopApp\n- launchApp:\n    stopApp: false",
+        "takeScreenshot: P2-after-kill-1",
+        "takeScreenshot: P3-after-kill-2",
+        'assertNotVisible: "开始使用|Get started|Sign up for Rakazo|Sign in to Rakazo"',
+        'tapOn: "Sign out"',
     ),
     "subflows/sign-in.yaml": (
         "Could not save your sign-in",
@@ -103,6 +111,20 @@ def main() -> None:
         if missing:
             raise SystemExit(f"{rel}: missing final markers: {missing}")
         print(f"asserted markers in {rel}")
+
+    # The persist section runs first (sections run in catalog order): it needs a store that still
+    # persists, and its closing sign-out makes the store memory-only for the sections after it.
+    import json
+    cat_path = DEST / "catalog.json"
+    catalog = [e for e in json.loads(cat_path.read_text()) if e.get("id") != "persist"]
+    catalog.insert(0, {
+        "id": "persist",
+        "title": "Session survives app kill",
+        "flow": "flows/persist.yaml",
+        "screens": ["index", "sign-in"],
+    })
+    cat_path.write_text(json.dumps(catalog, indent=2) + "\n")
+    print("catalog: persist section first")
 
     print("apply-e2e-flow-overlays: ok")
 

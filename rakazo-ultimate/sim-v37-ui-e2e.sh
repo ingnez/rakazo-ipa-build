@@ -3,7 +3,7 @@
 # Requires: build.sh prepared `src/` and (preferably) sim-crashcheck's Release sim app.
 #
 # Harness: Release + expo export:embed (EXPO_PUBLIC_API_URL → local API), OTA disabled,
-# Metro skipped, EXPO_PUBLIC_E2E_MEMORY_STORE=1 (file-backed SecureStore; no Keychain).
+# Metro skipped, file-backed SecureStore (no Keychain; persists until the first sign-out, CI only).
 # Pre-approves rakazo:// + taps Open for the iOS Open-in-Bot deep-link dialog.
 # Fixture users are local ios-screenshots@example.test only — never 主人.
 set -euo pipefail
@@ -303,12 +303,13 @@ for i in $(seq 1 72); do
   echo "waiting for load to settle: $L"; sleep 5
 done
 echo "load before Maestro: $(sysctl -n vm.loadavg)" | tee -a "$OUT/sys-sample.log"
-echo "== ios screenshots (settings + thread + compose) =="
+echo "== ios screenshots (persist + settings + thread + compose) =="
 cd "$SRC"
 export IOS_SCREENSHOT_OUT="$OUT/shots"
 export EXPO_PUBLIC_API_URL="$API_URL"
 set +e
-pnpm ios:screenshots -- --section settings --section thread --section compose > "$OUT/screenshots.log" 2>&1
+# persist runs first (catalog order): sign in, kill twice, still on the inbox (主人 2026-11-28).
+pnpm ios:screenshots -- --section persist --section settings --section thread --section compose > "$OUT/screenshots.log" 2>&1
 RC=$?
 set -e
 tail -120 "$OUT/screenshots.log"
@@ -334,7 +335,7 @@ find "${FIND_SHOTS[@]}" -name '*.png' -print0 2>/dev/null | while IFS= read -r -
 done
 ls -la "$OUT/screens" | tee "$OUT/screens-list.txt" || true
 
-need=(01-thread 07-integrations 04-message-actions 04b-image-stack 05-new-bot-en 11-new-bot-zh 12-new-bot-picked-zh 14-after-create-zh 15-usage-zh)
+need=(P2-after-kill-1 P3-after-kill-2 01-thread 07-integrations 04-message-actions 04b-image-stack 05-new-bot-en 11-new-bot-zh 12-new-bot-picked-zh 14-after-create-zh 15-usage-zh)
 MISSING=0
 for n in "${need[@]}"; do
   if ! find "${FIND_SHOTS[@]}" -name "*${n}*" 2>/dev/null | grep -q .; then

@@ -11,7 +11,7 @@ index d56bd88..8b7070d 100644
                    name={name}
                    identity={bot.id}
 diff --git a/apps/mobile/app/new-bot.tsx b/apps/mobile/app/new-bot.tsx
-index 83c2212..139be32 100644
+index 83c2212..8c56718 100644
 --- a/apps/mobile/app/new-bot.tsx
 +++ b/apps/mobile/app/new-bot.tsx
 @@ -1,10 +1,13 @@
@@ -29,7 +29,7 @@ index 83c2212..139be32 100644
  } from "@rakazo/core";
  import { Stack, useLocalSearchParams, useRouter } from "expo-router";
  import { useEffect, useRef, useState } from "react";
-@@ -26,13 +29,19 @@ import { NativeSymbol } from "../components/native-symbol";
+@@ -26,13 +29,20 @@ import { NativeSymbol } from "../components/native-symbol";
  import { rpc } from "../lib/api";
  import { askForModelBeforeFirstBot, createInboxBot } from "../lib/create-inbox-bot";
  import { openChatFromInbox } from "../lib/inbox-changes";
@@ -41,18 +41,19 @@ index 83c2212..139be32 100644
 -/** The body a new bot arrives in: a vibrant one, since a white one disappears on a light page. */
 -const DEFAULT_NEW_BOT_COLOR = BOT_COLOR_LIST.find((color) => color.id === "yellow")!.hex;
 +/**
-+ * The look a new bot arrives in: a random shape in a random colour, never the black one, so the
++ * The look a new bot arrives in: a random shape in a random colour, never black or grey, so the
 + * preview and the picker agree from the first frame and the picker has something chosen.
 + */
 +function randomNewBotLook(): string {
 +  const shape = Math.floor(Math.random() * OPENMINIS_SHAPE_COUNT);
-+  const color = 1 + Math.floor(Math.random() * (OPENMINIS_COLOR_COUNT - 1));
++  // Not black (0) and not grey (11): a new bot should arrive in a colour.
++  const color = 1 + Math.floor(Math.random() * (OPENMINIS_COLOR_COUNT - 2));
 +  return openminisLookValue(shape, color);
 +}
  /**
   * The bot is the screen's subject, drawn at the reference app's 168 points while the keyboard is
   * down. When the keyboard comes up it does not slide away or get covered: it shrinks to 64, the
-@@ -69,7 +78,7 @@ export default function NewBot() {
+@@ -69,7 +79,7 @@ export default function NewBot() {
    // copy can predate a change in Account settings, so the current one replaces it.
    const [avatarSet, setAvatarSet] = useState(() => resolveBotAvatarSet(params.avatarSet));
    const [name, setName] = useState("");
@@ -61,7 +62,7 @@ index 83c2212..139be32 100644
    const [pending, setPending] = useState(false);
    const [error, setError] = useState<string | null>(null);
    const creating = useRef(false);
-@@ -85,11 +94,7 @@ export default function NewBot() {
+@@ -85,11 +95,7 @@ export default function NewBot() {
      void rpc("me")
        .then((me) => {
          if (gone.current) return;
@@ -74,7 +75,7 @@ index 83c2212..139be32 100644
        })
        .catch(() => undefined);
      // A first bot needs a model; ask before the form is filled in rather than after.
-@@ -118,7 +123,8 @@ export default function NewBot() {
+@@ -118,7 +124,8 @@ export default function NewBot() {
        // That check is asking for a model and closing the screen.
        if (await modelCheck.current) return;
        const outcome = await createInboxBot({
@@ -84,7 +85,7 @@ index 83c2212..139be32 100644
          openChat: (href) => {
            if (gone.current) return;
            router.dismiss();
-@@ -145,7 +151,7 @@ export default function NewBot() {
+@@ -145,7 +152,7 @@ export default function NewBot() {
        <Stack.Screen
          options={{
            headerTitleAlign: "center",
@@ -93,7 +94,7 @@ index 83c2212..139be32 100644
            headerLeft: () => (
              <Pressable
                accessibilityRole="button"
-@@ -194,7 +200,7 @@ export default function NewBot() {
+@@ -194,7 +201,7 @@ export default function NewBot() {
            maxLength={BOT_NAME_MAX_LENGTH}
            onChangeText={setName}
            onSubmitEditing={() => void create()}
@@ -102,7 +103,7 @@ index 83c2212..139be32 100644
            placeholderTextColor={tokens.mutedForeground}
            returnKeyType="done"
            style={[
-@@ -218,7 +224,7 @@ export default function NewBot() {
+@@ -218,7 +225,7 @@ export default function NewBot() {
            <NativeActionButton
              fill
              disabled={pending}
@@ -111,7 +112,7 @@ index 83c2212..139be32 100644
              onPress={() => void create()}
              style={styles.create}
            />
-@@ -226,10 +232,10 @@ export default function NewBot() {
+@@ -226,10 +233,10 @@ export default function NewBot() {
            <View
              accessibilityRole="button"
              accessibilityState={{ disabled: true }}

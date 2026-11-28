@@ -26,8 +26,17 @@ onFlowComplete:
     timeout: 60000
 - waitForAnimationToEnd:
     timeout: 4000
+# The simulator's first-keyboard tip ("sliding your finger across the letters") covers the sheet.
+- tapOn:
+    text: "Continue"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
 - assertNotVisible: ".*(Colour|Emblem).*"
 - takeScreenshot: 05-new-bot-en
+- tapOn: "Close"
+- waitForAnimationToEnd:
+    timeout: 2000
 # Switch the app language to 简体中文 (Settings > Language), exactly as a person would.
 - openLink: "rakazo:///language"
 - extendedWaitUntil:
@@ -61,14 +70,21 @@ onFlowComplete:
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 13-new-bot-named-zh
+# Create it (fixture account; the server fixture accepts it): the picked look must be accepted by
+# bots/create and the chat must open.
+- tapOn: "创建"
+- waitForAnimationToEnd:
+    timeout: 10000
+- assertNotVisible: ".*(无法创建|Could not create).*"
+- takeScreenshot: 14-after-create-zh
 - openLink: "rakazo:///usage"
 - waitForAnimationToEnd:
     timeout: 6000
-- takeScreenshot: 14-usage-zh
+- takeScreenshot: 15-usage-zh
 - openLink: "rakazo:///labs"
 - waitForAnimationToEnd:
     timeout: 6000
-- takeScreenshot: 15-labs-zh
+- takeScreenshot: 16-labs-zh
 - openLink: "rakazo:///account"
 - extendedWaitUntil:
     visible:
@@ -76,4 +92,4 @@ onFlowComplete:
     timeout: 60000
 - waitForAnimationToEnd:
     timeout: 3000
-- takeScreenshot: 16-account-zh
+- takeScreenshot: 17-account-zh

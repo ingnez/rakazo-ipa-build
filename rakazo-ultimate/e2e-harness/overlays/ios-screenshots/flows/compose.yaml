@@ -20,10 +20,23 @@ onFlowComplete:
     env:
       RAKAZO_ACTIVE_EMAIL: ${RAKAZO_SCREENSHOT_EMAIL}
 # English first (the simulator is forced to en_US).
-- openLink: "rakazo:///new-bot"
-- extendedWaitUntil:
-    visible: "Give your Bot a name"
-    timeout: 60000
+- retry:
+    maxRetries: 2
+    commands:
+      - runFlow:
+          when:
+            visible: ".*Could not reach the server.*"
+          commands:
+            - tapOn:
+                text: "Back"
+                optional: true
+      - openLink: "rakazo:///new-bot"
+      - tapOn:
+          text: "Open"
+          optional: true
+      - extendedWaitUntil:
+          visible: "Give your Bot a name"
+          timeout: 60000
 - waitForAnimationToEnd:
     timeout: 4000
 # The simulator's first-keyboard tip ("sliding your finger across the letters") covers the sheet.
@@ -38,10 +51,23 @@ onFlowComplete:
 - waitForAnimationToEnd:
     timeout: 2000
 # Switch the app language to 简体中文 (Settings > Language), exactly as a person would.
-- openLink: "rakazo:///language"
-- extendedWaitUntil:
-    visible: "简体中文"
-    timeout: 60000
+- retry:
+    maxRetries: 2
+    commands:
+      - runFlow:
+          when:
+            visible: ".*Could not reach the server.*"
+          commands:
+            - tapOn:
+                text: "Back"
+                optional: true
+      - openLink: "rakazo:///language"
+      - tapOn:
+          text: "Open"
+          optional: true
+      - extendedWaitUntil:
+          visible: "简体中文"
+          timeout: 60000
 - tapOn: "简体中文"
 - extendedWaitUntil:
     visible: "语言"
@@ -49,10 +75,23 @@ onFlowComplete:
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 10-language-zh
-- openLink: "rakazo:///new-bot"
-- extendedWaitUntil:
-    visible: "为 Bot 取个名字"
-    timeout: 60000
+- retry:
+    maxRetries: 2
+    commands:
+      - runFlow:
+          when:
+            visible: ".*Could not reach the server.*"
+          commands:
+            - tapOn:
+                text: "Back"
+                optional: true
+      - openLink: "rakazo:///new-bot"
+      - tapOn:
+          text: "Open"
+          optional: true
+      - extendedWaitUntil:
+          visible: "为 Bot 取个名字"
+          timeout: 60000
 - waitForAnimationToEnd:
     timeout: 4000
 - assertNotVisible: ".*(Colour|Emblem|Create new Bot|Give your Bot a name).*"
@@ -73,9 +112,17 @@ onFlowComplete:
 # Create it (fixture account; the server fixture accepts it): the picked look must be accepted by
 # bots/create and the chat must open.
 # The keyboard covers the Create button, so submit from the keyboard (its Done key creates).
-- pressKey: Enter
+# A create that outlasts the app's 8s timeout leaves the sheet open with an error; submit again, as a
+# person would (the chat composer, "...发消息", only exists once the bot was created).
+- retry:
+    maxRetries: 2
+    commands:
+      - pressKey: Enter
+      - extendedWaitUntil:
+          visible: ".*发消息.*"
+          timeout: 30000
 - waitForAnimationToEnd:
-    timeout: 10000
+    timeout: 3000
 - assertNotVisible: ".*(无法创建|Could not create).*"
 - takeScreenshot: 14-after-create-zh
 - openLink: "rakazo:///usage"
@@ -86,11 +133,24 @@ onFlowComplete:
 - waitForAnimationToEnd:
     timeout: 6000
 - takeScreenshot: 16-labs-zh
-- openLink: "rakazo:///account"
-- extendedWaitUntil:
-    visible:
-      id: "settings-account-hub"
-    timeout: 60000
+- retry:
+    maxRetries: 2
+    commands:
+      - runFlow:
+          when:
+            visible: ".*Could not reach the server.*"
+          commands:
+            - tapOn:
+                text: "Back"
+                optional: true
+      - openLink: "rakazo:///account"
+      - tapOn:
+          text: "Open"
+          optional: true
+      - extendedWaitUntil:
+          visible:
+            id: "settings-account-hub"
+          timeout: 60000
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 17-account-zh

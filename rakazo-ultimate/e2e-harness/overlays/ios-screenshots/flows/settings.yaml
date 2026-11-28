@@ -5,17 +5,30 @@ name: Settings
     file: ../subflows/sign-in.yaml
     env:
       RAKAZO_ACTIVE_EMAIL: ${RAKAZO_SCREENSHOT_EMAIL}
-- openLink: "rakazo:///account"
-# Account hub: InsetRow a11y label is "title, detail" (and icons used to leak SF names).
-# Prefer testID; regex keeps a text fallback. Do not drop this readiness check.
-- extendedWaitUntil:
-    visible:
-      id: "settings-account-hub"
-    timeout: 60000
-- extendedWaitUntil:
-    visible:
-      id: "settings-row-profile"
-    timeout: 45000
+- retry:
+    maxRetries: 2
+    commands:
+      - runFlow:
+          when:
+            visible: ".*Could not reach the server.*"
+          commands:
+            - tapOn:
+                text: "Back"
+                optional: true
+      - openLink: "rakazo:///account"
+      # Account hub: InsetRow a11y label is "title, detail" (and icons used to leak SF names).
+      # Prefer testID; regex keeps a text fallback. Do not drop this readiness check.
+      - tapOn:
+          text: "Open"
+          optional: true
+      - extendedWaitUntil:
+          visible:
+            id: "settings-account-hub"
+          timeout: 60000
+      - extendedWaitUntil:
+          visible:
+            id: "settings-row-profile"
+          timeout: 45000
 - assertVisible:
     id: "settings-row-vault"
 - assertVisible:
@@ -69,17 +82,43 @@ name: Settings
     timeout: 3000
 - takeScreenshot: 03-general-dark
 - tapOn: "System"
-- openLink: "rakazo:///profile"
-- extendedWaitUntil:
-    visible: ".*Change password.*"
-    timeout: 45000
+- retry:
+    maxRetries: 2
+    commands:
+      - runFlow:
+          when:
+            visible: ".*Could not reach the server.*"
+          commands:
+            - tapOn:
+                text: "Back"
+                optional: true
+      - openLink: "rakazo:///profile"
+      - tapOn:
+          text: "Open"
+          optional: true
+      - extendedWaitUntil:
+          visible: ".*Change password.*"
+          timeout: 45000
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 03-profile
-- openLink: "rakazo:///change-password"
-- extendedWaitUntil:
-    visible: "Current password"
-    timeout: 45000
+- retry:
+    maxRetries: 2
+    commands:
+      - runFlow:
+          when:
+            visible: ".*Could not reach the server.*"
+          commands:
+            - tapOn:
+                text: "Back"
+                optional: true
+      - openLink: "rakazo:///change-password"
+      - tapOn:
+          text: "Open"
+          optional: true
+      - extendedWaitUntil:
+          visible: "Current password"
+          timeout: 45000
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 04-change-password
@@ -100,15 +139,28 @@ name: Settings
     timeout: 3000
 - takeScreenshot: 05-password-mismatch
 - tapOn: "Back"
-- openLink: "rakazo:///models"
-# Titles here are locale-mixed (the fork hard-codes 日常帮助 / 场景模型), so wait on ids:
-# the page, the main-model group, the scenes group; and no error banner.
-- extendedWaitUntil:
-    visible:
-      id: "settings-models-screen"
-    timeout: 60000
-# The groups render once `me` has loaded; a read that outlasts the app's 8s timeout shows
-# the page's Retry instead, as it would for a person.
+- retry:
+    maxRetries: 2
+    commands:
+      - runFlow:
+          when:
+            visible: ".*Could not reach the server.*"
+          commands:
+            - tapOn:
+                text: "Back"
+                optional: true
+      - openLink: "rakazo:///models"
+      # Titles here are locale-mixed (the fork hard-codes 日常帮助 / 场景模型), so wait on ids:
+      # the page, the main-model group, the scenes group; and no error banner.
+      - tapOn:
+          text: "Open"
+          optional: true
+      - extendedWaitUntil:
+          visible:
+            id: "settings-models-screen"
+          timeout: 60000
+      # The groups render once `me` has loaded; a read that outlasts the app's 8s timeout shows
+      # the page's Retry instead, as it would for a person.
 - extendedWaitUntil:
     visible:
       id: "settings-models-main"
@@ -130,16 +182,29 @@ name: Settings
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 06-models
-- openLink: "rakazo:///integrations"
-- extendedWaitUntil:
-    visible: "Search apps.*"
-    timeout: 45000
-- extendedWaitUntil:
-    visible: ".*Connected.*"
-    timeout: 45000
-# ConnectAppRow is one accessible Pressable labelled "<title> <pill>" ("Gmail Connected"); its
-# subtitle ("Fixture Gmail", the account name) is a hidden child, so only the label is matchable
-# (run 45994571354: the screenshot showed Gmail + Connected + Fixture Gmail, yet the assert failed).
+- retry:
+    maxRetries: 2
+    commands:
+      - runFlow:
+          when:
+            visible: ".*Could not reach the server.*"
+          commands:
+            - tapOn:
+                text: "Back"
+                optional: true
+      - openLink: "rakazo:///integrations"
+      - tapOn:
+          text: "Open"
+          optional: true
+      - extendedWaitUntil:
+          visible: "Search apps.*"
+          timeout: 45000
+      - extendedWaitUntil:
+          visible: ".*Connected.*"
+          timeout: 45000
+      # ConnectAppRow is one accessible Pressable labelled "<title> <pill>" ("Gmail Connected"); its
+      # subtitle ("Fixture Gmail", the account name) is a hidden child, so only the label is matchable
+      # (run 45994571354: the screenshot showed Gmail + Connected + Fixture Gmail, yet the assert failed).
 - assertVisible: ".*Gmail (Connected|已连接).*"
 - waitForAnimationToEnd:
     timeout: 3000
@@ -152,40 +217,105 @@ name: Settings
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 08-integrations-advanced
-- openLink: "rakazo:///voice"
-- extendedWaitUntil:
-    # The Provider row is one accessible MenuPicker: label "Provider", value "This device". Maestro
-    # may expose either, so accept both (the screenshot that follows is taken after 3s of settling).
-    visible: ".*(This device|Provider).*"
-    timeout: 45000
+- retry:
+    maxRetries: 2
+    commands:
+      - runFlow:
+          when:
+            visible: ".*Could not reach the server.*"
+          commands:
+            - tapOn:
+                text: "Back"
+                optional: true
+      - openLink: "rakazo:///voice"
+      - tapOn:
+          text: "Open"
+          optional: true
+      - extendedWaitUntil:
+          # The Provider row is one accessible MenuPicker: label "Provider", value "This device". Maestro
+          # may expose either, so accept both (the screenshot that follows is taken after 3s of settling).
+          visible: ".*(This device|Provider).*"
+          timeout: 45000
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 09-voice
-- openLink: "rakazo:///ai-data-sharing"
-- extendedWaitUntil:
-    visible: "AI data sharing"
-    timeout: 45000
+- retry:
+    maxRetries: 2
+    commands:
+      - runFlow:
+          when:
+            visible: ".*Could not reach the server.*"
+          commands:
+            - tapOn:
+                text: "Back"
+                optional: true
+      - openLink: "rakazo:///ai-data-sharing"
+      - tapOn:
+          text: "Open"
+          optional: true
+      - extendedWaitUntil:
+          visible: "AI data sharing"
+          timeout: 45000
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 10-ai-data-sharing
-- openLink: "rakazo:///labs"
-- extendedWaitUntil:
-    visible: "Board"
-    timeout: 45000
+- retry:
+    maxRetries: 2
+    commands:
+      - runFlow:
+          when:
+            visible: ".*Could not reach the server.*"
+          commands:
+            - tapOn:
+                text: "Back"
+                optional: true
+      - openLink: "rakazo:///labs"
+      - tapOn:
+          text: "Open"
+          optional: true
+      - extendedWaitUntil:
+          visible: "Board"
+          timeout: 45000
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 10b-labs
-- openLink: "rakazo:///routine?botId=${RAKAZO_SCREENSHOT_BOT_ID}&botName=Researcher&routineId=${RAKAZO_SCREENSHOT_ROUTINE_ID}"
-- extendedWaitUntil:
-    visible: ".*Weekly fixture review.*"
-    timeout: 45000
+- retry:
+    maxRetries: 2
+    commands:
+      - runFlow:
+          when:
+            visible: ".*Could not reach the server.*"
+          commands:
+            - tapOn:
+                text: "Back"
+                optional: true
+      - openLink: "rakazo:///routine?botId=${RAKAZO_SCREENSHOT_BOT_ID}&botName=Researcher&routineId=${RAKAZO_SCREENSHOT_ROUTINE_ID}"
+      - tapOn:
+          text: "Open"
+          optional: true
+      - extendedWaitUntil:
+          visible: ".*Weekly fixture review.*"
+          timeout: 45000
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 11-routine
-- openLink: "rakazo:///routine-runs?routineId=${RAKAZO_SCREENSHOT_ROUTINE_ID}&botName=Researcher"
-- extendedWaitUntil:
-    visible: ".*Run history.*"
-    timeout: 45000
+- retry:
+    maxRetries: 2
+    commands:
+      - runFlow:
+          when:
+            visible: ".*Could not reach the server.*"
+          commands:
+            - tapOn:
+                text: "Back"
+                optional: true
+      - openLink: "rakazo:///routine-runs?routineId=${RAKAZO_SCREENSHOT_ROUTINE_ID}&botName=Researcher"
+      - tapOn:
+          text: "Open"
+          optional: true
+      - extendedWaitUntil:
+          visible: ".*Run history.*"
+          timeout: 45000
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 11b-routine-runs
@@ -195,6 +325,13 @@ name: Settings
 - retry:
     maxRetries: 2
     commands:
+      - runFlow:
+          when:
+            visible: ".*Could not reach the server.*"
+          commands:
+            - tapOn:
+                text: "Back"
+                optional: true
       - openLink: "rakazo:///bot-settings?botId=${RAKAZO_SCREENSHOT_BOT_ID}"
       - tapOn:
           text: "Open"
@@ -216,11 +353,24 @@ name: Settings
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 12-bot-settings
-- openLink: "rakazo:///bot-profile?botId=${RAKAZO_SCREENSHOT_BOT_ID}&name=Researcher"
-- extendedWaitUntil:
-    visible:
-      id: "bot-profile-routines"
-    timeout: 90000
+- retry:
+    maxRetries: 2
+    commands:
+      - runFlow:
+          when:
+            visible: ".*Could not reach the server.*"
+          commands:
+            - tapOn:
+                text: "Back"
+                optional: true
+      - openLink: "rakazo:///bot-profile?botId=${RAKAZO_SCREENSHOT_BOT_ID}&name=Researcher"
+      - tapOn:
+          text: "Open"
+          optional: true
+      - extendedWaitUntil:
+          visible:
+            id: "bot-profile-routines"
+          timeout: 90000
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 13-bot-profile
@@ -239,19 +389,45 @@ name: Settings
     timeout: 3000
 - takeScreenshot: 14-bot-delete-warning
 - tapOn: "Cancel"
-- openLink: "rakazo:///group-settings?groupId=${RAKAZO_SCREENSHOT_GROUP_ID}"
-- extendedWaitUntil:
-    visible: ".*Delete group.*"
-    timeout: 45000
+- retry:
+    maxRetries: 2
+    commands:
+      - runFlow:
+          when:
+            visible: ".*Could not reach the server.*"
+          commands:
+            - tapOn:
+                text: "Back"
+                optional: true
+      - openLink: "rakazo:///group-settings?groupId=${RAKAZO_SCREENSHOT_GROUP_ID}"
+      - tapOn:
+          text: "Open"
+          optional: true
+      - extendedWaitUntil:
+          visible: ".*Delete group.*"
+          timeout: 45000
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 15-group-settings
-- openLink: "rakazo:///computer?botId=${RAKAZO_SCREENSHOT_BOT_ID}&name=Researcher"
-- extendedWaitUntil:
-    visible: ".*Take control.*|.*Open computer.*"
-    timeout: 60000
-# The computer boots and its desktop loads after the page opens; Maestro cannot see inside the
-# screen, so give it a few seconds before the shot.
+- retry:
+    maxRetries: 2
+    commands:
+      - runFlow:
+          when:
+            visible: ".*Could not reach the server.*"
+          commands:
+            - tapOn:
+                text: "Back"
+                optional: true
+      - openLink: "rakazo:///computer?botId=${RAKAZO_SCREENSHOT_BOT_ID}&name=Researcher"
+      - tapOn:
+          text: "Open"
+          optional: true
+      - extendedWaitUntil:
+          visible: ".*Take control.*|.*Open computer.*"
+          timeout: 60000
+      # The computer boots and its desktop loads after the page opens; Maestro cannot see inside the
+      # screen, so give it a few seconds before the shot.
 - extendedWaitUntil:
     visible: "Desktop never shows this text"
     timeout: 8000
@@ -259,13 +435,26 @@ name: Settings
 - waitForAnimationToEnd:
     timeout: 5000
 - takeScreenshot: 16-computer
-- openLink: "rakazo:///profile"
-- scrollUntilVisible:
-    element:
-      id: "profile-delete-account"
-    direction: DOWN
-    timeout: 60000
-    visibilityPercentage: 50
+- retry:
+    maxRetries: 2
+    commands:
+      - runFlow:
+          when:
+            visible: ".*Could not reach the server.*"
+          commands:
+            - tapOn:
+                text: "Back"
+                optional: true
+      - openLink: "rakazo:///profile"
+      - tapOn:
+          text: "Open"
+          optional: true
+      - scrollUntilVisible:
+          element:
+            id: "profile-delete-account"
+          direction: DOWN
+          timeout: 60000
+          visibilityPercentage: 50
 - tapOn:
     id: "profile-delete-account"
 - extendedWaitUntil:
@@ -275,11 +464,24 @@ name: Settings
     timeout: 3000
 - takeScreenshot: 17-delete-prompt
 - tapOn: "Cancel"
-- openLink: "rakazo:///general"
-- extendedWaitUntil:
-    visible:
-      id: "settings-language-row"
-    timeout: 45000
+- retry:
+    maxRetries: 2
+    commands:
+      - runFlow:
+          when:
+            visible: ".*Could not reach the server.*"
+          commands:
+            - tapOn:
+                text: "Back"
+                optional: true
+      - openLink: "rakazo:///general"
+      - tapOn:
+          text: "Open"
+          optional: true
+      - extendedWaitUntil:
+          visible:
+            id: "settings-language-row"
+          timeout: 45000
 - tapOn:
     id: "settings-language-row"
 - extendedWaitUntil:
@@ -288,12 +490,25 @@ name: Settings
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 18-language
-- openLink: "rakazo:///account"
-- scrollUntilVisible:
-    element:
-      id: "settings-row-artifacts"
-    direction: DOWN
-    timeout: 45000
+- retry:
+    maxRetries: 2
+    commands:
+      - runFlow:
+          when:
+            visible: ".*Could not reach the server.*"
+          commands:
+            - tapOn:
+                text: "Back"
+                optional: true
+      - openLink: "rakazo:///account"
+      - tapOn:
+          text: "Open"
+          optional: true
+      - scrollUntilVisible:
+          element:
+            id: "settings-row-artifacts"
+          direction: DOWN
+          timeout: 45000
 - assertVisible:
     id: "settings-row-artifacts"
 - waitForAnimationToEnd:
@@ -309,13 +524,26 @@ name: Settings
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 20-artifacts
-- openLink: "rakazo:///general"
-- scrollUntilVisible:
-    element: "Haptics"
-    direction: UP
-    timeout: 45000
-    visibilityPercentage: 100
-    centerElement: true
+- retry:
+    maxRetries: 2
+    commands:
+      - runFlow:
+          when:
+            visible: ".*Could not reach the server.*"
+          commands:
+            - tapOn:
+                text: "Back"
+                optional: true
+      - openLink: "rakazo:///general"
+      - tapOn:
+          text: "Open"
+          optional: true
+      - scrollUntilVisible:
+          element: "Haptics"
+          direction: UP
+          timeout: 45000
+          visibilityPercentage: 100
+          centerElement: true
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 21-haptics

@@ -42,10 +42,23 @@ name: Thread
 # No hideKeyboard here: the chat composer is a custom input and Maestro cannot dismiss its keyboard
 # (run 46025550372 failed on it). The next step navigates to another screen, which drops focus.
 - eraseText: 40
-- openLink: "rakazo:///group-thread?groupId=${RAKAZO_SCREENSHOT_GROUP_ID}&name=Launch%20team"
-- extendedWaitUntil:
-    visible: ".*The fixture launch plan is ready.*"
-    timeout: 60000
+- retry:
+    maxRetries: 2
+    commands:
+      - runFlow:
+          when:
+            visible: ".*Could not reach the server.*"
+          commands:
+            - tapOn:
+                text: "Back"
+                optional: true
+      - openLink: "rakazo:///group-thread?groupId=${RAKAZO_SCREENSHOT_GROUP_ID}&name=Launch%20team"
+      - tapOn:
+          text: "Open"
+          optional: true
+      - extendedWaitUntil:
+          visible: ".*The fixture launch plan is ready.*"
+          timeout: 60000
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 03-group-thread

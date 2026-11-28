@@ -330,7 +330,7 @@ find "$OUT/shots" "$OUT/shots-compose" -name '*.png' -print0 2>/dev/null | while
 done
 ls -la "$OUT/screens" | tee "$OUT/screens-list.txt" || true
 
-need=(07-integrations 04-message-actions 04b-image-stack 05-new-bot-en 11-new-bot-zh 15-usage-zh)
+need=(01-thread 07-integrations 04-message-actions 04b-image-stack 05-new-bot-en 11-new-bot-zh 12-new-bot-picked-zh 14-after-create-zh 15-usage-zh)
 MISSING=0
 for n in "${need[@]}"; do
   if ! find "$OUT/shots" "$OUT/shots-compose" -name "*${n}*" 2>/dev/null | grep -q .; then

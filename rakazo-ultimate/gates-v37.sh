@@ -53,3 +53,11 @@ if [ -d "$APPS/assets/lumen-avatars" ]; then
 fi
 
 echo "v37 gates passed"
+
+# The new-bot sheet's picker must draw the avatar's own shapes and colours and store them in the form
+# the server accepts (#hex::shape_N); the retired Lumen emblem library must not come back into it,
+# because an `::lumen_` value is rejected by bots/create and the avatar ignores it.
+want "openminisLookValue" "$APPS/components/bot-look-picker.tsx" "the new-bot picker no longer stores an OpenMinis look"
+gone "LUMEN_EMBLEM" "$APPS/components/bot-look-picker.tsx" "the new-bot picker offers Lumen emblems again"
+gone "lumenLookValue" "$APPS/app/new-bot.tsx" "the new-bot sheet stores a Lumen value the server rejects"
+want "value: color" "$APPS/components/bot-avatar.tsx" "the avatar ignores a look that was picked by hand"

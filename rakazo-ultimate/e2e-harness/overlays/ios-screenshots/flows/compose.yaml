@@ -1,0 +1,79 @@
+appId: com.rakazo.app
+name: Compose
+# Whatever happens below, the next flow must start in English again.
+onFlowComplete:
+  - openLink: "rakazo:///language"
+  - tapOn:
+      text: "Open"
+      optional: true
+  - extendedWaitUntil:
+      visible: "English"
+      timeout: 60000
+  - tapOn: "English"
+  - waitForAnimationToEnd:
+      timeout: 3000
+---
+# New-bot sheet (the picker is the OpenMinis shape + colour picker; every tile is what the avatar
+# becomes) and the Chinese UI: no English label, raw placeholder or half-translated row may show.
+- runFlow:
+    file: ../subflows/sign-in.yaml
+    env:
+      RAKAZO_ACTIVE_EMAIL: ${RAKAZO_SCREENSHOT_EMAIL}
+# English first (the simulator is forced to en_US).
+- openLink: "rakazo:///new-bot"
+- extendedWaitUntil:
+    visible: "Give your Bot a name"
+    timeout: 60000
+- waitForAnimationToEnd:
+    timeout: 4000
+- assertNotVisible: ".*(Colour|Emblem).*"
+- takeScreenshot: 05-new-bot-en
+# Switch the app language to 简体中文 (Settings > Language), exactly as a person would.
+- openLink: "rakazo:///language"
+- extendedWaitUntil:
+    visible: "简体中文"
+    timeout: 60000
+- tapOn: "简体中文"
+- extendedWaitUntil:
+    visible: "语言"
+    timeout: 30000
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: 10-language-zh
+- openLink: "rakazo:///new-bot"
+- extendedWaitUntil:
+    visible: "为 Bot 取个名字"
+    timeout: 60000
+- waitForAnimationToEnd:
+    timeout: 4000
+- assertNotVisible: ".*(Colour|Emblem|Create new Bot|Give your Bot a name).*"
+- takeScreenshot: 11-new-bot-zh
+- runFlow:
+    when:
+      visible: "形状 9"
+    commands:
+      - tapOn: "形状 9"
+      - tapOn: "颜色 4"
+      - waitForAnimationToEnd:
+          timeout: 2000
+      - takeScreenshot: 12-new-bot-picked-zh
+- inputText: "咖啡师"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: 13-new-bot-named-zh
+- openLink: "rakazo:///usage"
+- waitForAnimationToEnd:
+    timeout: 6000
+- takeScreenshot: 14-usage-zh
+- openLink: "rakazo:///labs"
+- waitForAnimationToEnd:
+    timeout: 6000
+- takeScreenshot: 15-labs-zh
+- openLink: "rakazo:///account"
+- extendedWaitUntil:
+    visible:
+      id: "settings-account-hub"
+    timeout: 60000
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: 16-account-zh

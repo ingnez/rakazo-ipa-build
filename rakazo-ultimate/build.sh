@@ -26,6 +26,9 @@ git checkout "$BASE"
 git log -1 --format='upstream %H %s'
 
 git apply -v "$HERE/client.patch"
+# On top of it: the new-bot sheet's real picker (the avatar's own shapes and colours, not the retired
+# Lumen emblem library) and the small fixes found with it.
+git apply -v "$HERE/client-newbot.patch"
 git diff --stat
 
 # Avatars are drawn in the client (OpenMinis shapes and colours). There is no picture pack to

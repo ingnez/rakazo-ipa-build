@@ -17,6 +17,7 @@ DEST = SRC / "apps" / "mobile" / "e2e" / "ios-screenshots"
 OVERLAYS = (
     "flows/settings.yaml",
     "flows/thread.yaml",
+    "flows/compose.yaml",
     "subflows/sign-in.yaml",
     "subflows/open-thread.yaml",
 )
@@ -44,6 +45,12 @@ MARKERS = {
         'visible: ".*The fixture workspace is ready.*"',
         "takeScreenshot: 01-thread",
         "takeScreenshot: 04b-image-stack",
+    ),
+    "flows/compose.yaml": (
+        "Give your Bot a name",
+        "为 Bot 取个名字",
+        "takeScreenshot: 11-new-bot-zh",
+        ".*(Colour|Emblem).*",
     ),
     "subflows/sign-in.yaml": (
         "Could not save your sign-in",

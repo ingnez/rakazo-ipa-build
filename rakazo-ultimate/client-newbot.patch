@@ -1,0 +1,683 @@
+diff --git a/apps/mobile/app/bot-settings.tsx b/apps/mobile/app/bot-settings.tsx
+index d56bd88..8b7070d 100644
+--- a/apps/mobile/app/bot-settings.tsx
++++ b/apps/mobile/app/bot-settings.tsx
+@@ -946,7 +946,6 @@ export default function BotSettingsScreen() {
+               ) : null}
+               {bot ? (
+                 <BotLookPicker
+-                  compact
+                   value={color}
+                   name={name}
+                   identity={bot.id}
+diff --git a/apps/mobile/app/new-bot.tsx b/apps/mobile/app/new-bot.tsx
+index 83c2212..139be32 100644
+--- a/apps/mobile/app/new-bot.tsx
++++ b/apps/mobile/app/new-bot.tsx
+@@ -1,10 +1,13 @@
+ import { useLingui } from "@lingui/react/macro";
+ import type { BotAvatarSet } from "@rakazo/contracts";
+-import { BOT_COLOR_LIST, BOT_NAME_MAX_LENGTH, resolveBotAvatarSet } from "@rakazo/contracts";
++import { BOT_NAME_MAX_LENGTH, resolveBotAvatarSet } from "@rakazo/contracts";
+ import {
+   newBotLook,
+   newBotLookInput,
+   newBotPreviewIdentity,
++  OPENMINIS_COLOR_COUNT,
++  OPENMINIS_SHAPE_COUNT,
++  openminisLookValue,
+ } from "@rakazo/core";
+ import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+ import { useEffect, useRef, useState } from "react";
+@@ -26,13 +29,19 @@ import { NativeSymbol } from "../components/native-symbol";
+ import { rpc } from "../lib/api";
+ import { askForModelBeforeFirstBot, createInboxBot } from "../lib/create-inbox-bot";
+ import { openChatFromInbox } from "../lib/inbox-changes";
+-import { parseLumenLook } from "../lib/lumen/lumen-avatar";
+ import { native, useMobileTokens, useResolvedAppearance } from "../lib/native";
+ import { useSideInsets } from "../lib/side-insets";
+ import { errorText } from "../lib/user-error";
+ 
+-/** The body a new bot arrives in: a vibrant one, since a white one disappears on a light page. */
+-const DEFAULT_NEW_BOT_COLOR = BOT_COLOR_LIST.find((color) => color.id === "yellow")!.hex;
++/**
++ * The look a new bot arrives in: a random shape in a random colour, never the black one, so the
++ * preview and the picker agree from the first frame and the picker has something chosen.
++ */
++function randomNewBotLook(): string {
++  const shape = Math.floor(Math.random() * OPENMINIS_SHAPE_COUNT);
++  const color = 1 + Math.floor(Math.random() * (OPENMINIS_COLOR_COUNT - 1));
++  return openminisLookValue(shape, color);
++}
+ /**
+  * The bot is the screen's subject, drawn at the reference app's 168 points while the keyboard is
+  * down. When the keyboard comes up it does not slide away or get covered: it shrinks to 64, the
+@@ -69,7 +78,7 @@ export default function NewBot() {
+   // copy can predate a change in Account settings, so the current one replaces it.
+   const [avatarSet, setAvatarSet] = useState(() => resolveBotAvatarSet(params.avatarSet));
+   const [name, setName] = useState("");
+-  const [look, setLook] = useState(() => ({ ...newBotLook(), color: DEFAULT_NEW_BOT_COLOR }));
++  const [look, setLook] = useState(() => ({ ...newBotLook(), color: randomNewBotLook() }));
+   const [pending, setPending] = useState(false);
+   const [error, setError] = useState<string | null>(null);
+   const creating = useRef(false);
+@@ -85,11 +94,7 @@ export default function NewBot() {
+     void rpc("me")
+       .then((me) => {
+         if (gone.current) return;
+-        const set = resolveBotAvatarSet(me.botAvatarSet);
+-        setAvatarSet(set);
+-        // The logo has no studio shapes; drop one picked while the Original set was shown.
+-        if (set === "rakazo")
+-          setLook((current) => ({ ...current, color: parseLumenLook(current.color).color ?? current.color }));
++        setAvatarSet(resolveBotAvatarSet(me.botAvatarSet));
+       })
+       .catch(() => undefined);
+     // A first bot needs a model; ask before the form is filled in rather than after.
+@@ -118,7 +123,8 @@ export default function NewBot() {
+       // That check is asking for a model and closing the screen.
+       if (await modelCheck.current) return;
+       const outcome = await createInboxBot({
+-        input: { name: trimmed, ...newBotLookInput(avatarSet, look) },
++        // The picked look is stored as is: the avatar draws its own shapes whatever the set.
++        input: { name: trimmed, ...newBotLookInput(avatarSet, look), color: look.color },
+         openChat: (href) => {
+           if (gone.current) return;
+           router.dismiss();
+@@ -145,7 +151,7 @@ export default function NewBot() {
+       <Stack.Screen
+         options={{
+           headerTitleAlign: "center",
+-          headerTitle: () => <Text style={styles.title}>创建新 Bot</Text>,
++          headerTitle: () => <Text style={styles.title}>{t`Create new Bot`}</Text>,
+           headerLeft: () => (
+             <Pressable
+               accessibilityRole="button"
+@@ -194,7 +200,7 @@ export default function NewBot() {
+           maxLength={BOT_NAME_MAX_LENGTH}
+           onChangeText={setName}
+           onSubmitEditing={() => void create()}
+-          placeholder="为 Bot 取个名字"
++          placeholder={t`Give your Bot a name`}
+           placeholderTextColor={tokens.mutedForeground}
+           returnKeyType="done"
+           style={[
+@@ -218,7 +224,7 @@ export default function NewBot() {
+           <NativeActionButton
+             fill
+             disabled={pending}
+-            label={pending ? t`Creating…` : "创建"}
++            label={pending ? t`Creating…` : t`Create`}
+             onPress={() => void create()}
+             style={styles.create}
+           />
+@@ -226,10 +232,10 @@ export default function NewBot() {
+           <View
+             accessibilityRole="button"
+             accessibilityState={{ disabled: true }}
+-            accessibilityLabel="创建"
++            accessibilityLabel={t`Create`}
+             style={[styles.create, { backgroundColor: tokens.secondary }]}
+           >
+-            <Text style={[styles.createAsleep, { color: tokens.mutedForeground }]}>创建</Text>
++            <Text style={[styles.createAsleep, { color: tokens.mutedForeground }]}>{t`Create`}</Text>
+           </View>
+         )}
+       </ScrollView>
+diff --git a/apps/mobile/components/avatar-review-gallery.tsx b/apps/mobile/components/avatar-review-gallery.tsx
+index 745c3ff..f73c49b 100644
+--- a/apps/mobile/components/avatar-review-gallery.tsx
++++ b/apps/mobile/components/avatar-review-gallery.tsx
+@@ -3,7 +3,8 @@ import { useEffect, useState } from "react";
+ import { ScrollView, Text, View } from "react-native";
+ import { GestureHandlerRootView } from "react-native-gesture-handler";
+ import { LUMEN_EMBLEMS } from "../lib/lumen/lumen-emblems";
+-import { LUMEN_PALETTE, LUMEN_TEAM, lumenLookValue } from "../lib/lumen/lumen-avatar";
++import { openminisLookValue } from "@rakazo/core";
++import { LUMEN_PALETTE, LUMEN_TEAM } from "../lib/lumen/lumen-avatar";
+ import type { MobileBot } from "../lib/mobile-types";
+ import { useMobileTokens } from "../lib/native";
+ import { ActivityMark } from "./activity-mark";
+@@ -33,7 +34,7 @@ export function AvatarReviewGallery() {
+   const label = { color: tokens.mutedForeground, fontSize: 13, marginTop: 20, marginBottom: 8 };
+   // The creation sheet's own picker, drawn by its real component: what a person sees when they
+   // name a bot and choose its look.
+-  const [look, setLook] = useState(() => lumenLookValue("#8E7CFF", "e425"));
++  const [look, setLook] = useState(() => openminisLookValue(3, 8));
+   const states = [
+     { key: "idle", name: "待机", activity: "idle" as const },
+     { key: "think", name: "思考", activity: "thinking" as const },
+@@ -106,7 +107,7 @@ export function AvatarReviewGallery() {
+         <View style={{ alignItems: "center", paddingVertical: 6 }}>
+           <OpenMinisBotAvatar color={look} name="咖啡师" id="picker-preview" size={112} motion="live" />
+         </View>
+-        <BotLookPicker compact value={look} name="咖啡师" identity="picker-preview" onChange={setLook} />
++        <BotLookPicker value={look} name="咖啡师" identity="picker-preview" onChange={setLook} />
+ 
+         <Text style={label}>Palette · {LUMEN_PALETTE.length}</Text>
+         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+diff --git a/apps/mobile/components/bot-avatar.tsx b/apps/mobile/components/bot-avatar.tsx
+index 347f0ce..a8bc488 100644
+--- a/apps/mobile/components/bot-avatar.tsx
++++ b/apps/mobile/components/bot-avatar.tsx
+@@ -74,7 +74,7 @@ export const BotAvatar = memo(function BotAvatar(props: BotAvatarProps) {
+   const working = isRunWorking(status) && !composing && motion !== "running";
+   // A photo a bot was given still draws: it is the person's own picture, not a role body.
+   const stored = parseLumenLook(color).color ?? color;
+-  const spec = openminisSpecFor({ name, identity, chief: main });
++  const spec = openminisSpecFor({ name, identity, chief: main, value: color });
+   const showMainStar = main && !spec.suppressMainStar;
+   if (stored.startsWith("data:image/")) {
+     return (
+diff --git a/apps/mobile/components/bot-look-picker.tsx b/apps/mobile/components/bot-look-picker.tsx
+index d43bad5..c53c9b4 100644
+--- a/apps/mobile/components/bot-look-picker.tsx
++++ b/apps/mobile/components/bot-look-picker.tsx
+@@ -1,264 +1,134 @@
++import { ph } from "@lingui/core/macro";
+ import { useLingui } from "@lingui/react/macro";
+-import type { BotAvatarSet } from "@rakazo/contracts";
+-import type { ReactNode } from "react";
+-import { useMemo, useState } from "react";
+-import { Pressable, ScrollView, Text, View } from "react-native";
+-import Svg, { Path } from "react-native-svg";
+-import { hapticSelection } from "../lib/haptics";
+-import { LUMEN_EMBLEMS, LUMEN_EMBLEM_CATEGORIES, type LumenEmblem } from "../lib/lumen/lumen-emblems";
+ import {
+-  LUMEN_PALETTE,
+-  lumenEmblemForName,
+-  lumenEmblemInk,
+-  lumenLookFor,
+-  lumenLookValue,
+-  parseLumenLook,
+-} from "../lib/lumen/lumen-avatar";
+-import { useMobileTokens, useResolvedAppearance } from "../lib/native";
++  OPENMINIS_COLOR_COUNT,
++  OPENMINIS_SHAPE_COUNT,
++  openminisHex,
++  openminisLookValue,
++  openminisSpecFor,
++  openminisSvg,
++} from "@rakazo/core";
++import { useMemo } from "react";
++import { Pressable, View } from "react-native";
++import { SvgXml } from "react-native-svg";
++import { hapticSelection } from "../lib/haptics";
++import { useResolvedAppearance } from "../lib/native";
+ 
+-const COLOR_TILE = 30;
+-const EMBLEM_TILE = 46;
++const COLOR_DOT = 30;
++const SHAPE_TILE = 52;
++const SHAPE_ART = 40;
+ const RING = 2;
+ 
++const SHAPES = Array.from({ length: OPENMINIS_SHAPE_COUNT }, (_, shape) => shape);
++const COLORS = Array.from({ length: OPENMINIS_COLOR_COUNT }, (_, color) => color);
++
+ /**
+- * A bot's look, in the Lumen system: one colour from the palette and one emblem from the 247-mark
+- * library. A bot that has never picked an emblem wears the one its name earns — the caption says
+- * which — so typing a name in the creation sheet previews its mark before anyone chooses.
++ * A bot's look as the avatar draws it: one of the thirteen OpenMinis shapes and one of the twelve
++ * colours, as in the reference app's sheet. Every tile is the shape wearing the colour now
++ * chosen, so what is pressed is what the avatar above becomes. A bot that has never been picked
++ * wears the look its name or id earns, and that is what shows as chosen.
+  */
+ export function BotLookPicker({
+   value,
+   name,
+   identity,
+-  compact = false,
+-  avatarSet,
+   disabled = false,
+   onChange,
+ }: {
++  /** The bot's stored `color`. */
+   value: string;
+-  /** The name the bot is being given: it decides the emblem until one is picked by hand. */
++  /** The name the bot is being given: it decides the look until one is picked by hand. */
+   name?: string;
+   identity?: string;
+-  /** Only the swatches, for a sheet that has its own headings. */
+-  compact?: boolean;
+-  avatarSet?: BotAvatarSet;
+   disabled?: boolean;
+   onChange: (value: string) => void;
+ }) {
+   const { t } = useLingui();
+-  const tokens = useMobileTokens();
+   const dark = useResolvedAppearance() === "dark";
+-  void avatarSet;
+-  const stored = parseLumenLook(value);
+-  const look = useMemo(() => lumenLookFor({ name, identity, value }), [name, identity, value]);
+-  const automatic = useMemo(() => lumenEmblemForName(name), [name]);
+-  const [category, setCategory] = useState<string>(
+-    () => look.emblem?.cat ?? LUMEN_EMBLEM_CATEGORIES[0]?.cat ?? "dev",
+-  );
+-  const emblems = useMemo(
+-    () => LUMEN_EMBLEMS.filter((emblem) => emblem.cat === category),
+-    [category],
+-  );
+-  const picked = stored.emblemId !== null;
+-  const ink = lumenEmblemInk(look.color, dark);
+-
+-  const chooseColor = (color: string) => {
+-    if (disabled || color === look.color) return;
+-    hapticSelection();
+-    onChange(lumenLookValue(color, stored.emblemId));
+-  };
+-  const chooseEmblem = (emblem: LumenEmblem | null) => {
+-    if (disabled) return;
++  const spec = useMemo(() => openminisSpecFor({ name, identity, value }), [name, identity, value]);
++  const choose = (shape: number, color: number) => {
++    if (disabled || (shape === spec.shape && color === spec.color)) return;
+     hapticSelection();
+-    onChange(emblem ? lumenLookValue(look.color, emblem.id) : look.color);
++    onChange(openminisLookValue(shape, color));
+   };
++  const ringColor = dark ? "#FFFFFF" : "#1E232B";
+ 
+   return (
+-    <View style={{ gap: compact ? 14 : 22 }}>
+-      <View style={{ gap: 10 }}>
+-        {compact ? null : <Label>{t`Colour`}</Label>}
+-        <View accessibilityRole="radiogroup" style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+-          {LUMEN_PALETTE.map((color) => {
+-            const chosen = color.toLowerCase() === look.color.toLowerCase();
+-            return (
+-              <Pressable
+-                key={color}
+-                accessibilityRole="radio"
+-                accessibilityState={{ selected: chosen }}
+-                accessibilityLabel={color}
+-                disabled={disabled}
+-                onPress={() => chooseColor(color)}
+-                style={{
+-                  width: COLOR_TILE,
+-                  height: COLOR_TILE,
+-                  borderRadius: COLOR_TILE / 2,
+-                  backgroundColor: color,
+-                  borderWidth: RING,
+-                  borderColor: chosen ? (dark ? "#FFFFFF" : "#1E232B") : "transparent",
+-                }}
++    <View style={{ gap: 22, alignItems: "center" }}>
++      <View
++        accessibilityRole="radiogroup"
++        style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 14 }}
++      >
++        {SHAPES.map((shape) => {
++          const selected = shape === spec.shape;
++          return (
++            <Pressable
++              key={shape}
++              accessibilityRole="radio"
++              accessibilityState={{ selected }}
++              accessibilityLabel={t`Shape ${ph({ number: shape + 1 })}`}
++              disabled={disabled}
++              onPress={() => choose(shape, spec.color)}
++              style={{
++                width: SHAPE_TILE,
++                height: SHAPE_TILE,
++                borderRadius: SHAPE_TILE / 2,
++                alignItems: "center",
++                justifyContent: "center",
++                borderWidth: RING,
++                borderColor: selected ? ringColor : "transparent",
++              }}
++            >
++              <SvgXml
++                xml={openminisSvg(
++                  { shape, color: spec.color, role: "custom" },
++                  { size: SHAPE_ART, dark, eyeOpen: 1, mood: "calm", showsFace: true },
++                )}
++                width={SHAPE_ART}
++                height={SHAPE_ART}
++                pointerEvents="none"
+               />
+-            );
+-          })}
+-        </View>
++            </Pressable>
++          );
++        })}
+       </View>
+-
+-      <View style={{ gap: 10 }}>
+-        <View style={{ flexDirection: "row", alignItems: "baseline", justifyContent: "space-between" }}>
+-          {compact ? null : <Label>{t`Emblem`}</Label>}
+-          <Text style={{ color: tokens.mutedForeground, fontSize: 12 }}>
+-            {picked
+-              ? `${look.emblem?.name ?? ""} · ${look.emblem?.id ?? ""}`
+-              : look.emblem
+-                ? `自动 · ${look.emblem.name}`
+-                : "自动 · 名字首字"}
+-          </Text>
+-        </View>
+-        <ScrollView
+-          horizontal
+-          showsHorizontalScrollIndicator={false}
+-          contentContainerStyle={{ gap: 8, paddingVertical: 2 }}
+-        >
+-          <Chip
+-            label={t`自动`}
+-            selected={!picked}
+-            disabled={disabled}
+-            onPress={() => chooseEmblem(null)}
+-          />
+-          {LUMEN_EMBLEM_CATEGORIES.map((entry) => (
+-            <Chip
+-              key={entry.cat}
+-              label={entry.catName}
+-              selected={entry.cat === category}
++      <View
++        accessibilityRole="radiogroup"
++        style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 18 }}
++      >
++        {COLORS.map((color) => {
++          const selected = color === spec.color;
++          return (
++            <Pressable
++              key={color}
++              accessibilityRole="radio"
++              accessibilityState={{ selected }}
++              accessibilityLabel={t`Color ${ph({ number: color + 1 })}`}
+               disabled={disabled}
+-              onPress={() => {
+-                hapticSelection();
+-                setCategory(entry.cat);
++              onPress={() => choose(spec.shape, color)}
++              hitSlop={6}
++              style={{
++                width: COLOR_DOT + 2 * RING + 4,
++                height: COLOR_DOT + 2 * RING + 4,
++                borderRadius: (COLOR_DOT + 2 * RING + 4) / 2,
++                alignItems: "center",
++                justifyContent: "center",
++                borderWidth: RING,
++                borderColor: selected ? ringColor : "transparent",
+               }}
+-            />
+-          ))}
+-        </ScrollView>
+-        <View accessibilityRole="radiogroup" style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+-          {automatic ? (
+-            <EmblemTile
+-              emblem={automatic}
+-              ink={ink}
+-              selected={!picked}
+-              disabled={disabled}
+-              auto
+-              onPress={() => chooseEmblem(null)}
+-            />
+-          ) : null}
+-          {emblems.map((emblem) => (
+-            <EmblemTile
+-              key={emblem.id}
+-              emblem={emblem}
+-              ink={ink}
+-              selected={stored.emblemId === emblem.id}
+-              disabled={disabled}
+-              onPress={() => chooseEmblem(emblem)}
+-            />
+-          ))}
+-        </View>
+-        <Text style={{ color: tokens.mutedForeground, fontSize: 12, lineHeight: 17 }}>
+-          {`${emblems.length} 枚 · 全部 ${LUMEN_EMBLEMS.length} 枚`}
+-        </Text>
++            >
++              <View
++                style={{
++                  width: COLOR_DOT,
++                  height: COLOR_DOT,
++                  borderRadius: COLOR_DOT / 2,
++                  backgroundColor: openminisHex(color, dark),
++                }}
++              />
++            </Pressable>
++          );
++        })}
+       </View>
+     </View>
+   );
+ }
+-
+-function Label({ children }: { children: ReactNode }) {
+-  const tokens = useMobileTokens();
+-  return (
+-    <Text style={{ color: tokens.mutedForeground, fontSize: 13, fontWeight: "600" }}>{children}</Text>
+-  );
+-}
+-
+-function Chip({
+-  label,
+-  selected,
+-  disabled,
+-  onPress,
+-}: {
+-  label: string;
+-  selected: boolean;
+-  disabled?: boolean;
+-  onPress: () => void;
+-}) {
+-  const tokens = useMobileTokens();
+-  return (
+-    <Pressable
+-      accessibilityRole="button"
+-      accessibilityState={{ selected }}
+-      disabled={disabled}
+-      onPress={onPress}
+-      style={{
+-        paddingHorizontal: 12,
+-        paddingVertical: 6,
+-        borderRadius: 999,
+-        backgroundColor: selected ? tokens.foreground : tokens.secondary,
+-      }}
+-    >
+-      <Text
+-        style={{
+-          fontSize: 13,
+-          fontWeight: "600",
+-          color: selected ? tokens.background : tokens.foreground,
+-        }}
+-      >
+-        {label}
+-      </Text>
+-    </Pressable>
+-  );
+-}
+-
+-function EmblemTile({
+-  emblem,
+-  ink,
+-  selected,
+-  disabled,
+-  auto,
+-  onPress,
+-}: {
+-  emblem: LumenEmblem;
+-  ink: string;
+-  selected: boolean;
+-  disabled?: boolean;
+-  auto?: boolean;
+-  onPress: () => void;
+-}) {
+-  const tokens = useMobileTokens();
+-  const dark = useResolvedAppearance() === "dark";
+-  return (
+-    <Pressable
+-      accessibilityRole="radio"
+-      accessibilityState={{ selected }}
+-      accessibilityLabel={`${emblem.id} ${emblem.name}`}
+-      disabled={disabled}
+-      onPress={onPress}
+-      style={{
+-        width: EMBLEM_TILE,
+-        height: EMBLEM_TILE,
+-        borderRadius: 12,
+-        alignItems: "center",
+-        justifyContent: "center",
+-        backgroundColor: tokens.secondary,
+-        borderWidth: RING,
+-        borderColor: selected ? (dark ? "#FFFFFF" : "#1E232B") : "transparent",
+-      }}
+-    >
+-      <Svg width={28} height={28} viewBox="1 1 22 22">
+-        <Path
+-          d={emblem.d}
+-          fill="none"
+-          stroke={ink}
+-          strokeWidth={dark ? 1.5 : 1.7}
+-          strokeLinecap="round"
+-          strokeLinejoin="round"
+-        />
+-      </Svg>
+-      {auto ? (
+-        <Text style={{ position: "absolute", bottom: 1, right: 4, fontSize: 9, color: ink }}>A</Text>
+-      ) : null}
+-    </Pressable>
+-  );
+-}
+diff --git a/apps/mobile/components/bot-profile-tabs.tsx b/apps/mobile/components/bot-profile-tabs.tsx
+index 97bf11c..21d916d 100644
+--- a/apps/mobile/components/bot-profile-tabs.tsx
++++ b/apps/mobile/components/bot-profile-tabs.tsx
+@@ -1,3 +1,4 @@
++import { useLingui } from "@lingui/react/macro";
+ import type { DiarySummary, FrontDeskTask, MemoryLearning, Routine } from "@rakazo/contracts";
+ import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+ import { useRouter } from "expo-router";
+@@ -225,6 +226,7 @@ function TaskRow({ task, onOpen }: { task: FrontDeskTask; onOpen: () => void })
+ 
+ /** 定时任务: the schedules that start this Bot by itself, each with its next run and its switch. */
+ function SchedulesColumn({ botId, botName }: { botId: string; botName: string }) {
++  const { t } = useLingui();
+   const tokens = useMobileTokens();
+   const router = useRouter();
+   const { routines, error } = useBotRoutines(botId);
+@@ -246,7 +248,7 @@ function SchedulesColumn({ botId, botName }: { botId: string; botName: string })
+         </Text>
+       ) : null}
+       {routines === undefined ? (
+-        <ActivityIndicator accessibilityLabel="Loading…" color={tokens.mutedForeground} />
++        <ActivityIndicator accessibilityLabel={t`Loading…`} color={tokens.mutedForeground} />
+       ) : routines.length === 0 ? (
+         <Text style={[styles.empty, { color: tokens.mutedForeground }]}>
+           还没有定时任务。让它每天或每周自己跑一件事，就会排在这里。
+diff --git a/apps/mobile/components/openminis-bot-avatar.tsx b/apps/mobile/components/openminis-bot-avatar.tsx
+index 679013b..581e735 100644
+--- a/apps/mobile/components/openminis-bot-avatar.tsx
++++ b/apps/mobile/components/openminis-bot-avatar.tsx
+@@ -45,6 +45,7 @@ function rand(min: number, max: number): number {
+  * caller asked for a still frame.
+  */
+ export const OpenMinisBotAvatar = memo(function OpenMinisBotAvatar({
++  color,
+   name,
+   id,
+   size = 54,
+@@ -61,7 +62,7 @@ export const OpenMinisBotAvatar = memo(function OpenMinisBotAvatar({
+   const onScreen = useAvatarOnScreen();
+   const afterFirstPaint = useAfterFirstPaint();
+   const reducedMotion = useLumenReducedMotion();
+-  const spec = openminisSpecFor({ name, identity: id ?? identity, chief });
++  const spec = openminisSpecFor({ name, identity: id ?? identity, chief, value: color });
+   const [shy, setShy] = useState(false);
+   const mood = openminisMoodFor({ status, activity, composing, unread, shy });
+   const working = mood === "focused";
+diff --git a/packages/core/src/openminis-avatar.test.ts b/packages/core/src/openminis-avatar.test.ts
+index 2ee91de..c8ae91a 100644
+--- a/packages/core/src/openminis-avatar.test.ts
++++ b/packages/core/src/openminis-avatar.test.ts
+@@ -17,6 +17,8 @@ import {
+   openminisMoodFor,
+   openminisRgb,
+   openminisSpecFor,
++  openminisLookValue,
++  parseOpenminisLook,
+   openminisSvg,
+ } from "./openminis-avatar.js";
+ 
+@@ -165,3 +167,29 @@ describe("chief official face", () => {
+     expect(svg).toContain(`translate(${right.x} ${right.y})`);
+   });
+ });
++
++describe("a look picked by hand", () => {
++  it("stores as the encoded form the server accepts and reads back exactly", () => {
++    for (let shape = 0; shape < OPENMINIS_SHAPE_COUNT; shape += 1) {
++      for (let color = 0; color < OPENMINIS_COLOR_COUNT; color += 1) {
++        const value = openminisLookValue(shape, color);
++        expect(value).toMatch(/^#[0-9a-f]{6}::shape_\d{1,2}$/);
++        expect(parseOpenminisLook(value)).toEqual({ shape, color });
++        expect(openminisSpecFor({ name: "x", value })).toMatchObject({ shape, color, role: "custom" });
++      }
++    }
++  });
++
++  it("is ignored unless it is exactly a pick, so older bots keep the look they have", () => {
++    expect(parseOpenminisLook("#F97316")).toBeNull();
++    expect(parseOpenminisLook("#DE70C6::shape_3")).toBeNull();
++    expect(parseOpenminisLook(`${openminisLookValue(0, 3).split("::")[0]}::shape_13`)).toBeNull();
++    expect(parseOpenminisLook("data:image/png;base64,aGVsbG8=")).toBeNull();
++    expect(parseOpenminisLook(undefined)).toBeNull();
++    expect(openminisSpecFor({ name: "开发助理", value: "#F97316" }).role).toBe("dev");
++  });
++
++  it("never changes the main bot", () => {
++    expect(openminisSpecFor({ chief: true, value: openminisLookValue(5, 5) }).role).toBe("chief");
++  });
++});
+diff --git a/packages/core/src/openminis-avatar.ts b/packages/core/src/openminis-avatar.ts
+index 18a3dd6..6577ff3 100644
+--- a/packages/core/src/openminis-avatar.ts
++++ b/packages/core/src/openminis-avatar.ts
+@@ -206,15 +206,48 @@ export function openminisHashedSpec(id: string, primary: boolean): { shape: numb
+   return { shape: h % 13, color: 1 + Math.floor(h / 13) % 11 };
+ }
+ 
++/** The twelve palette colours as stored hex, in palette order (light theme, black first). */
++export const OPENMINIS_PICK_HEXES: readonly string[] = OPENMINIS_PALETTE.map((_, index) =>
++  openminisHex(index, false),
++);
++
++/**
++ * What a look picked by hand is stored as in `bots.color`: the palette colour and the shape, in
++ * the one encoded form the server already accepts (`#hex::shape_N`, N below 13).
++ */
++export function openminisLookValue(shape: number, color: number): string {
++  return `${OPENMINIS_PICK_HEXES[openminisClampColor(color)]}::shape_${openminisClampShape(shape)}`;
++}
++
++/**
++ * The shape and colour of a stored value, only when it is exactly a hand-picked OpenMinis look.
++ * Any other value (a plain hex, an older studio shape in another palette, a photo) is not a pick
++ * and the bot keeps the look its name or id earns.
++ */
++export function parseOpenminisLook(
++  value: string | null | undefined,
++): { shape: number; color: number } | null {
++  const match = /^(#[0-9a-fA-F]{6})::shape_(\d{1,2})$/.exec(value ?? "");
++  if (!match) return null;
++  const shape = Number(match[2]);
++  const color = OPENMINIS_PICK_HEXES.indexOf(match[1]!.toLowerCase());
++  if (color < 0 || shape >= OPENMINIS_SHAPE_COUNT) return null;
++  return { shape, color };
++}
++
+ export function openminisSpecFor(input: {
+   identity?: string | null;
+   name?: string | null;
+   chief?: boolean;
++  /** The bot's stored `color`: a look picked by hand (`#hex::shape_N`) beats the name and hash. */
++  value?: string | null;
+ }): OpenMinisSpec {
+   if (input.chief) {
+     const chief = ROLE_BY_KEY.get("chief")!;
+     return { shape: chief.shape, color: chief.color, role: "chief", suppressMainStar: false };
+   }
++  const picked = parseOpenminisLook(input.value);
++  if (picked) return { ...picked, role: "custom", suppressMainStar: false };
+   const id = (input.identity ?? "").trim();
+   const name = (input.name ?? "").trim();
+   const row = (id && ROLE_BY_KEY.get(id)) || (name && ROLE_BY_KEY.get(name)) || null;

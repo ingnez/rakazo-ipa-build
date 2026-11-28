@@ -303,12 +303,12 @@ for i in $(seq 1 72); do
   echo "waiting for load to settle: $L"; sleep 5
 done
 echo "load before Maestro: $(sysctl -n vm.loadavg)" | tee -a "$OUT/sys-sample.log"
-echo "== ios screenshots (settings + thread) =="
+echo "== ios screenshots (settings + thread + compose) =="
 cd "$SRC"
 export IOS_SCREENSHOT_OUT="$OUT/shots"
 export EXPO_PUBLIC_API_URL="$API_URL"
 set +e
-pnpm ios:screenshots -- --section settings --section thread > "$OUT/screenshots.log" 2>&1
+pnpm ios:screenshots -- --section settings --section thread --section compose > "$OUT/screenshots.log" 2>&1
 RC=$?
 set -e
 tail -120 "$OUT/screenshots.log"
@@ -320,7 +320,7 @@ wait "$HP" 2>/dev/null || true
 mkdir -p "$OUT/screens"
 # Always grab a live frame + maestro debug shots for diagnosis
 xcrun simctl io "$UDID" screenshot "$OUT/screens/post-run.png" 2>/dev/null || true
-find "$OUT/shots" -name '*.png' -print0 2>/dev/null | while IFS= read -r -d '' f; do
+find "$OUT/shots" "$OUT/shots-compose" -name '*.png' -print0 2>/dev/null | while IFS= read -r -d '' f; do
   base="$(basename "$f")"
   if [[ "$base" =~ ^[0-9]{2} ]]; then
     cp "$f" "$OUT/screens/$base"
@@ -330,14 +330,14 @@ find "$OUT/shots" -name '*.png' -print0 2>/dev/null | while IFS= read -r -d '' f
 done
 ls -la "$OUT/screens" | tee "$OUT/screens-list.txt" || true
 
-need=(07-integrations 04-message-actions 04b-image-stack)
+need=(07-integrations 04-message-actions 04b-image-stack 05-new-bot-en 11-new-bot-zh 14-usage-zh)
 MISSING=0
 for n in "${need[@]}"; do
-  if ! find "$OUT/shots" -name "*${n}*" | grep -q .; then
+  if ! find "$OUT/shots" "$OUT/shots-compose" -name "*${n}*" 2>/dev/null | grep -q .; then
     echo "::error::missing screenshot $n"
     MISSING=1
   else
-    echo "found screenshot $n: $(find "$OUT/shots" -name "*${n}*" | head -1)"
+    echo "found screenshot $n: $(find "$OUT/shots" "$OUT/shots-compose" -name "*${n}*" 2>/dev/null | head -1)"
   fi
 done
 if [ "$RC" -ne 0 ] || [ "$MISSING" -ne 0 ]; then

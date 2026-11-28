@@ -8,13 +8,16 @@ name: Settings
 - retry:
     maxRetries: 2
     commands:
-      - runFlow:
-          when:
-            visible: ".*Could not reach the server.*"
-          commands:
-            - tapOn:
-                text: "Back"
-                optional: true
+      # Always leave first: opening the same URL on the screen already showing it does not remount
+      # (run 46122053238 on the thread; run 46127179837 on Labs, which was blank with no banner).
+      - tapOn:
+          text: "Back"
+          optional: true
+      - tapOn:
+          text: "Close"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000
       - openLink: "rakazo:///account"
       # Account hub: InsetRow a11y label is "title, detail" (and icons used to leak SF names).
       # Prefer testID; regex keeps a text fallback. Do not drop this readiness check.
@@ -85,13 +88,16 @@ name: Settings
 - retry:
     maxRetries: 2
     commands:
-      - runFlow:
-          when:
-            visible: ".*Could not reach the server.*"
-          commands:
-            - tapOn:
-                text: "Back"
-                optional: true
+      # Always leave first: opening the same URL on the screen already showing it does not remount
+      # (run 46122053238 on the thread; run 46127179837 on Labs, which was blank with no banner).
+      - tapOn:
+          text: "Back"
+          optional: true
+      - tapOn:
+          text: "Close"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000
       - openLink: "rakazo:///profile"
       - tapOn:
           text: "Open"
@@ -105,13 +111,16 @@ name: Settings
 - retry:
     maxRetries: 2
     commands:
-      - runFlow:
-          when:
-            visible: ".*Could not reach the server.*"
-          commands:
-            - tapOn:
-                text: "Back"
-                optional: true
+      # Always leave first: opening the same URL on the screen already showing it does not remount
+      # (run 46122053238 on the thread; run 46127179837 on Labs, which was blank with no banner).
+      - tapOn:
+          text: "Back"
+          optional: true
+      - tapOn:
+          text: "Close"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000
       - openLink: "rakazo:///change-password"
       - tapOn:
           text: "Open"
@@ -142,13 +151,16 @@ name: Settings
 - retry:
     maxRetries: 2
     commands:
-      - runFlow:
-          when:
-            visible: ".*Could not reach the server.*"
-          commands:
-            - tapOn:
-                text: "Back"
-                optional: true
+      # Always leave first: opening the same URL on the screen already showing it does not remount
+      # (run 46122053238 on the thread; run 46127179837 on Labs, which was blank with no banner).
+      - tapOn:
+          text: "Back"
+          optional: true
+      - tapOn:
+          text: "Close"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000
       - openLink: "rakazo:///models"
       # Titles here are locale-mixed (the fork hard-codes 日常帮助 / 场景模型), so wait on ids:
       # the page, the main-model group, the scenes group; and no error banner.
@@ -185,13 +197,16 @@ name: Settings
 - retry:
     maxRetries: 2
     commands:
-      - runFlow:
-          when:
-            visible: ".*Could not reach the server.*"
-          commands:
-            - tapOn:
-                text: "Back"
-                optional: true
+      # Always leave first: opening the same URL on the screen already showing it does not remount
+      # (run 46122053238 on the thread; run 46127179837 on Labs, which was blank with no banner).
+      - tapOn:
+          text: "Back"
+          optional: true
+      - tapOn:
+          text: "Close"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000
       - openLink: "rakazo:///integrations"
       - tapOn:
           text: "Open"
@@ -220,13 +235,16 @@ name: Settings
 - retry:
     maxRetries: 2
     commands:
-      - runFlow:
-          when:
-            visible: ".*Could not reach the server.*"
-          commands:
-            - tapOn:
-                text: "Back"
-                optional: true
+      # Always leave first: opening the same URL on the screen already showing it does not remount
+      # (run 46122053238 on the thread; run 46127179837 on Labs, which was blank with no banner).
+      - tapOn:
+          text: "Back"
+          optional: true
+      - tapOn:
+          text: "Close"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000
       - openLink: "rakazo:///voice"
       - tapOn:
           text: "Open"
@@ -242,13 +260,16 @@ name: Settings
 - retry:
     maxRetries: 2
     commands:
-      - runFlow:
-          when:
-            visible: ".*Could not reach the server.*"
-          commands:
-            - tapOn:
-                text: "Back"
-                optional: true
+      # Always leave first: opening the same URL on the screen already showing it does not remount
+      # (run 46122053238 on the thread; run 46127179837 on Labs, which was blank with no banner).
+      - tapOn:
+          text: "Back"
+          optional: true
+      - tapOn:
+          text: "Close"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000
       - openLink: "rakazo:///ai-data-sharing"
       - tapOn:
           text: "Open"
@@ -262,13 +283,16 @@ name: Settings
 - retry:
     maxRetries: 2
     commands:
-      - runFlow:
-          when:
-            visible: ".*Could not reach the server.*"
-          commands:
-            - tapOn:
-                text: "Back"
-                optional: true
+      # Always leave first: opening the same URL on the screen already showing it does not remount
+      # (run 46122053238 on the thread; run 46127179837 on Labs, which was blank with no banner).
+      - tapOn:
+          text: "Back"
+          optional: true
+      - tapOn:
+          text: "Close"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000
       - openLink: "rakazo:///labs"
       - tapOn:
           text: "Open"
@@ -282,13 +306,16 @@ name: Settings
 - retry:
     maxRetries: 2
     commands:
-      - runFlow:
-          when:
-            visible: ".*Could not reach the server.*"
-          commands:
-            - tapOn:
-                text: "Back"
-                optional: true
+      # Always leave first: opening the same URL on the screen already showing it does not remount
+      # (run 46122053238 on the thread; run 46127179837 on Labs, which was blank with no banner).
+      - tapOn:
+          text: "Back"
+          optional: true
+      - tapOn:
+          text: "Close"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000
       - openLink: "rakazo:///routine?botId=${RAKAZO_SCREENSHOT_BOT_ID}&botName=Researcher&routineId=${RAKAZO_SCREENSHOT_ROUTINE_ID}"
       - tapOn:
           text: "Open"
@@ -302,13 +329,16 @@ name: Settings
 - retry:
     maxRetries: 2
     commands:
-      - runFlow:
-          when:
-            visible: ".*Could not reach the server.*"
-          commands:
-            - tapOn:
-                text: "Back"
-                optional: true
+      # Always leave first: opening the same URL on the screen already showing it does not remount
+      # (run 46122053238 on the thread; run 46127179837 on Labs, which was blank with no banner).
+      - tapOn:
+          text: "Back"
+          optional: true
+      - tapOn:
+          text: "Close"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000
       - openLink: "rakazo:///routine-runs?routineId=${RAKAZO_SCREENSHOT_ROUTINE_ID}&botName=Researcher"
       - tapOn:
           text: "Open"
@@ -325,13 +355,16 @@ name: Settings
 - retry:
     maxRetries: 2
     commands:
-      - runFlow:
-          when:
-            visible: ".*Could not reach the server.*"
-          commands:
-            - tapOn:
-                text: "Back"
-                optional: true
+      # Always leave first: opening the same URL on the screen already showing it does not remount
+      # (run 46122053238 on the thread; run 46127179837 on Labs, which was blank with no banner).
+      - tapOn:
+          text: "Back"
+          optional: true
+      - tapOn:
+          text: "Close"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000
       - openLink: "rakazo:///bot-settings?botId=${RAKAZO_SCREENSHOT_BOT_ID}"
       - tapOn:
           text: "Open"
@@ -356,13 +389,16 @@ name: Settings
 - retry:
     maxRetries: 2
     commands:
-      - runFlow:
-          when:
-            visible: ".*Could not reach the server.*"
-          commands:
-            - tapOn:
-                text: "Back"
-                optional: true
+      # Always leave first: opening the same URL on the screen already showing it does not remount
+      # (run 46122053238 on the thread; run 46127179837 on Labs, which was blank with no banner).
+      - tapOn:
+          text: "Back"
+          optional: true
+      - tapOn:
+          text: "Close"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000
       - openLink: "rakazo:///bot-profile?botId=${RAKAZO_SCREENSHOT_BOT_ID}&name=Researcher"
       - tapOn:
           text: "Open"
@@ -392,13 +428,16 @@ name: Settings
 - retry:
     maxRetries: 2
     commands:
-      - runFlow:
-          when:
-            visible: ".*Could not reach the server.*"
-          commands:
-            - tapOn:
-                text: "Back"
-                optional: true
+      # Always leave first: opening the same URL on the screen already showing it does not remount
+      # (run 46122053238 on the thread; run 46127179837 on Labs, which was blank with no banner).
+      - tapOn:
+          text: "Back"
+          optional: true
+      - tapOn:
+          text: "Close"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000
       - openLink: "rakazo:///group-settings?groupId=${RAKAZO_SCREENSHOT_GROUP_ID}"
       - tapOn:
           text: "Open"
@@ -412,13 +451,16 @@ name: Settings
 - retry:
     maxRetries: 2
     commands:
-      - runFlow:
-          when:
-            visible: ".*Could not reach the server.*"
-          commands:
-            - tapOn:
-                text: "Back"
-                optional: true
+      # Always leave first: opening the same URL on the screen already showing it does not remount
+      # (run 46122053238 on the thread; run 46127179837 on Labs, which was blank with no banner).
+      - tapOn:
+          text: "Back"
+          optional: true
+      - tapOn:
+          text: "Close"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000
       - openLink: "rakazo:///computer?botId=${RAKAZO_SCREENSHOT_BOT_ID}&name=Researcher"
       - tapOn:
           text: "Open"
@@ -438,13 +480,16 @@ name: Settings
 - retry:
     maxRetries: 2
     commands:
-      - runFlow:
-          when:
-            visible: ".*Could not reach the server.*"
-          commands:
-            - tapOn:
-                text: "Back"
-                optional: true
+      # Always leave first: opening the same URL on the screen already showing it does not remount
+      # (run 46122053238 on the thread; run 46127179837 on Labs, which was blank with no banner).
+      - tapOn:
+          text: "Back"
+          optional: true
+      - tapOn:
+          text: "Close"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000
       - openLink: "rakazo:///profile"
       - tapOn:
           text: "Open"
@@ -467,13 +512,16 @@ name: Settings
 - retry:
     maxRetries: 2
     commands:
-      - runFlow:
-          when:
-            visible: ".*Could not reach the server.*"
-          commands:
-            - tapOn:
-                text: "Back"
-                optional: true
+      # Always leave first: opening the same URL on the screen already showing it does not remount
+      # (run 46122053238 on the thread; run 46127179837 on Labs, which was blank with no banner).
+      - tapOn:
+          text: "Back"
+          optional: true
+      - tapOn:
+          text: "Close"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000
       - openLink: "rakazo:///general"
       - tapOn:
           text: "Open"
@@ -493,13 +541,16 @@ name: Settings
 - retry:
     maxRetries: 2
     commands:
-      - runFlow:
-          when:
-            visible: ".*Could not reach the server.*"
-          commands:
-            - tapOn:
-                text: "Back"
-                optional: true
+      # Always leave first: opening the same URL on the screen already showing it does not remount
+      # (run 46122053238 on the thread; run 46127179837 on Labs, which was blank with no banner).
+      - tapOn:
+          text: "Back"
+          optional: true
+      - tapOn:
+          text: "Close"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000
       - openLink: "rakazo:///account"
       - tapOn:
           text: "Open"
@@ -527,13 +578,16 @@ name: Settings
 - retry:
     maxRetries: 2
     commands:
-      - runFlow:
-          when:
-            visible: ".*Could not reach the server.*"
-          commands:
-            - tapOn:
-                text: "Back"
-                optional: true
+      # Always leave first: opening the same URL on the screen already showing it does not remount
+      # (run 46122053238 on the thread; run 46127179837 on Labs, which was blank with no banner).
+      - tapOn:
+          text: "Back"
+          optional: true
+      - tapOn:
+          text: "Close"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000
       - openLink: "rakazo:///general"
       - tapOn:
           text: "Open"

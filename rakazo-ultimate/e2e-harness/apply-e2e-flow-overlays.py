@@ -55,7 +55,7 @@ MARKERS = {
     "subflows/sign-in.yaml": (
         "Could not save your sign-in",
         ".*Request timed out.*",
-        'visible: "Account|.*How did you hear about us.*|Could not save your sign-in"',
+        'visible: "Account|.*How did you hear about us.*|Could not save your sign-in|.*Request timed out.*|Personal|Screenshot User"',
     ),
     "subflows/open-thread.yaml": (
         'visible: "Message Researcher"',

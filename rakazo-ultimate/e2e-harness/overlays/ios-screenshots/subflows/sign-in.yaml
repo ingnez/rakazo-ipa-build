@@ -1,6 +1,8 @@
 appId: com.rakazo.app
 ---
 - runFlow: launch-app.yaml
+# Run 46117312164: on the loaded runner the sign-in answered only after ~60s (the `me` call was
+# cancelled by the client at 07:06:27), past the old 45s wait, in two flows in a row. Wait longer.
 # Run 46112983730: under load the first capabilities fetch failed and the screen said
 # "Could not load sign-in options" with a Retry button (no "Sign in" link). Tap Retry, as a person would.
 - runFlow:
@@ -44,7 +46,7 @@ appId: com.rakazo.app
 # save failure) still fails here with a clear screen.
 - extendedWaitUntil:
     visible: "Account|.*How did you hear about us.*|Could not save your sign-in|.*Request timed out.*"
-    timeout: 45000
+    timeout: 150000
 - runFlow:
     when:
       visible: ".*Request timed out.*"
@@ -56,7 +58,7 @@ appId: com.rakazo.app
       - tapOn: "Sign in"
       - extendedWaitUntil:
           visible: "Account|.*How did you hear about us.*|Could not save your sign-in|.*Request timed out.*"
-          timeout: 45000
+          timeout: 120000
 - runFlow:
     when:
       visible: ".*Request timed out.*"
@@ -68,7 +70,7 @@ appId: com.rakazo.app
       - tapOn: "Sign in"
       - extendedWaitUntil:
           visible: "Account|.*How did you hear about us.*|Could not save your sign-in"
-          timeout: 60000
+          timeout: 120000
 - runFlow:
     when:
       visible: ".*Could not save your sign-in.*"

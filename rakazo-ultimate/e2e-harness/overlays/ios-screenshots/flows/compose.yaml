@@ -62,7 +62,7 @@ onFlowComplete:
       visible: "形状 4"
     commands:
       - tapOn: "形状 4"
-      - tapOn: "颜色 8"
+      - tapOn: "颜色 6"
       - waitForAnimationToEnd:
           timeout: 2000
       - takeScreenshot: 12-new-bot-picked-zh

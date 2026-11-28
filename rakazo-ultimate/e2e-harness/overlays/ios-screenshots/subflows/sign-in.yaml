@@ -1,6 +1,29 @@
 appId: com.rakazo.app
 ---
 - runFlow: launch-app.yaml
+# Run 46112983730: under load the first capabilities fetch failed and the screen said
+# "Could not load sign-in options" with a Retry button (no "Sign in" link). Tap Retry, as a person would.
+- runFlow:
+    when:
+      visible: ".*Could not load sign-in options.*"
+    commands:
+      - tapOn: "Retry"
+      - waitForAnimationToEnd:
+          timeout: 8000
+- runFlow:
+    when:
+      visible: ".*Could not load sign-in options.*"
+    commands:
+      - tapOn: "Retry"
+      - waitForAnimationToEnd:
+          timeout: 8000
+- runFlow:
+    when:
+      visible: ".*Could not load sign-in options.*"
+    commands:
+      - tapOn: "Retry"
+      - waitForAnimationToEnd:
+          timeout: 8000
 - runFlow:
     when:
       visible: "Sign up for Rakazo"

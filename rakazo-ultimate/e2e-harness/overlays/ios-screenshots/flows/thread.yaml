@@ -56,7 +56,7 @@ name: Thread
     element: ".*The fixture workspace is ready.*"
     direction: UP
     timeout: 75000
-    visibilityPercentage: 90
+    visibilityPercentage: 80
     speed: 20
     centerElement: true
 - extendedWaitUntil:
@@ -68,6 +68,24 @@ name: Thread
     visible: ".*Reply.*"
     timeout: 8000
     optional: true
+# One more try if the first press opened nothing (a person presses again): re-centre, press again.
+- runFlow:
+    when:
+      notVisible: ".*Reply.*"
+    commands:
+      - scrollUntilVisible:
+          element: ".*The fixture workspace is ready.*"
+          direction: UP
+          timeout: 30000
+          visibilityPercentage: 80
+          speed: 20
+          centerElement: true
+      - longPressOn:
+          text: ".*The fixture workspace is ready.*"
+      - extendedWaitUntil:
+          visible: ".*Reply.*"
+          timeout: 8000
+          optional: true
 - runFlow:
     when:
       visible: ".*Reply.*"

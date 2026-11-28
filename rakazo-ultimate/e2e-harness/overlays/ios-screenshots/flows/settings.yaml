@@ -189,14 +189,23 @@ name: Settings
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 11b-routine-runs
-- openLink: "rakazo:///bot-settings?botId=${RAKAZO_SCREENSHOT_BOT_ID}"
-# Wait for the bot to load (the avatar only renders then) BEFORE touching Advanced: run 46011113796
-# tapped it ~50ms before bots/get answered and the screen crashed on `bot.sectionId` of null (an app
-# bug, fixed by patch-app-testids-and-null-guard.py; the wait keeps the shot meaningful).
-- extendedWaitUntil:
-    visible:
-      id: "bot-settings-avatar"
-    timeout: 90000
+# Run 46112983730: on the busy runner bots/get took 11.7s, past the app's 8s request timeout, and the
+# screen sat on "Could not reach the server" for the whole 90s. Reopening the screen is what a person
+# does, so reopen it (three tries, 40s each) instead of waiting out one dead load.
+- retry:
+    maxRetries: 2
+    commands:
+      - openLink: "rakazo:///bot-settings?botId=${RAKAZO_SCREENSHOT_BOT_ID}"
+      - tapOn:
+          text: "Open"
+          optional: true
+      # Wait for the bot to load (the avatar only renders then) BEFORE touching Advanced: run
+      # 46011113796 tapped it ~50ms before bots/get answered and the screen crashed on
+      # `bot.sectionId` of null (an app bug, fixed by patch-app-testids-and-null-guard.py).
+      - extendedWaitUntil:
+          visible:
+            id: "bot-settings-avatar"
+          timeout: 40000
 - scrollUntilVisible:
     element:
       id: "bot-settings-advanced"

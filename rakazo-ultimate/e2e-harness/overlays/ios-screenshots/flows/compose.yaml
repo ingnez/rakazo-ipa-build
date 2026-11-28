@@ -59,20 +59,21 @@ onFlowComplete:
 - takeScreenshot: 11-new-bot-zh
 - runFlow:
     when:
-      visible: "形状 9"
+      visible: "形状 4"
     commands:
-      - tapOn: "形状 9"
-      - tapOn: "颜色 4"
+      - tapOn: "形状 4"
+      - tapOn: "颜色 8"
       - waitForAnimationToEnd:
           timeout: 2000
       - takeScreenshot: 12-new-bot-picked-zh
-- inputText: "咖啡师"
+- inputText: "Barista"
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 13-new-bot-named-zh
 # Create it (fixture account; the server fixture accepts it): the picked look must be accepted by
 # bots/create and the chat must open.
-- tapOn: "创建"
+# The keyboard covers the Create button, so submit from the keyboard (its Done key creates).
+- pressKey: Enter
 - waitForAnimationToEnd:
     timeout: 10000
 - assertNotVisible: ".*(无法创建|Could not create).*"

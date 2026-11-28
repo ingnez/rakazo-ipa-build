@@ -50,11 +50,15 @@ name: Thread
     timeout: 3000
 - takeScreenshot: 03-group-thread
 - runFlow: ../subflows/open-thread.yaml
+# Centre the message before the long press: at 40% visible the glass header sat over half of it and
+# the press landed on the header, so no menu opened (runs 46103816918, 46108410935).
 - scrollUntilVisible:
     element: ".*The fixture workspace is ready.*"
     direction: UP
     timeout: 75000
-    visibilityPercentage: 40
+    visibilityPercentage: 90
+    speed: 20
+    centerElement: true
 - extendedWaitUntil:
     visible: ".*The fixture workspace is ready.*"
     timeout: 30000

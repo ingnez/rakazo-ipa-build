@@ -19,6 +19,7 @@ OVERLAYS = (
     "flows/thread.yaml",
     "flows/compose.yaml",
     "flows/persist.yaml",
+    "subflows/persist-sign-out.yaml",
     "subflows/sign-in.yaml",
     "subflows/open-thread.yaml",
 )
@@ -58,7 +59,12 @@ MARKERS = {
         "takeScreenshot: P2-after-kill-1",
         "takeScreenshot: P3-after-kill-2",
         'assertNotVisible: "开始使用|Get started|Sign up for Rakazo|Sign in to Rakazo"',
+        "onFlowComplete:\n  - runFlow: ../subflows/persist-sign-out.yaml",
+        "- runFlow: ../subflows/persist-sign-out.yaml\n- takeScreenshot: P4-signed-out",
+    ),
+    "subflows/persist-sign-out.yaml": (
         'tapOn: "Sign out"',
+        "Sign out anyway",
     ),
     "subflows/sign-in.yaml": (
         "Could not save your sign-in",

@@ -1,0 +1,31 @@
+appId: com.rakazo.app
+---
+# Leaves the fixture account signed out. The harness store turns memory-only at the first
+# sign-out, which is what the screenshot sections after `persist` expect; run from persist's
+# onFlowComplete too, so a persist failure cannot leave a persisted session behind to confuse them.
+- runFlow:
+    when:
+      notVisible: "开始使用|Get started|Sign up for Rakazo|Sign in to Rakazo"
+    commands:
+      - retry:
+          maxRetries: 2
+          commands:
+            - openLink: "rakazo:///account"
+            - tapOn:
+                text: "Open"
+                optional: true
+            - extendedWaitUntil:
+                visible:
+                  id: "settings-account-hub"
+                timeout: 60000
+            - scrollUntilVisible:
+                element: "Sign out"
+                direction: DOWN
+                timeout: 20000
+            - tapOn: "Sign out"
+            - tapOn:
+                text: "Sign out anyway"
+                optional: true
+            - extendedWaitUntil:
+                visible: "开始使用|Get started|Sign up for Rakazo|Sign in to Rakazo"
+                timeout: 60000

@@ -56,9 +56,28 @@ name: Settings
           visible:
             id: "settings-account-hub"
           timeout: 45000
-- extendedWaitUntil:
-    visible: ".*Screenshot User.*"
-    timeout: 90000
+# Run 46139948932: `me` answered in 20s on the loaded runner (past the app's 8s timeout), so the hub
+# stayed on "Your account" for the whole wait. The hub only re-reads `me` when it gains focus, so a
+# longer wait cannot help: leave and come back each time, as a person would.
+- retry:
+    maxRetries: 4
+    commands:
+      - runFlow:
+          when:
+            notVisible: ".*Screenshot User.*"
+          commands:
+            - tapOn:
+                id: "settings-row-profile"
+            - waitForAnimationToEnd:
+                timeout: 5000
+            - tapOn: "Back"
+            - extendedWaitUntil:
+                visible:
+                  id: "settings-account-hub"
+                timeout: 45000
+      - extendedWaitUntil:
+          visible: ".*Screenshot User.*"
+          timeout: 30000
 - scrollUntilVisible:
     element: "General|通用"
     direction: DOWN

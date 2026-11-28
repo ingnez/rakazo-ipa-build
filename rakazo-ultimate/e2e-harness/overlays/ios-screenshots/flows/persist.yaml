@@ -1,5 +1,8 @@
 appId: com.rakazo.app
 name: Session survives app kill
+# Also on failure, so a broken persist section cannot leave a session behind for the next ones.
+onFlowComplete:
+  - runFlow: ../subflows/persist-sign-out.yaml
 ---
 # 主人 2026-11-28: every kill from the app switcher signed him out (the OTA shipped this harness's
 # fake store, memory-only). A signed-in person who kills the app and opens it again must land on
@@ -43,26 +46,5 @@ name: Session survives app kill
 - assertVisible: "Personal|Screenshot User|Account"
 # Sign out, so the sections after this one start signed out on every relaunch as they were
 # written (the harness store turns memory-only after this first sign-out).
-- retry:
-    maxRetries: 2
-    commands:
-      - openLink: "rakazo:///account"
-      - tapOn:
-          text: "Open"
-          optional: true
-      - extendedWaitUntil:
-          visible:
-            id: "settings-account-hub"
-          timeout: 60000
-      - scrollUntilVisible:
-          element: "Sign out"
-          direction: DOWN
-          timeout: 20000
-      - tapOn: "Sign out"
-      - tapOn:
-          text: "Sign out anyway"
-          optional: true
-      - extendedWaitUntil:
-          visible: "开始使用|Get started|Sign up for Rakazo|Sign in to Rakazo"
-          timeout: 60000
+- runFlow: ../subflows/persist-sign-out.yaml
 - takeScreenshot: P4-signed-out

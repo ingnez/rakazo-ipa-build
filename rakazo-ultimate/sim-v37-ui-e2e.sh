@@ -313,6 +313,14 @@ pnpm ios:screenshots -- --section persist --section settings --section thread --
 RC=$?
 set -e
 tail -120 "$OUT/screenshots.log"
+# What the harness store did across launches (key names and value lengths only, never values).
+DATA_DIR="$(xcrun simctl get_app_container "$UDID" "$BID" data 2>/dev/null || true)"
+if [ -n "$DATA_DIR" ] && [ -f "$DATA_DIR/Documents/e2e-secure-store.log" ]; then
+  cp "$DATA_DIR/Documents/e2e-secure-store.log" "$OUT/e2e-secure-store.log"
+  echo "== harness store log =="; cat "$OUT/e2e-secure-store.log"
+else
+  echo "== harness store log: none found (the store never ran, or wrote nowhere) =="
+fi
 # Final UI hierarchy (the screen the failing flow stopped on), the file the Maestro error tells you to read.
 ( maestro --udid "$UDID" hierarchy > "$OUT/hierarchy-after.json" 2>"$OUT/hierarchy-after.err" ) & HP=$!
 ( sleep 60; kill "$HP" 2>/dev/null ) >/dev/null 2>&1 &

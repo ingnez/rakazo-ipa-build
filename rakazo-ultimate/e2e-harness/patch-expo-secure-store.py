@@ -40,15 +40,17 @@ for p in found:
 if not targets:
     raise SystemExit(f"expo-secure-store build/SecureStore.js not found under {root}")
 
-body = r'''// E2E harness: file-backed SecureStore (CI simulator only; never in an IPA or OTA).
+body = r'''// E2E harness: durable file-backed SecureStore (CI simulator only; never in an IPA or OTA).
 // Unsigned Release sims cannot use the Keychain, so the session lives in Documents.
 //
-// It persists for real across app kills, so flows/persist.yaml can prove a session survives a
-// kill. The first sign-out (the session token deleted while one is stored) flips the store to
-// memory-only for the rest of the run (tombstone file), which is what the screenshot flows were
-// written against: each of their relaunches starts signed out.
-// The import must be expo-file-system/legacy: on expo-file-system 58 the main entry's legacy
-// functions throw, which silently made the old version of this store memory-only.
+// Durable on purpose: flows/persist.yaml kills the app and expects the session to survive, so
+// every write is awaited and every failure is thrown (a store that swallows errors is what hid
+// the log-out-on-kill bug: the old fake silently kept everything in memory).
+// The first sign-out (the session token deleted while one is stored) flips the store to
+// memory-only for the rest of the run (tombstone file): the screenshot flows were written
+// against relaunches that start signed out.
+// Keys and value lengths (never values) go to e2e-secure-store.log in Documents; the CI script
+// copies it into the artifacts so a failure shows what the store did.
 import {
   deleteAsync,
   documentDirectory,
@@ -60,86 +62,106 @@ import {
 const DIR = documentDirectory || "";
 const PATH = `${DIR}e2e-secure-store.json`;
 const TOMBSTONE = `${DIR}e2e-secure-store.ephemeral`;
+const LOG = `${DIR}e2e-secure-store.log`;
 const SESSION_KEY = "rakazo.session_token";
 let cache = null;
 let ephemeral = false;
 let loading = null;
-let writeChain = Promise.resolve();
+let queue = Promise.resolve();
+let logText = "";
+
+function note(line) {
+  logText += `${new Date().toISOString()} ${line}\n`;
+  const snapshot = logText;
+  // Diagnostics only: a failed log write must not change what the store does.
+  writeAsStringAsync(LOG, snapshot).catch(() => undefined);
+}
+
+// One operation at a time, in call order, so a write is on disk before the next read.
+function serial(task) {
+  const run = queue.then(task);
+  queue = run.then(() => undefined, () => undefined);
+  return run;
+}
 
 async function load() {
   if (cache) return cache;
-  if (!loading) loading = (async () => {
-    let data = {};
-    try {
-      if ((await getInfoAsync(TOMBSTONE)).exists) {
-        ephemeral = true;
-      } else if ((await getInfoAsync(PATH)).exists) {
-        data = JSON.parse(await readAsStringAsync(PATH)) || {};
+  // Fail loudly: with nowhere durable to write, a "working" store would only hide a log-out bug.
+  if (!DIR.startsWith("file://")) {
+    throw new Error("[e2e-secure-store] no documentDirectory: " + String(documentDirectory));
+  }
+  if (!loading) {
+    loading = (async () => {
+      // Keep the log of earlier launches: the kill/relaunch history is the point of it.
+      try {
+        if ((await getInfoAsync(LOG)).exists) logText = await readAsStringAsync(LOG);
+      } catch {
+        // Diagnostics only.
       }
-    } catch (error) {
-      console.warn("[e2e-secure-store] load failed", String(error));
-    }
-    cache = cache || data;
-    return cache;
-  })();
+      note("launch");
+      const tomb = await getInfoAsync(TOMBSTONE);
+      if (tomb.exists) {
+        ephemeral = true;
+        cache = {};
+        note("load: ephemeral (tombstone present)");
+        return cache;
+      }
+      const info = await getInfoAsync(PATH);
+      cache = info.exists ? JSON.parse(await readAsStringAsync(PATH)) || {} : {};
+      note(`load: durable file=${info.exists} keys=${Object.keys(cache).sort().join(",")}`);
+      return cache;
+    })();
+  }
   return loading;
 }
 
-function persist() {
-  if (ephemeral) return writeChain;
-  const snapshot = JSON.stringify(cache || {});
-  writeChain = writeChain.then(async () => {
-    if (ephemeral) return;
-    try {
-      await writeAsStringAsync(PATH, snapshot);
-    } catch (error) {
-      console.warn("[e2e-secure-store] write failed", String(error));
-    }
-  });
-  return writeChain;
+async function save() {
+  if (ephemeral) return;
+  await writeAsStringAsync(PATH, JSON.stringify(cache));
 }
 
 async function goEphemeral() {
   ephemeral = true;
-  writeChain = writeChain.then(async () => {
-    try {
-      await writeAsStringAsync(TOMBSTONE, "1");
-      await deleteAsync(PATH, { idempotent: true });
-    } catch (error) {
-      console.warn("[e2e-secure-store] tombstone failed", String(error));
-    }
-  });
-  return writeChain;
+  await writeAsStringAsync(TOMBSTONE, "1");
+  await deleteAsync(PATH, { idempotent: true });
+  note("sign-out: store is memory-only from now on");
 }
 
-export async function getItemAsync(key, _options = {}) {
-  const data = await load();
-  return Object.prototype.hasOwnProperty.call(data, key) ? data[key] : null;
+export function getItemAsync(key, _options = {}) {
+  return serial(async () => {
+    const data = await load();
+    const has = Object.prototype.hasOwnProperty.call(data, key);
+    if (key === SESSION_KEY) note(`get ${key} present=${has}`);
+    return has ? data[key] : null;
+  });
 }
-export async function setItemAsync(key, value, _options = {}) {
-  const data = await load();
-  data[key] = String(value);
-  cache = data;
-  await persist();
+export function setItemAsync(key, value, _options = {}) {
+  return serial(async () => {
+    const data = await load();
+    data[key] = String(value);
+    await save();
+    if (key === SESSION_KEY) note(`set ${key} len=${String(value).length} durable=${!ephemeral}`);
+  });
 }
-export async function deleteItemAsync(key, _options = {}) {
-  const data = await load();
-  const signingOut = key === SESSION_KEY && Boolean(data[key]) && !ephemeral;
-  delete data[key];
-  cache = data;
-  if (signingOut) await goEphemeral();
-  else await persist();
+export function deleteItemAsync(key, _options = {}) {
+  return serial(async () => {
+    const data = await load();
+    const signingOut = key === SESSION_KEY && Boolean(data[key]) && !ephemeral;
+    delete data[key];
+    if (key === SESSION_KEY) note(`delete ${key} wasStored=${signingOut}`);
+    if (signingOut) await goEphemeral();
+    else await save();
+  });
 }
 export async function isAvailableAsync() {
   return true;
 }
+// Synchronous reads only see what this process already loaded or wrote.
 export function getItem(key, _options = {}) {
   return cache && Object.prototype.hasOwnProperty.call(cache, key) ? cache[key] : null;
 }
 export function setItem(key, value, _options = {}) {
-  cache = cache || {};
-  cache[key] = String(value);
-  void persist();
+  void setItemAsync(key, value);
 }
 export function canUseBiometricAuthentication() {
   return false;

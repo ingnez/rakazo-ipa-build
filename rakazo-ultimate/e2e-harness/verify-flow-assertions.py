@@ -17,7 +17,7 @@ src = pathlib.Path(sys.argv[1])
 strict = "--strict" in sys.argv
 flows_dir = src / "apps/mobile/e2e/ios-screenshots"
 FILES = [
-    "flows/settings.yaml", "flows/thread.yaml", "flows/persist.yaml",
+    "flows/settings.yaml", "flows/thread.yaml", "flows/persist.yaml", "subflows/persist-sign-out.yaml",
     "subflows/first-launch.yaml", "subflows/launch-app.yaml",
     "subflows/sign-in.yaml", "subflows/open-thread.yaml",
 ]

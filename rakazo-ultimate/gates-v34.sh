@@ -43,9 +43,11 @@ fi
 gone "mochiBodyPath" "$APPS/components/bot-look-picker.tsx" "the look picker still draws the old bodies"
 
 # --- 3. Creating and editing a bot previews the new avatar ---------------------------------
-want "lumenLookValue" "$APPS/components/bot-look-picker.tsx" "the picker does not store a Lumen look"
-want "LUMEN_EMBLEMS" "$APPS/components/bot-look-picker.tsx" "the picker does not offer the emblem library"
-want "LUMEN_PALETTE" "$APPS/components/bot-look-picker.tsx" "the picker does not offer the palette"
+# v37.1: the picker offers what the avatar draws (13 OpenMinis shapes, 12 colours), stored as
+# `#hex::shape_N`; the Lumen emblem library is no longer the picker (see gates-v37.sh).
+want "openminisLookValue" "$APPS/components/bot-look-picker.tsx" "the picker does not store an OpenMinis look"
+want "OPENMINIS_SHAPE_COUNT" "$APPS/components/bot-look-picker.tsx" "the picker does not offer the shapes"
+want "OPENMINIS_COLOR_COUNT" "$APPS/components/bot-look-picker.tsx" "the picker does not offer the palette"
 [ "$(grep -c 'name={name}' "$APPS/app/new-bot.tsx")" -ge 2 ] ||
   fail "the new-bot preview and its emblem picker do not both follow the typed name"
 want "name={name}" "$APPS/app/bot-settings.tsx" "the appearance sheet does not follow the bot's name"
